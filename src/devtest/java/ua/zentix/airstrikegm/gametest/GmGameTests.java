@@ -158,6 +158,10 @@ public final class GmGameTests {
                 .thenExecute(() -> {
                     JsonObject r = result(undo.get());
                     check(r.get("state").getAsString().equals("done") && r.get("undo_of").getAsLong() == id.get(), "откат: " + r);
+                    // в истории — только снимок самого отката: снимок постройки он вернул и отпустил
+                    long undoRetained = gm(h).jobs().get(r.get("id").getAsLong()).retained();
+                    check(gm(h).jobs().get(id.get()).retained() == 0 && undoRetained == r.get("changed").getAsLong(),
+                            "держится мест: постройка " + gm(h).jobs().get(id.get()).retained() + ", откат " + undoRetained + ", ждали 0 и " + r.get("changed"));
                     h.assertBlockPresent(Blocks.CHEST, chest);
                     ChestBlockEntity back = h.getBlockEntity(chest);
                     check(back.getItem(0).is(Items.DIAMOND) && back.getItem(0).getCount() == 3, "в сундуке после отката: " + back.getItem(0));

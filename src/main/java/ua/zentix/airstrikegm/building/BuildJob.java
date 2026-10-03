@@ -56,9 +56,9 @@ public final class BuildJob extends Job {
     private final Areas areas;
     private final int[] bounds;
     private final long timeoutTicks;
-    /** Постройка — план; откат — снимок, который он возвращает (с конца). */
-    private final BuildPlan<BlockInput> plan;
-    private final Snapshot restore;
+    /** Постройка — план; откат — снимок, который он возвращает (с конца). Оба отпускаются с концом работы. */
+    private BuildPlan<BlockInput> plan;
+    private Snapshot restore;
     private final long total;
     private final long undoOf;
     private final BuildPlan.Placement<BlockInput> cursor = new BuildPlan.Placement<>();
@@ -206,12 +206,15 @@ public final class BuildJob extends Job {
     @Override
     protected void release() {
         if (lease != null) lease.release();
+        // после конца в истории держится только свой снимок: план и возвращённый откатом снимок не нужны
+        plan = null;
+        restore = null;
     }
 
     @Override
     public long retained() {
-        Snapshot s = snapshot;
-        return s == null ? 0 : s.size;
+        Snapshot s = snapshot, r = restore;
+        return (s == null ? 0 : s.size) + (r == null ? 0 : r.size);
     }
 
     @Override

@@ -1,0 +1,80 @@
+---
+paths:
+  - "mod/gm/**"
+  - "tools/gm.py"
+---
+
+# Мод ведущего (`mod/gm`, `airstrike_gm`)
+
+Серверный мод, через который Claude-ведущий видит мир и действует на сервере: HTTP-мост на сервере и MCP-адаптер
+`tools/gm.py` у Claude. Своих блоков, предметов, пакетов и записей в реестрах нет — клиентам ставить не нужно, мод
+не зависит от Airstrike. Отдельный подпроект Gradle: свой jar `airstrike-gm-<gm_version>.jar` (`mod/gradle.properties`),
+свои запуски `runGmServer`, `runGmGameTestServer` (`./gradlew runGameTestServer` в `mod/` по-прежнему только Airstrike),
+`./gradlew build` собирает и проверяет оба.
+
+## Устройство (`ua.zentix.airstrikegm`)
+- `AirstrikeGm` — подписки; `GmServer` — состояние одного запуска сервера (`ServerStartedEvent` … `ServerStoppedEvent`):
+  лента, работы, чанки, мост. Мост — только на выделенном сервере (`isDedicatedServer`), в одиночной игре и GameTest нет.
+- `bridge/` — HTTP из самой Java (`com.sun.net.httpserver`), свой пул из 6 потоков: `POST /rpc`
+  `{"method", "params"}` → `{"ok": true, "result"}` или `{"ok": false, "error": {code, message}}`. Токен —
+  `config/airstrike_gm/token` (32 байта hex, права 600, создаётся при первом запуске; в лог не пишется), сверка
+  за постоянное время. Ответа метода мост ждёт 60 с (поток сервера стоит — 504).
+- `Api` — таблица методов. Параметры разбираются в потоке моста, мир — только в потоке сервера: `GmServer.onMain`
+  (`server.execute`, между тиками) или работой (`work/`) под бюджетом тика.
+- `work/` — очередь работ: в конце тика (`ServerTickEvent.Post`) по порядку, пока есть время (`work.ms_per_tick`,
+  3 мс), первая — хотя бы одну порцию. Конец — событие `job` в ленте (кроме снимков), история — 50 последних,
+  снимки отката в ней — не больше 4 млн мест вместе.
+- `world/Areas` — чанки ведущего: аренда прямоугольника чанков с кольцом соседей в один чанк.
+- `building/` — план (`BuildPlan`: fill/set/layers, без мира — юнит-тесты) и работа постройки/отката (`BuildJob`).
+- `view/` — карта сверху (`MapView`, как ванильная карта), вид сбоку/сверху/снизу (`LookView`), блоки текстом
+  (`BlockText`), PNG без AWT (`Png`).
+- `act/` — команды и функции (`CommandRunner`), слова игрокам (`Chat`); `feed/` — лента событий.
+
+## Методы
+`status`, `players`, `player {name}`, `entities {center+radius | from/to, type, limit}`,
+`command {commands, pos?, dimension?}`, `function {lines, args?, pos?}`, `say {text | component, to?, style}`,
+`map {center+size | from/to [x,z], below?, marks?}`, `look {from, to, look}`, `blocks {from, to, properties?}`,
+`build {ops}`, `undo {job}`, `jobs`, `job {id, wait?}`, `cancel {id}`, `area.prepare {from, to [x,z], ttl_seconds?, wait?}`,
+`area.release {id}`, `areas`, `events {after?, wait? ≤25, limit?}`. Везде `dimension` (по умолчанию верхний мир);
+у долгих — `wait` (по умолчанию 30 с, до 50): не успела работа — её описание, дальше `job`. Картинка снимка
+выдаётся один раз (`png_base64`), после этого работа её не держит. MCP-инструменты `tools/gm.py` — те же методы
+(`from`/`to` там `start`/`end`, у `look` — `direction`), плюс `call` для любого метода.
+
+## Подводные камни
+- Чанки — только тикетом загрузки ванили (`DistanceManager.addTicket`, уровень 33 = полный чанк без тика): тикет
+  региона пускает тик сразу, без готовых соседей (`server-chunks.md`), `TicketController.forceChunk` NeoForge и
+  `level.getChunk` грузят синхронно. Одинаковые ванильные тикеты сливаются — аренды считает `Areas`.
+- Запись блока читает соседей (форма по соседям, обновление соседей, Sable — до двух блоков): кольцо соседей в
+  аренде обязательно, иначе соседний чанк не в полной загрузке грузился бы синхронно. Работа ждёт, пока полны все
+  чанки аренды (`getChunkNow`), не дольше 2400 тиков.
+- Отпуск — не больше 64 чанков за тик (ваниль выгружает больше 2000 держателей разом в одном тике). Остановка
+  сервера снимает всё сразу в `ServerStoppingEvent` с обычным приоритетом — раньше `StopDrain` Airstrike (`LOWEST`),
+  иначе он ждал бы генерацию по тикетам ведущего. Предел — `work.max_chunks` (1500) вместе с кольцами.
+- Чтение — только `getChunkNow` и сам `LevelChunk`: снимки и `blocks` незагруженное не грузят (шахматка, `?`);
+  загрузить — `area.prepare`. Сущности — `getEntities` по рамке (загруженные секции, снимок списка).
+- Постройка ставит место как `/fill` (`FillCommand`): сперва `getBlockEntity` (поднимает отложенную блок-сущность
+  свежего чанка — иначе её данные остались бы при новом блоке, «DUMMY»), снимок со `saveWithFullMetadata`,
+  `Clearable.tryClear`, `BlockInput.place` с `UPDATE_CLIENTS`, после порции — `blockUpdated`. Откат не возвращает
+  сущности и то, что отвалилось вне рамки (факел у снесённой стены — предметом).
+- Описание кончившейся работы в её будущем — общее для всех ждущих: ответ — копией (`GmServer.await`), иначе снимок
+  дописывал картинку в общий объект, и она жила в истории и выдавалась снова.
+- Вызов метода из потока сервера (GameTest) выполняется сразу (`server.execute` в том же потоке не ставит в очередь);
+  `join` на будущем, которое ждёт тика, в потоке сервера — вечная блокировка.
+- Свои команды ведущего проходят `CommandEvent` (лента их не пишет: в ней только команды игроков, без личных
+  сообщений) и пишутся строкой INFO «Ведущий: /…»; операторам в чат не уходят (`shouldInformAdmins` — нет).
+- Функция — `CommandFunction.fromLines` + `ExecutionContext.queueInitialFunctionCall`, как `/function`, без файла и
+  `/reload`. Параметры макроса из JSON: целые — `IntTag`/`LongTag` (через `NbtOps` число стало бы `5.0`).
+- PNG пишется своим кодом (`Png`, Deflater): в образе сервера может не быть AWT и шрифтов. Кодирует поток моста,
+  не поток сервера.
+- MCP SDK — 1.x (`mcp>=1.2,<2`): во 2.x `FastMCP` переименован, адаптер написан под 1.x.
+- Мост даёт права оператора 4: слушать только петлю или сеть, куда есть доступ лишь у хоста (`bridge.host`).
+  Тесты сервера с мостом в облаке — на петле (`server-ip=127.0.0.1`, `tools/rig_config.py` — без объявления в LAN).
+
+## Проверки
+- Юнит-тесты (`mod/gm/src/test`): мост по HTTP на петле, токен, лента, PNG (чтение стандартным декодером), план
+  постройки, параметры макроса.
+- GameTest (`mod/gm/src/devtest`, шаблон `airstrike_gm:floor` — `mod/scripts/gen_test_structures.py`): каждая проверка —
+  своей партией (часы работ и тикеты ведущего общие на сервер). Часы работ подменяются (`GmServer.clock`, 1 мс на
+  вызов) — порции по тикам без настенного времени; чанки под постройку грузятся тестом сразу (`level.getChunk`).
+- Пробный сервер: `./gradlew :gm:runGmServer` (каталог `mod/gm/run/server`, `eula.txt`, `server.properties` с
+  `server-ip=127.0.0.1`), затем `AIRSTRIKE_GM_TOKEN_FILE=mod/gm/run/server/config/airstrike_gm/token uv run tools/gm.py call status`.

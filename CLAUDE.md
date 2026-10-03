@@ -76,5 +76,7 @@ paths:
 - GameTest (`mod/gm/src/devtest`, шаблон `airstrike_gm:floor` — `mod/scripts/gen_test_structures.py`): каждая проверка —
   своей партией (часы работ и тикеты ведущего общие на сервер). Часы работ подменяются (`GmServer.clock`, 1 мс на
   вызов) — порции по тикам без настенного времени; чанки под постройку грузятся тестом сразу (`level.getChunk`).
+  Ответ снимка (и `job` снимка) дописывает поток вне сервера (`thenApplyAsync`, PNG): сервер GameTest пробегает срок
+  в тиках раньше, чем тот успевает (CI: 200 тиков за 0,3 с). Конец работы ждать по тикам, ответ — `get` со сроком.
 - Пробный сервер: `./gradlew :gm:runGmServer` (каталог `mod/gm/run/server`, `eula.txt`, `server.properties` с
   `server-ip=127.0.0.1`), затем `AIRSTRIKE_GM_TOKEN_FILE=mod/gm/run/server/config/airstrike_gm/token uv run tools/gm.py call status`.

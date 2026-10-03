@@ -45,6 +45,9 @@ import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
@@ -97,6 +100,34 @@ public final class GmGameTests {
             return f.join().getAsJsonObject();
         } catch (CompletionException e) {
             throw new GameTestAssertException("вызов упал: " + e.getCause());
+        }
+    }
+
+    /**
+     * Ответ, который дописывает поток вне сервера (картинку снимка кодирует {@code thenApplyAsync}): сервер GameTest
+     * пробегает тики без пауз, и срок теста в тиках выходил раньше, чем этот поток успевал. Работу ждать по тикам
+     * ({@link #viewsEnded}), а этот хвост — здесь, с запасом по часам: потока сервера он не ждёт.
+     */
+    private static JsonObject settled(CompletableFuture<JsonElement> f) {
+        try {
+            return f.get(30, TimeUnit.SECONDS).getAsJsonObject();
+        } catch (TimeoutException e) {
+            throw new GameTestAssertException("ответа нет 30 с после конца работы");
+        } catch (ExecutionException e) {
+            throw new GameTestAssertException("вызов упал: " + e.getCause());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new GameTestAssertException("ожидание ответа прервано");
+        }
+    }
+
+    /** Снимки ({@code map}, {@code look}) в очереди работ кончились. */
+    private static void viewsEnded(GameTestHelper h) {
+        for (JsonElement e : gm(h).jobs().describe()) {
+            JsonObject job = e.getAsJsonObject();
+            String kind = job.get("kind").getAsString(), state = job.get("state").getAsString();
+            boolean view = kind.equals("map") || kind.equals("look");
+            check(!view || !(state.equals("waiting") || state.equals("running")), "снимок ещё идёт: " + job);
         }
     }
 
@@ -332,15 +363,10 @@ public final class GmGameTests {
         BlockPos far = h.absolutePos(new BlockPos(40_000, 0, 40_000));
         CompletableFuture<JsonElement> unloaded = call(h, "map", params("{\"center\":[%d,%d],\"size\":32}", far.getX(), far.getZ()));
         CompletableFuture<JsonElement> look = call(h, "look", params("{\"from\":%s,\"to\":%s,\"look\":\"north\"}", at(h, 30, 2, 35), at(h, 34, 4, 32)));
-        AtomicReference<CompletableFuture<JsonElement>> again = new AtomicReference<>();
         h.startSequence()
-                .thenWaitUntil(() -> {
-                    ready(map);
-                    ready(unloaded);
-                    ready(look);
-                })
+                .thenWaitUntil(() -> viewsEnded(h))
                 .thenExecute(() -> {
-                    JsonObject m = result(map);
+                    JsonObject m = settled(map);
                     BufferedImage top = image(m);
                     int stone = Png.shade(MapColor.STONE.col, MapColor.Brightness.NORMAL.modifier / 255.0);
                     check(cell(top, m, 10, 10) == stone, String.format(Locale.ROOT, "пол: #%06X, а не #%06X", cell(top, m, 10, 10), stone));
@@ -348,25 +374,21 @@ public final class GmGameTests {
                     int shadow = Png.shade(MapColor.STONE.col, MapColor.Brightness.LOW.modifier / 255.0);
                     check(cell(top, m, 32, 33) == shadow, String.format(Locale.ROOT, "к югу от колонны: #%06X", cell(top, m, 32, 33)));
 
-                    JsonObject u = result(unloaded);
+                    JsonObject u = settled(unloaded);
                     BufferedImage none = image(u);
                     for (int i = 0; i < 32; i += 5) {
                         int c = cell(none, u, i, i);
                         check(c == 0x303030 || c == 0x484848, String.format(Locale.ROOT, "незагруженная клетка %d: #%06X", i, c));
                     }
 
-                    JsonObject l = result(look);
+                    JsonObject l = settled(look);
                     BufferedImage side = image(l);
                     // колонна x = 32 — третья клетка слева; ближняя грань z = 35, колонна на глубине 3 из 4
                     check(cell(side, l, 2, 0) == Png.shade(MapColor.GOLD.col, 1.0 - 0.6 * 3 / 3), String.format(Locale.ROOT, "колонна сбоку: #%06X", cell(side, l, 2, 0)));
                     check(cell(side, l, 0, 0) == 0x87AEDB, String.format(Locale.ROOT, "пустой луч: #%06X", cell(side, l, 0, 0)));
                     int glass = cell(side, l, 1, 1);
                     check(glass != 0x87AEDB && (glass >> 16 & 255) > 0x87, String.format(Locale.ROOT, "небо за стеклом без налёта: #%06X", glass));
-                    again.set(call(h, "job", params("{\"id\":%d}", m.get("id").getAsLong())));
-                })
-                .thenWaitUntil(() -> ready(again.get()))
-                .thenExecute(() -> {
-                    JsonObject r = result(again.get());
+                    JsonObject r = settled(call(h, "job", params("{\"id\":%d}", m.get("id").getAsLong())));
                     check(r.get("state").getAsString().equals("done") && !r.has("png_base64"), "картинка снимка выдана второй раз: " + r.keySet());
                 })
                 .thenSucceed();

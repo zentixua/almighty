@@ -99,9 +99,16 @@ airstrike-pack с jar выпуска.
 правил — в сторону (`rules.json.bad`).
 
 ## Подводные камни
-- Чанки — только тикетом загрузки ванили (`DistanceManager.addTicket`, уровень 33 = полный чанк без тика): тикет
-  региона пускает тик сразу, без готовых соседей, `TicketController.forceChunk` NeoForge и
-  `level.getChunk` грузят синхронно. Одинаковые ванильные тикеты сливаются — аренды считает `Areas`.
+- Чанки — только тикетом региона ванили радиуса 0 (`ServerChunkCache.addRegionTicket`, уровень 33 = полный чанк без
+  тика, и в счёте тика `TickingTracker` 33 не тикает); радиус больше 0 пускает тик сразу, без готовых соседей,
+  `TicketController.forceChunk` NeoForge и `level.getChunk` грузят синхронно. Одинаковые ванильные тикеты сливаются —
+  аренды считает `Areas`. Вход тикетов — общий, его охраняют моды со своими чанками: Sable не пускает тикеты на участки
+  кораблей (x от 20 480 000 блоков; держатели чанков участка он сам ставит в `ChunkMap.updatingChunkMap` и убирает).
+  Прежний тикет мимо входа (`DistanceManager.addTicket`) поднимал там ванильные держатели и генерацию; Sable убирал
+  держатель чанка корабля (пробоина, ремонт), уровень у ванили оставался, и следующая генерация рядом не находила
+  держатель — NPE в `ChunkMap.acquireGeneration`, «Exception in server tick loop» (Zearth 04.10.2026, постройка ведущего
+  по координатам участка лайнера; GameTest `GmSableGameTests` повторял это до исправления). Такой чанк аренда не
+  получает, работа ждёт его до срока.
 - Запись блока читает соседей (форма по соседям, обновление соседей, Sable — до двух блоков): кольцо соседей в
   аренде обязательно, иначе соседний чанк не в полной загрузке грузился бы синхронно. Работа ждёт, пока полны все
   чанки аренды (`getChunkNow`), не дольше 2400 тиков.
@@ -277,9 +284,11 @@ airstrike-pack с jar выпуска.
   jar Groovy GameTest не проверяет: после правки сборки — выделенный сервер NeoForge из установщика
   (`java -jar neoforge-<версия>-installer.jar --installServer`, каталог в `run/`), jar из `build/libs` в `mods/`,
   `server-ip=127.0.0.1`, вызов `script` через `mcp/almighty.py call`.
-- В запуске GameTest рядом Immersive Aircraft (`devtestRuntimeOnly` с Modrinth Maven; запуск — с набором
-  `devtest`): моды шлют свои пакеты при входе игрока, поэтому у игроков-заглушек тестов — все каналы модов
-  (`NetworkRegistry.configureMockConnection`), как у бота.
+- В запуске GameTest рядом Immersive Aircraft и Sable (`devtestRuntimeOnly` с Modrinth Maven; запуск — с набором
+  `devtest`; типы Sable для компиляции — ещё и sable-companion с maven.ryanhcode.dev): моды шлют свои пакеты при входе
+  игрока, поэтому у игроков-заглушек тестов — все каналы модов (`NetworkRegistry.configureMockConnection`), как у бота.
+- GameTest кораблей Sable — `GmSableGameTests`: корабль собирается командой `sable assemble area`, аренда на его участке
+  тикетов не ставит; корабль убирается при стоящей аренде, вторая аренда рядом — генерация не падает.
 - GameTest (`src/devtest`, шаблон `almighty:floor` — `scripts/gen_test_structures.py`): каждая проверка —
   своей партией (часы работ и тикеты ведущего общие на сервер). Часы работ подменяются (`GmServer.clock`, 1 мс на
   вызов) — порции по тикам без настенного времени; чанки под постройку грузятся тестом сразу (`level.getChunk`).

@@ -4,9 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
-import net.minecraft.server.level.ChunkLevel;
-import net.minecraft.server.level.DistanceManager;
-import net.minecraft.server.level.FullChunkStatus;
+import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
@@ -24,11 +22,16 @@ import java.util.Map;
  * прямоугольник чанков и кольцо соседей в один чанк: запись блока читает соседей (форма по соседям, обновление соседей,
  * Sable — до двух блоков), и соседний чанк не в полной загрузке грузился бы синхронно.
  *
- * <p>Тикет — свой на каждый чанк, ванильный тикет загрузки ({@code DistanceManager.addTicket}) уровня 33: чанк
- * становится полным ({@code getChunkNow}), но не тикает — ни блоки, ни блок-сущности, ни сущности; генерация и чтение
- * с диска идут в фоне. Тикет региона ({@code addRegionTicket}) не годится: он пускает тик сразу, без готовых соседей.
- * {@code TicketController.forceChunk} NeoForge грузит чанк синхронно. Одинаковые ванильные тикеты сливаются в один,
- * поэтому аренды считаются здесь: тикет ставит первая аренда чанка, снимает очередь отпуска после последней.
+ * <p>Тикет — свой на каждый чанк, ванильный тикет региона радиуса 0 ({@code ServerChunkCache.addRegionTicket}) уровня
+ * 33: чанк становится полным ({@code getChunkNow}), но не тикает — ни блоки, ни блок-сущности, ни сущности (уровень 33 и
+ * в счёте тика, {@code TickingTracker}, ниже тикающих); генерация и чтение с диска идут в фоне. Радиус больше 0 пустил
+ * бы тик сразу, без готовых соседей. Вход — общий для тикетов модов: моды, которые ведут свои чанки сами, отказывают в
+ * нём у себя (Sable не пускает тикеты на участки кораблей: держатели их чанков он сам ставит в карту чанков ванили и
+ * убирает; ванильный тикет мимо этого входа, {@code DistanceManager.addTicket}, запускал там генерацию, и 04.10.2026
+ * задача генерации не нашла держатель, который Sable убрал, — NPE в {@code ChunkMap.acquireGeneration}, сервер встал).
+ * Такой чанк аренда не получит — работа ждёт его до своего срока. {@code TicketController.forceChunk} NeoForge грузит
+ * чанк синхронно. Одинаковые ванильные тикеты сливаются в один, поэтому аренды считаются здесь: тикет ставит первая
+ * аренда чанка, снимает очередь отпуска после последней.
  *
  * <p>Отпуск — не больше {@value #RELEASE_PER_TICK} чанков за тик: ваниль выгружает больше 2000 держателей разом в одном
  * тике (Отбой залпа Airstrike стоил тика 6,8 с). Остановка сервера снимает всё сразу ({@link #releaseAll}), в
@@ -37,8 +40,8 @@ import java.util.Map;
  */
 public final class Areas {
     private static final TicketType<Long> TICKET = TicketType.create("almighty", Long::compare);
-    /** 33: полный чанк без тика. */
-    private static final int LEVEL = ChunkLevel.byStatus(FullChunkStatus.FULL);
+    /** Радиус тикета региона: 0 — уровень 33, полный чанк без тика. */
+    private static final int RADIUS = 0;
     static final int RELEASE_PER_TICK = 64;
     /** Кольцо соседей вокруг прямоугольника аренды, чанков. */
     static final int MARGIN = 1;
@@ -151,13 +154,13 @@ public final class Areas {
                     + " (с кольцом соседей), предел " + maxChunks + ": отпустить районы (area.release) или взять меньше");
         }
         LongLinkedOpenHashSet queue = releasing.computeIfAbsent(level, l -> new LongLinkedOpenHashSet());
-        DistanceManager distances = distances(level);
+        ServerChunkCache chunks = level.getChunkSource();
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
                 long chunk = ChunkPos.asLong(x, z);
                 int before = counts.addTo(chunk, 1);
                 // тикет ещё стоит, если чанк ждал отпуска
-                if (before == 0 && !queue.remove(chunk)) distances.addTicket(TICKET, new ChunkPos(chunk), LEVEL, chunk);
+                if (before == 0 && !queue.remove(chunk)) chunks.addRegionTicket(TICKET, new ChunkPos(chunk), RADIUS, chunk);
             }
         }
         Lease lease = new Lease(nextId++, level, owner, minX, minZ, maxX, maxZ,
@@ -195,11 +198,11 @@ public final class Areas {
         expired.forEach(this::release);
         int budget = RELEASE_PER_TICK;
         for (Map.Entry<ServerLevel, LongLinkedOpenHashSet> e : releasing.entrySet()) {
-            DistanceManager distances = distances(e.getKey());
+            ServerChunkCache chunks = e.getKey().getChunkSource();
             for (Iterator<Long> it = e.getValue().iterator(); it.hasNext() && budget > 0; budget--) {
                 long chunk = it.next();
                 it.remove();
-                distances.removeTicket(TICKET, new ChunkPos(chunk), LEVEL, chunk);
+                chunks.removeRegionTicket(TICKET, new ChunkPos(chunk), RADIUS, chunk);
             }
         }
     }
@@ -209,12 +212,12 @@ public final class Areas {
         for (Lease lease : leases.values()) lease.released = true;
         leases.clear();
         for (Map.Entry<ServerLevel, Long2IntOpenHashMap> e : refs.entrySet()) {
-            DistanceManager distances = distances(e.getKey());
-            for (long chunk : e.getValue().keySet()) distances.removeTicket(TICKET, new ChunkPos(chunk), LEVEL, chunk);
+            ServerChunkCache chunks = e.getKey().getChunkSource();
+            for (long chunk : e.getValue().keySet()) chunks.removeRegionTicket(TICKET, new ChunkPos(chunk), RADIUS, chunk);
         }
         for (Map.Entry<ServerLevel, LongLinkedOpenHashSet> e : releasing.entrySet()) {
-            DistanceManager distances = distances(e.getKey());
-            for (long chunk : e.getValue()) distances.removeTicket(TICKET, new ChunkPos(chunk), LEVEL, chunk);
+            ServerChunkCache chunks = e.getKey().getChunkSource();
+            for (long chunk : e.getValue()) chunks.removeRegionTicket(TICKET, new ChunkPos(chunk), RADIUS, chunk);
         }
         refs.clear();
         releasing.clear();
@@ -238,9 +241,5 @@ public final class Areas {
         JsonArray out = new JsonArray();
         for (Lease lease : leases.values()) out.add(lease.describe());
         return out;
-    }
-
-    private static DistanceManager distances(ServerLevel level) {
-        return level.getChunkSource().chunkMap.getDistanceManager();
     }
 }

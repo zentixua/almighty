@@ -358,10 +358,12 @@ public final class Bots {
             if (w.lease().isReady()) {
                 it.remove();
                 after.add(() -> w.ready().complete(w.lease()));
-            } else if (tickNow() >= w.deadline() || w.lease().released()) {
+            } else if (tickNow() >= w.deadline() || w.lease().released() || w.lease().refusal() != null) {
                 it.remove();
+                String refusal = w.lease().refusal();
                 w.lease().release();
-                after.add(() -> w.ready().completeExceptionally(RpcException.unavailable("Место входа бота не загрузилось за " + PLACE_WAIT / 20 + " с")));
+                after.add(() -> w.ready().completeExceptionally(RpcException.unavailable(refusal != null
+                        ? "Место входа бота: " + refusal : "Место входа бота не загрузилось за " + PLACE_WAIT / 20 + " с")));
             }
         }
         after.forEach(Runnable::run);

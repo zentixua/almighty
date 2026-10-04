@@ -125,7 +125,10 @@ public final class BuildJob extends Job {
     protected void step(Budget budget) {
         if (state() == State.WAITING) {
             if (!lease.isReady()) {
-                if (++waited > timeoutTicks) {
+                String refusal = lease.refusal();
+                if (refusal != null) {
+                    fail(refusal);
+                } else if (++waited > timeoutTicks) {
                     fail("Чанки не загрузились за " + timeoutTicks + " тиков: готово " + lease.ready() + " из " + lease.chunks());
                 }
                 return;

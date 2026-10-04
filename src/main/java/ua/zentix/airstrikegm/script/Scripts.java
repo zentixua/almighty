@@ -4,7 +4,14 @@ import groovy.lang.Binding;
 import groovy.lang.GroovyClassLoader;
 import groovy.lang.GroovyCodeSource;
 import groovy.lang.Script;
-import groovy.transform.TimedInterrupt;
+import groovy.transform.ConditionalInterrupt;
+import org.codehaus.groovy.ast.ClassHelper;
+import org.codehaus.groovy.ast.Parameter;
+import org.codehaus.groovy.ast.VariableScope;
+import org.codehaus.groovy.ast.expr.ArgumentListExpression;
+import org.codehaus.groovy.ast.expr.ClosureExpression;
+import org.codehaus.groovy.ast.expr.StaticMethodCallExpression;
+import org.codehaus.groovy.ast.stmt.ExpressionStatement;
 import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer;
@@ -16,15 +23,16 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Writer;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Скрипты ведущего на Groovy. Компиляция — со сроком ({@link TimedInterrupt}: проверка времени в начале каждого цикла,
- * метода и замыкания), запуск — новым экземпляром: срок считается от его создания. Замыкание, пережившее свой запуск,
- * после срока бросает {@link TimeoutException} — долгоживущее делается правилами. Код Java, который скрипт зовёт
- * (ожидание, синхронная загрузка чанка), срок не прерывает.
+ * Скрипты ведущего на Groovy. В начале каждого цикла, метода и замыкания скрипта — проверка срока
+ * ({@link ConditionalInterrupt} с {@link #expired}): срок идёт, только пока идёт сам вызов {@link #run} в этом потоке.
+ * Замыкание или объект скрипта, отданный игре и вызванный ею потом (сравнение тикетов, задача на потом, слушатель),
+ * срока не видит: прежний {@code @TimedInterrupt} считал срок от создания экземпляра и бросал в таком замыкании
+ * {@link TimeoutException} посреди тика мира — сервер падал. Код Java, который скрипт зовёт (ожидание, синхронная
+ * загрузка чанка), срок не прерывает.
  *
  * <p>Каждый скрипт — свой {@link GroovyClassLoader} поверх загрузчика мода: видит классы игры и всех модов, а после
  * {@link Compiled#close} его классы выгружаются.
@@ -33,6 +41,8 @@ public final class Scripts {
     /** Вывод {@code println} — не больше, дальше отрезается. */
     static final int MAX_OUTPUT = 64 * 1024;
     private static final AtomicLong NEXT = new AtomicLong(1);
+    /** Срок идущего в этом потоке вызова ({@link System#nanoTime}); вне вызова — нет. */
+    private static final ThreadLocal<long[]> DEADLINE = ThreadLocal.withInitial(() -> new long[1]);
     /** Частые классы — без {@code import} в самом скрипте. */
     private static final String[] IMPORTS = {
             "net.minecraft.core.BlockPos", "net.minecraft.core.Direction", "net.minecraft.core.registries.BuiltInRegistries",
@@ -85,7 +95,7 @@ public final class Scripts {
         ImportCustomizer imports = new ImportCustomizer();
         imports.addImports(IMPORTS);
         config.addCompilationCustomizers(imports, new ASTTransformationCustomizer(
-                Map.of("value", timeoutMs, "unit", TimeUnit.MILLISECONDS), TimedInterrupt.class));
+                Map.of("value", expiredCondition(), "thrown", TimeoutException.class), ConditionalInterrupt.class));
         GroovyClassLoader loader = new GroovyClassLoader(Scripts.class.getClassLoader(), config);
         String file = name + "_" + NEXT.getAndIncrement() + ".groovy";
         try {
@@ -103,9 +113,24 @@ public final class Scripts {
         }
     }
 
+    /** Условие проверки в коде скрипта: {@code { Scripts.expired() }}. */
+    private static ClosureExpression expiredCondition() {
+        ClosureExpression condition = new ClosureExpression(Parameter.EMPTY_ARRAY, new ExpressionStatement(
+                new StaticMethodCallExpression(ClassHelper.make(Scripts.class), "expired", ArgumentListExpression.EMPTY_ARGUMENTS)));
+        condition.setVariableScope(new VariableScope());
+        return condition;
+    }
+
+    /** Вышел ли срок вызова, идущего в этом потоке. Вне вызова {@link #run} — нет. Зовёт код скриптов. */
+    public static boolean expired() {
+        long deadline = DEADLINE.get()[0];
+        return deadline != 0 && System.nanoTime() - deadline > 0;
+    }
+
     /**
      * Запуск в текущем потоке: переменные {@code vars} и {@code out} (вывод {@code println}). Ошибка скрипта — в
-     * итоге, не исключением; нехватка памяти и прочие ошибки машины — дальше.
+     * итоге, не исключением; нехватка памяти и прочие ошибки машины — дальше. Вложенный запуск (правило, которое
+     * сработало от команды скрипта) идёт со своим сроком, после него снова действует срок внешнего.
      */
     public static Result run(Compiled script, Map<String, Object> vars) {
         Output text = new Output();
@@ -113,6 +138,11 @@ public final class Scripts {
         vars.forEach(binding::setVariable);
         binding.setVariable("out", new PrintWriter(text, true));
         long start = System.nanoTime();
+        long[] deadline = DEADLINE.get();
+        long outer = deadline[0];
+        // 0 — «срока нет»: настоящий срок, совпавший с нулём, сдвигается на 1 нс
+        long own = start + script.timeoutMs() * 1_000_000L;
+        deadline[0] = own == 0 ? 1 : own;
         try {
             Script instance = InvokerHelper.createScript(script.type(), binding);
             Object value = instance.run();
@@ -122,6 +152,8 @@ public final class Scripts {
             return failed(script, e, text, start);
         } catch (Throwable e) {
             return failed(script, e, text, start);
+        } finally {
+            deadline[0] = outer;
         }
     }
 

@@ -86,6 +86,8 @@ airstrike-pack с jar выпуска.
 строки функции), `say`, `script`, `rule` (add/remove/list/types), `events`, `view` (map/look/blocks/eye), `build` (+ undo),
 `area`, `job` (+ cancel), `bot` (spawn/remove/list/state/act), `notes`, `call` — любой метод. Новое — сперва подумать, не делается ли оно скриптом или правилом;
 отдельный инструмент — только когда он и правда снимает ошибки. `from`/`to` там `start`/`end`.
+Рядом — `mcp/gm/` (не инструменты MCP, только Python 3): охраняемые зоны сессий ведущего (`zones.py`: путь удара с
+разбросом против зон, точка обхода) и README — когда проверять и что говорить игрокам только после проверки в мире.
 
 Скрипт и правило: Groovy в потоке сервера, переменные `server`, `gm` (`command`, `commandAs(entity, …)` — от лица
 сущности, `emit(data)` — в ленту событием `emit`, `fields(event)`, `player(name)`, `level(dim)`), `state` (общая карта

@@ -38,18 +38,32 @@ public final class EventTypes {
         for (ModFileScanData data : ModList.get().getAllScanData()) {
             String owner = data.getIModInfoData().stream().flatMap(i -> i.getMods().stream()).map(IModInfo::getModId)
                     .findFirst().orElse("?");
-            for (ModFileScanData.ClassData c : data.getClasses()) {
-                parent.put(c.clazz().getClassName(), c.parent().getClassName());
-                mod.put(c.clazz().getClassName(), owner);
-            }
+            collect(data.getClasses(), owner, parent, mod);
         }
+        index = built = events(parent, mod);
+        return built;
+    }
+
+    /**
+     * Классы одного файла мода: имя → предок и мод. Предка нет у {@code module-info} (в сборке он есть у многих модов)
+     * и у {@code java.lang.Object}: событием такой класс не бывает.
+     */
+    static void collect(Iterable<ModFileScanData.ClassData> classes, String owner, Map<String, String> parent, Map<String, String> mod) {
+        for (ModFileScanData.ClassData c : classes) {
+            if (c.clazz() == null || c.parent() == null) continue;
+            parent.put(c.clazz().getClassName(), c.parent().getClassName());
+            mod.put(c.clazz().getClassName(), owner);
+        }
+    }
+
+    /** Наследники {@link Event} среди собранных классов: имя → мод. */
+    static Map<String, String> events(Map<String, String> parent, Map<String, String> mod) {
         Map<String, Boolean> isEvent = new HashMap<>();
         Map<String, String> out = new TreeMap<>();
         for (String name : parent.keySet()) {
             if (event(name, parent, isEvent)) out.put(name, mod.get(name));
         }
-        index = built = Map.copyOf(out);
-        return built;
+        return Map.copyOf(out);
     }
 
     private static boolean event(String name, Map<String, String> parent, Map<String, Boolean> memo) {

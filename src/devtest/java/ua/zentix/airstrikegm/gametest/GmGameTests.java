@@ -395,7 +395,10 @@ public final class GmGameTests {
                 .thenSucceed();
     }
 
-    /** Лента: вход, команда игрока (не команда ведущего от его лица), смерть с причиной и выход игрока. */
+    /**
+     * Лента: вход, команда игрока (не команда ведущего от его лица), сообщение ведущему ({@code /gm}), смерть с причиной
+     * и выход игрока.
+     */
     @GameTest(template = "floor", batch = "gm_feed", skyAccess = true)
     public static void feedSeesJoinDeathLeave(GameTestHelper h) throws InterruptedException {
         GmServer gm = gm(h);
@@ -411,18 +414,22 @@ public final class GmGameTests {
         // команда ведущего от лица игрока — не его: в ленту не идёт; набранная им самим — идёт
         new ScriptApi(h.getLevel().getServer(), true, data -> {}).commandAs(player, "list");
         h.getLevel().getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack(), "list");
+        // личный канал к ведущему: своим событием, не командой
+        h.getLevel().getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack(), "gm привет, ведущий");
         player.hurt(player.damageSources().genericKill(), Float.MAX_VALUE);
         h.getLevel().getServer().getPlayerList().remove(player);
         JsonArray events = gm.feed().read(after, 100, 0).getAsJsonArray("events");
         StringBuilder types = new StringBuilder();
-        boolean death = false;
+        boolean death = false, toGm = false;
         for (JsonElement e : events) {
             JsonObject o = e.getAsJsonObject();
             if (!o.has("player") || !o.get("player").getAsString().equals("gm-feed-player")) continue;
             types.append(o.get("type").getAsString()).append(' ');
             if (o.get("type").getAsString().equals("death")) death = o.get("message").getAsString().contains("gm-feed-player");
+            if (o.get("type").getAsString().equals("gm")) toGm = o.get("text").getAsString().equals("привет, ведущий") && o.has("dimension");
         }
-        check(types.toString().equals("join command death leave "), "события: " + types + "в " + events);
+        check(types.toString().equals("join command gm death leave "), "события: " + types + "в " + events);
+        check(toGm, "сообщение ведущему: " + events);
         check(death, "у смерти нет причины: " + events);
         h.succeed();
     }

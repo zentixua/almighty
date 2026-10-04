@@ -11,7 +11,10 @@ import net.minecraft.network.chat.ChatType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.LastSeenMessages;
 import net.minecraft.network.chat.PlayerChatMessage;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.SignableCommand;
+import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.custom.DiscardedPayload;
 import net.minecraft.network.protocol.game.ServerboundChatCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundChatPacket;
 import net.minecraft.network.protocol.game.ServerboundClientCommandPacket;
@@ -23,6 +26,7 @@ import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.network.protocol.game.ServerboundSignUpdatePacket;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
@@ -33,14 +37,17 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
+import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.neoforged.neoforge.common.CommonHooks;
+import net.neoforged.neoforge.network.connection.ConnectionType;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.world.Observe;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.BitSet;
 import java.util.EnumSet;
 import java.util.List;
@@ -141,6 +148,7 @@ final class Steps {
         }
         if (a.has("respawn")) return new Respawn();
         if (a.has("press")) return new Press(a.string("press"));
+        if (a.has("payload")) return Payload.parse(a);
         if (a.has("fly")) {
             Abilities abilities = new Abilities();
             abilities.flying = a.bool("fly", true);
@@ -161,7 +169,7 @@ final class Steps {
             double[] v = numbers(a, "walk_to", to.size());
             return new WalkTo(v[0], v.length == 3 ? v[2] : v[1], a.bool("sprint", false), a.number("within", 0.6, 0.1, 8), a.integer("max_ticks", 1200, 1, MAX_WAIT));
         }
-        throw RpcException.badRequest("неизвестный шаг " + a.raw().keySet() + ": wait, hold, release, look, turn, look_at, click, slot, drop, swap_hands, menu, menu_button, close, chat, sign, respawn, press, fly, player_command, walk_to");
+        throw RpcException.badRequest("неизвестный шаг " + a.raw().keySet() + ": wait, hold, release, look, turn, look_at, click, slot, drop, swap_hands, menu, menu_button, close, chat, sign, respawn, press, payload, fly, player_command, walk_to");
     }
 
     private static Set<Controls.Key> keys(Args a, String name) throws RpcException {
@@ -280,6 +288,56 @@ final class Steps {
             out.addProperty("do", "press");
             out.addProperty("key", key);
             out.addProperty("result", bot.vehicles.press(p, key));
+            return true;
+        }
+    }
+
+    /**
+     * Пакет мода от клиента — то, что клиент мода шлёт со своим вводом (рули, кнопки, меню мода): id пакета и его байты
+     * после id (base64), как они идут по сети. Разбор — кодеком пакета (как у сетевого слоя: реестры сервера,
+     * соединение NeoForge), обработка — обычным обработчиком мода, игрок — бот. Бот шлёт только то, что мог бы послать
+     * клиент: пакет, который мод принимает от клиента, не больше предела ванили. Байты — по исходникам мода или его
+     * памятке.
+     */
+    private record Payload(ResourceLocation id, byte[] data) implements Step {
+        /** Предел пакета от клиента у ванили ({@code ServerboundCustomPayloadPacket}). */
+        private static final int MAX_BYTES = 32767;
+
+        static Payload parse(Args a) throws RpcException {
+            ResourceLocation id = ResourceLocation.tryParse(a.string("payload"));
+            if (id == null) throw RpcException.badRequest("payload: id пакета вида namespace:path");
+            byte[] data;
+            try {
+                data = Base64.getDecoder().decode(a.string("data", ""));
+            } catch (IllegalArgumentException e) {
+                throw RpcException.badRequest("data: байты пакета в base64");
+            }
+            if (data.length > MAX_BYTES) throw RpcException.badRequest("data: не больше " + MAX_BYTES + " байт");
+            return new Payload(id, data);
+        }
+
+        @Override
+        public boolean tick(Bot bot, ServerPlayer p, JsonObject out) {
+            out.addProperty("do", "payload");
+            out.addProperty("id", id.toString());
+            RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(data.length + 64), p.server.registryAccess(), ConnectionType.NEOFORGE);
+            ServerboundCustomPayloadPacket packet;
+            int left;
+            try {
+                buf.writeResourceLocation(id);
+                buf.writeBytes(data);
+                packet = ServerboundCustomPayloadPacket.STREAM_CODEC.decode(buf);
+                left = buf.readableBytes();
+            } catch (RuntimeException e) {
+                throw new Failed("пакет " + id + " не разобран: " + e.getMessage());
+            } finally {
+                buf.release();
+            }
+            if (packet.payload() instanceof DiscardedPayload) throw new Failed("у модов сервера нет пакета " + id + " от клиента");
+            // сетевой слой отключил бы клиента за пакет длиннее, чем прочёл кодек
+            if (left > 0) throw new Failed("пакет " + id + ": лишние байты после разбора — " + left);
+            bot.send(packet);
+            out.addProperty("bytes", data.length);
             return true;
         }
     }

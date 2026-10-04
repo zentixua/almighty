@@ -92,7 +92,9 @@ def serve_mcp():
         "Ведущий на сервере Minecraft (мод airstrike_gm). Рычаги: command — команды и функции, script — код Groovy "
         "в игре, rule — реакция на любое событие игры прямо на сервере, events — лента событий,\n"
         "view — карта, вид и блоки текстом, build — постройка с откатом, area — загрузить место, где никого нет, "
-        "job — работы, status — сервер и игрок, entities — сущности, say — слова игрокам.\n"
+        "job — работы, status — сервер и игрок, entities — сущности, say — слова игрокам,\n"
+        "bot — свои игроки-боты: входят как игроки и действуют только тем, что есть у игрока (клавиши, мышь, меню, "
+        "чат); view eye — что видит глаз игрока, бота или свободной камеры.\n"
         "Игроки пишут ведущему лично командой /gm <текст> (событие gm в ленте), отвечать лично — say с to.\n"
         "Далёкое место загрузить — area prepare (удары Airstrike свои районы грузят сами). Скрипт не отдаёт игре свои "
         "замыкания и объекты (тикеты, сравнения, слушатели, задачи на потом) и не грузит чанки сам: реакции — rule.\n"
@@ -221,7 +223,10 @@ def serve_mcp():
     @mcp.tool()
     def view(kind: str, center: list[int] | None = None, size: int = 128, start: list[int] | None = None,
              end: list[int] | None = None, below: int | None = None, marks: list[dict] | None = None,
-             direction: str | None = None, properties: bool = True, dimension: str | None = None, wait: int = 30):
+             direction: str | None = None, properties: bool = True, dimension: str | None = None, wait: int = 30,
+             who: str | None = None, eye: list[float] | None = None, yaw: float | None = None,
+             pitch: float | None = None, image: bool = True, width: int | None = None, height: int | None = None,
+             fov: float | None = None, distance: int | None = None, radius: int | None = None):
         """Посмотреть на мир; kind:
         map — карта сверху, как ванильная карта: center [x, z] и size (до 1024) или углы start/end [x, z]; север
         вверху. below — смотреть под потолок с этой высоты (пещеры, Незер, этажи); marks — свои метки [{label, x, z}].
@@ -231,7 +236,30 @@ def serve_mcp():
         blocks — блоки рамки start..end [x, y, z] текстом (до 64 по оси, до 32768): палитра символ → блок, слои снизу
         вверх, строки с севера на юг, символы с запада на восток; '.' воздух, '?' не загружено; properties=false — без
         свойств блоков. Тот же вид принимает build (op layers).
-        map и look — картинка; не успели за wait секунд — описание работы, дальше job."""
+        eye — глазами: who — имя игрока (бота тоже) или UUID сущности, либо свободная камера eye [x, y, z] с yaw
+        (0 — юг, 90 — запад, −90 — восток) и pitch (вниз +). Ответ: куда смотрит, свет, aim — блок или сущность под
+        прицелом в досягаемости рук, aim_far — первое на луче до distance (96), entities — сущности в радиусе radius
+        (48) с расстоянием, углом от взгляда (yaw_offset вправо +, pitch_offset вниз +), in_view и visible (не за
+        блоками); у бота — sounds, что он слышал. image (по умолчанию да) — картинка width×height (224×126, до
+        480×270) с углом обзора fov (70): блоки цветом карты со светом, сущности рамками, перекрестье — центр.
+        map, look и eye — картинка; не успели за wait секунд — описание работы, дальше job."""
+        eye_only = {"who": who, "eye": eye, "yaw": yaw, "pitch": pitch, "width": width, "height": height, "fov": fov,
+                    "distance": distance, "radius": radius}
+        if kind == "eye":
+            _only("view eye", center=center, start=start, end=end, below=below, marks=marks, direction=direction)
+            if (who is None) == (eye is None):
+                raise GmError("view eye: who (имя или UUID) или eye [x, y, z] — одно из двух")
+            if who is None:
+                _points("view eye", 3, eye=eye)
+            elif yaw is not None or pitch is not None or dimension is not None:
+                raise GmError("view eye: yaw, pitch и dimension — только для свободной камеры eye")
+            ident = {}
+            if who is not None:
+                ident = {"uuid": who} if len(who) == 36 and who.count("-") == 4 else {"name": who}
+            return _out(rpc("see", {**ident, "at": eye, "yaw": yaw, "pitch": pitch, "dimension": dimension,
+                                    "image": image, "width": width, "height": height, "fov": fov,
+                                    "distance": distance, "radius": radius, "wait": wait}))
+        _only(f"view {kind}", **{k: v for k, v in eye_only.items() if v is not None})
         if kind == "map":
             _only("view map", direction=direction)
             by_center = center is not None and start is None and end is None
@@ -252,7 +280,7 @@ def serve_mcp():
             _need("view blocks", start=start, end=end)
             _points("view blocks", 3, start=start, end=end)
             return _out(rpc("blocks", {"from": start, "to": end, "properties": properties, "dimension": dimension}))
-        raise GmError(f"view: kind — map, look или blocks, а не {kind!r}")
+        raise GmError(f"view: kind — map, look, blocks или eye, а не {kind!r}")
 
     @mcp.tool()
     def build(ops: list[dict] | None = None, undo: int | None = None, dimension: str | None = None,
@@ -307,6 +335,51 @@ def serve_mcp():
                 raise GmError("job: cancel не ждёт — без wait")
             return _out(rpc("cancel", {"id": id}))
         return _out(rpc("job", {"id": id, "wait": wait}))
+
+    @mcp.tool()
+    def bot(action: str = "list", name: str | None = None, actions: list[dict] | None = None, replace: bool = False,
+            wait: int = 30, pos: list[float] | None = None, dimension: str | None = None, yaw: float | None = None,
+            pitch: float | None = None, gamemode: str | None = None, skin: str | dict | None = None,
+            marker: bool | None = None, auto_respawn: bool | None = None, after: int | None = None):
+        """Свои игроки-боты: входят на сервер как игроки (в табе — с пометкой) и делают то же, что игрок руками:
+        клавиши и мышь, хотбар, меню, чат и команды (с правами своего игрока), табличка, возрождение — через те же
+        пакеты, что клиент, поэтому сервер и моды видят обычного игрока. action:
+        spawn — name (3–16 латинских букв, цифр, _), pos [x, y, z], dimension, yaw, pitch, gamemode, skin (имя аккаунта
+        или {value, signature}), auto_respawn (да). Имя или скин игрока сервера и вход без пометки (marker=false) —
+        только если владелец включил bots.allow_disguise; игрок с именем бота заходит — бот уступает.
+        remove — name. list — все боты. state — бот подробно: тело, инвентарь, открытое меню (ячейки по номерам),
+        клавиши, программа, почта (чат, шёпот, экраны, титры, смерть) после номера after.
+        act — программа actions по шагам; мгновенные идут подряд в одном тике, ждут только wait, walk_to и hold
+        до release. Шаги: {"hold": "forward"|["forward","sprint"]} (forward back left right jump sneak sprint attack
+        use), {"release": "all"|клавиши}, {"wait": тиков}, {"look": [yaw, pitch]}, {"turn": [dyaw, dpitch]},
+        {"look_at": [x, y, z] | UUID | имя} (целые — центр блока), {"click": "attack"|"use", "at": …},
+        {"slot": 0–8}, {"drop": "one"|"stack"}, {"swap_hands": true}, {"menu": ячейка, "button": 0, "mode":
+        "pickup"|"quick_move"|"swap"|"throw"|"pickup_all"|"clone"|"quick_craft"} (−999 — вне окна),
+        {"menu_button": n}, {"close": true}, {"chat": "текст" | "/команда"}, {"sign": [x, y, z], "lines": [...]},
+        {"respawn": true}, {"fly": true|false}, {"player_command": "start_fall_flying"|…}, {"walk_to": [x, z],
+        "sprint": false, "within": 0.6}. Ошибка шага останавливает программу. replace — снять идущую программу,
+        иначе новая ждёт в очереди. wait — ждать конца до стольких секунд (до 50); не дождались — описание, конец
+        программы — событие bot_done в ленте, итог — в state. Транспорт, которым правит клиент (самолёты, лодки,
+        лошади), бот на сервере не ведёт."""
+        given = {"name": name, "actions": actions, "pos": pos, "dimension": dimension, "yaw": yaw, "pitch": pitch,
+                 "gamemode": gamemode, "skin": skin, "marker": marker, "auto_respawn": auto_respawn, "after": after}
+        takes = {"spawn": ("name", "pos", "dimension", "yaw", "pitch", "gamemode", "skin", "marker", "auto_respawn"),
+                 "remove": ("name",), "list": (), "state": ("name", "after"), "act": ("name", "actions")}
+        if action not in takes:
+            raise GmError(f"bot: action — spawn, remove, list, state или act, а не {action!r}")
+        _only(f"bot {action}", **{k: v for k, v in given.items() if k not in takes[action]})
+        if action == "list":
+            return _out(rpc("bots"))
+        _need(f"bot {action}", name=name)
+        if action == "spawn":
+            _points("bot spawn", 3, pos=pos)
+            return _out(rpc("bot.spawn", {k: given[k] for k in takes["spawn"]}))
+        if action == "remove":
+            return _out(rpc("bot.remove", {"name": name}))
+        if action == "state":
+            return _out(rpc("bot", {"name": name, "after": after}))
+        _need("bot act", actions=actions)
+        return _out(rpc("bot.act", {"name": name, "actions": actions, "replace": replace, "wait": wait}))
 
     @mcp.tool()
     def call(method: str, params: dict | None = None):

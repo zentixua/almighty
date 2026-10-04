@@ -18,7 +18,11 @@ public final class Dims {
 
     public static ServerLevel level(MinecraftServer server, Args args) throws RpcException {
         if (!args.has("dimension")) return server.overworld();
-        String id = args.string("dimension");
+        return level(server, args.string("dimension"));
+    }
+
+    /** Измерение по id ({@code minecraft:the_nether} или {@code the_nether}). */
+    public static ServerLevel level(MinecraftServer server, String id) throws RpcException {
         ResourceLocation location;
         try {
             location = ResourceLocation.parse(id);

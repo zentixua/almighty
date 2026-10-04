@@ -34,6 +34,10 @@ paths:
   значения ↔ JSON (`Json`: позиция `[x, y, z]`, блок строкой как в `/setblock`, NBT — SNBT, событие — его `getX()`).
 - `rules/` — правила (`Rules`): подписка на любое событие игровой шины, бюджет, сохранение с миром
   (`<мир>/airstrike_gm/rules.json`); `EventTypes` — все события NeoForge и модов по данным сканирования FML.
+- `bot/` — боты-игроки (`Bots` — вход, выход, пометка, защита имён; `Bot` — соединение, приём пакетов, почта, слух;
+  `Controls` — клавиатура и мышь клиента; `Steps`/`Program` — шаги `bot.act`; `Eye` — зрение без картинки).
+  `view/EyeView` — картинка глазами, `world/Rays` — лучи по готовым чанкам. Бот не знает ничего об Airstrike:
+  мод ведущего переезжает в отдельный репозиторий, id мода — не в данных бота (UUID — `AgentBot:<имя>`).
 
 ## Методы
 `status`, `players`, `player {name}`, `entities {center+radius | from/to, type, limit}`,
@@ -43,12 +47,15 @@ paths:
 `area.release {id}`, `areas`, `events {after?, wait? ≤25, limit?}`,
 `script {code, args?, timeout_ms? ≤10000}` → `{ok, value | error+line, output, ms}`,
 `rule.add {event, script?, name?, every?, limit?, priority?, canceled?, budget_ms?, persist?}`, `rule.remove {id | name}`,
-`rules`, `event.types {query, limit?}`. Везде `dimension` (по умолчанию верхний мир);
+`rules`, `event.types {query, limit?}`, `bots`, `bot {name, after?}`,
+`bot.spawn {name, pos?, dimension?, yaw?, pitch?, gamemode?, skin? (имя аккаунта | {value, signature}), marker?, auto_respawn?}`,
+`bot.remove {name}`, `bot.act {name, actions, replace?, wait?}`,
+`see {name | uuid | at+yaw+pitch, image? (да), width?, height?, fov?, distance?, radius?, sounds_ticks?}`. Везде `dimension` (по умолчанию верхний мир);
 у долгих — `wait` (по умолчанию 30 с, до 50): не успела работа — её описание, дальше `job`. Картинка снимка
-выдаётся один раз (`png_base64`), после этого работа её не держит. MCP-инструментов `tools/gm.py` — 12, по
+выдаётся один раз (`png_base64`), после этого работа её не держит. MCP-инструментов `tools/gm.py` — 13, по
 принципу Артёма «мало рычагов, но каждый достаёт до дна»: `status` (+ игрок), `entities`, `command` (команды или
-строки функции), `say`, `script`, `rule` (add/remove/list/types), `events`, `view` (map/look/blocks), `build` (+ undo),
-`area`, `job` (+ cancel), `call` — любой метод. Новое — сперва подумать, не делается ли оно скриптом или правилом;
+строки функции), `say`, `script`, `rule` (add/remove/list/types), `events`, `view` (map/look/blocks/eye), `build` (+ undo),
+`area`, `job` (+ cancel), `bot` (spawn/remove/list/state/act), `call` — любой метод. Новое — сперва подумать, не делается ли оно скриптом или правилом;
 отдельный инструмент — только когда он и правда снимает ошибки. `from`/`to` там `start`/`end`.
 
 Скрипт и правило: Groovy в потоке сервера, переменные `server`, `gm` (`command`, `commandAs(entity, …)` — от лица
@@ -121,10 +128,56 @@ paths:
   иначе выглядела бы его командой.
   Тесты сервера с мостом в облаке — на петле (`server-ip=127.0.0.1`, `tools/rig_config.py` — без объявления в LAN).
 
+## Боты и зрение
+Бот — настоящий `ServerPlayer` с соединением без сети, как игрок Carpet, но без миксинов: всё, что он делает, идёт
+пакетами клиента через обычный обработчик (`channel.writeInbound` → `ServerGamePacketListenerImpl`), а то, что считает
+сам клиент (движение, прицел, копание по тикам, задержки щелчков), повторено по коду клиента в `Controls`. Поэтому
+сервер, плагины прав и моды видят обычного игрока: события, достижения, права, античит ванили. Ведёт он только то,
+чем правит сервер; транспорт с ведением на клиенте (самолёты Immersive Aircraft, лодки, лошади) — нет: для него
+нужен настоящий клиент. Шаги `bot.act` и их итоги — `tools/gm.py` (`bot`).
+- Соединение: `new Connection(SERVERBOUND)` + `EmbeddedChannel(BotSink, connection)` (канал активен в конструкторе),
+  потом `NetworkRegistry.configureMockConnection` — тип соединения NEOFORGE со всеми каналами модов (без него
+  пакеты модов к боту падали бы). Вход — `placeNewPlayer` с `CommonListenerCookie(…, ConnectionType.NEOFORGE)`;
+  бот записан в `Bots` до входа (имя в табе и события входа уже знают бота).
+- `EmbeddedEventLoop.inEventLoop()` — всегда да: запись идёт сразу в потоке сервера. `BotSink` обязан закрыть
+  обещание (`trySuccess`) и отпустить сообщение: смена протокола ждёт записи `syncUninterruptibly` — иначе вечное
+  ожидание в потоке сервера. Очередь пакетов — не больше 20000 (старые выкидываются).
+- Соединение бота не в `ServerConnectionListener`: его никто не тикает, `Bots.tick` (начало `ServerTickEvent.Post`
+  мода) сам зовёт `doTick` и шаги. Тик обработчика (`ServerGamePacketListenerImpl.tick`) бот не делает — там
+  keepalive, кик за простой и возврат места к присланному клиентом (`absMoveTo`); выход ванили (`disconnect`) всё равно
+  зовёт `handleDisconnection` через `executeBlocking`.
+- После движения — то, что делает обработчик движения: `chunkSource.move`, `doCheckFallDamage`, статистика и голод
+  (`checkMovementStatistics`). `ServerPlayer.checkFallDamage` пуст — урон от падения только так. Пока чанк под ботом
+  не готов (`getChunkNow`), бот стоит, как клиент на загрузке мира.
+- Телепорт: ответ `ServerboundAcceptTeleportationPacket` на каждый `ClientboundPlayerPositionPacket` — без него
+  `isChangingDimension` не снимается и бот неуязвим после смены измерения. Вход сразу подтверждается (`settle`).
+  Голова — `setYHeadRot` при входе и повороте: взгляд (`getViewYRot`) живого существа — поворот головы.
+- Чат: подписанные сообщения подтверждаются `ServerboundChatAckPacket` (сервер отключает при 4096 неподтверждённых).
+  Ключа Mojang у бота нет: на сервере с `enforce-secure-profile` (выделенный, онлайн) подписи ждут, а клиенты прячут
+  неподписанное сообщение игрока — тогда чат идёт как у командного блока: `ServerChatEvent` и рассылка
+  «маскированным» сообщением, команды с подписываемым текстом (`/msg`, `/me`) — от источника бота без подписи.
+  В GameTest этот путь не проверить (`enforceSecureProfile` — только у выделенного сервера).
+- Пачки чанков бот не подтверждает: сервер шлёт одну пачку и ждёт; сущности и блоки неотправленных чанков бот
+  пакетами не получает (не нужно: зрение и состояние читаются с сервера), загрузка чанков от этого не зависит.
+- Перенастройку соединения (`ClientboundStartConfigurationPacket`) бот не проходит — выходит.
+- Кэш профилей: вход пишет бота в `usercache.json`, `/op`, `/whitelist`, `/ban` по имени нашли бы его — запись
+  возвращается (рефлексия `GameProfileCache`; в GameTest кэша нет — `NO_SERVICES`).
+- Пометка и защита: в табе и чате — `bots.marker` («[бот]») серым перед именем (`TabListNameFormat`, `NameFormat`).
+  Без `bots.allow_disguise` (решает владелец, по умолчанию нет) бот не входит без пометки и не берёт имя или скин
+  игрока сервера (в игре, белый список, операторы, кэш профилей); UUID — свой всегда. Игрок с именем бота входит —
+  бот уступает имя (`PlayerLoggedInEvent`, `HIGHEST`). Предел числа ботов — `bots.max` (8).
+- Зрение (`see`): глаз игрока, бота, любой сущности или свободная камера; лучи — `Rays` (только `getChunkNow`,
+  незагруженный чанк — стена). Видна ли сущность — три луча по видимой форме блоков к её рамке. Картинка (`EyeView`)
+  — работа под бюджетом тика: луч на точку по блокам (форма, цвет карты, грани светлее/темнее, свет неба и блоков,
+  вода и стекло — оттенком, дымка), сущности — рамками по цвету рода.
+
 ## Проверки
 - Юнит-тесты (`mod/gm/src/test`): мост по HTTP на петле, токен, лента, PNG (чтение стандартным декодером), план
   постройки, параметры макроса, список событий, срок скрипта (`ScriptsTest`: замыкание и объект после вызова,
   прерывание идущего, вложенный запуск).
+- GameTest ботов и зрения — `GmBotGameTests`: ходьба бегом, копание и постройка, сундук, чат и шёпот, смерть и
+  возрождение, Незер, зрение (стена, моб перед ней и за ней, картинка), защита имён. Бот уходит в конце проверки.
+  Площадка: блок структуры GameTest — под шаблоном, `absolutePos` считает от него — камень пола на y=1, стоять — на 2.
 - GameTest скриптов и правил — `GmScriptGameTests`: правила снимаются в `finally` (шина общая на сервер). Вложенный
   jar Groovy GameTest не проверяет: после правки сборки — выделенный сервер NeoForge из установщика
   (`java -jar neoforge-<версия>-installer.jar --installServer`, каталог в `mod/run/`), jar из `gm/build/libs` в `mods/`,

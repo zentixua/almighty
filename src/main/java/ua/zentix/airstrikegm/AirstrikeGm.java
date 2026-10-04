@@ -10,6 +10,7 @@ import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import ua.zentix.airstrikegm.bot.Bots;
 import ua.zentix.airstrikegm.feed.FeedListeners;
 import ua.zentix.airstrikegm.feed.GmCommand;
 
@@ -26,6 +27,7 @@ public final class AirstrikeGm {
         IEventBus bus = NeoForge.EVENT_BUS;
         FeedListeners.register(bus);
         GmCommand.register(bus);
+        Bots.register(bus);
         bus.addListener(AirstrikeGm::onStarted);
         bus.addListener(AirstrikeGm::onTickStart);
         bus.addListener(AirstrikeGm::onTickEnd);

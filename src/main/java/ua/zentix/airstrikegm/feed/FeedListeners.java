@@ -93,6 +93,8 @@ public final class FeedListeners {
     private static JsonObject player(Player p) {
         JsonObject d = new JsonObject();
         d.addProperty("player", p.getGameProfile().getName());
+        // бот ведущего — игрок для всех, но ведущему важно отличать его действия от действий людей
+        if (p instanceof ServerPlayer sp && GmServer.of(sp.server) instanceof GmServer gm && gm.bots().of(sp) != null) d.addProperty("bot", true);
         return d;
     }
 

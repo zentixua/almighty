@@ -93,6 +93,11 @@ public final class Observe {
         String name = args.string("name");
         ServerPlayer p = server.getPlayerList().getPlayerByName(name);
         if (p == null) throw RpcException.notFound("Нет в игре: " + name);
+        return details(server, p);
+    }
+
+    /** Игрок подробно: кратко, опыт, хотбар, инвентарь, эффекты, точка возрождения, блок под взглядом. */
+    public static JsonObject details(MinecraftServer server, ServerPlayer p) {
         JsonObject out = brief(server, p);
         out.addProperty("xp_level", p.experienceLevel);
         out.addProperty("selected_slot", p.getInventory().selected);
@@ -217,7 +222,7 @@ public final class Observe {
         return out;
     }
 
-    static JsonArray pos(BlockPos p) {
+    public static JsonArray pos(BlockPos p) {
         JsonArray out = new JsonArray();
         out.add(p.getX());
         out.add(p.getY());
@@ -225,7 +230,7 @@ public final class Observe {
         return out;
     }
 
-    private static JsonArray vec(Vec3 v) {
+    public static JsonArray vec(Vec3 v) {
         JsonArray out = new JsonArray();
         out.add(round(v.x, 1));
         out.add(round(v.y, 1));
@@ -233,7 +238,7 @@ public final class Observe {
         return out;
     }
 
-    private static double round(double v, int digits) {
+    public static double round(double v, int digits) {
         double k = Math.pow(10, digits);
         return Math.round(v * k) / k;
     }

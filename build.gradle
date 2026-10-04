@@ -1,13 +1,13 @@
-// Мод ведущего: мост к серверу для ведущего-Claude (только сервер, игрокам не нужен).
+// Almighty: мост ИИ-агента (ведущего) к серверу Minecraft — только сервер, игрокам не нужен.
 plugins {
     id 'java-library'
     id 'net.neoforged.moddev' version '2.0.147'
 }
 
 version = mod_version
-group = 'ua.zentix.airstrikegm'
+group = 'ua.zentix.almighty'
 
-base { archivesName = 'airstrike-gm' }
+base { archivesName = 'almighty' }
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
@@ -34,7 +34,7 @@ neoForge {
         minecraftVersion = project.parchment_minecraft_version
     }
     runs {
-        // выделенный сервер с мостом (проверка mcp/djinn.py руками): ./gradlew runServer
+        // выделенный сервер с мостом (проверка mcp/almighty.py руками): ./gradlew runServer
         server {
             server()
             gameDirectory = project.file('run/server')
@@ -43,14 +43,14 @@ neoForge {
         gameTestServer {
             type = 'gameTestServer'
             gameDirectory = project.file('run/gametest')
-            systemProperty 'neoforge.enabledGameTestNamespaces', 'airstrike_gm'
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'almighty'
         }
         configureEach {
             logLevel = org.slf4j.event.Level.INFO
         }
     }
     mods {
-        airstrike_gm {
+        almighty {
             sourceSet(sourceSets.main)
             sourceSet(sourceSets.devtest)
         }

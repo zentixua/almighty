@@ -5,21 +5,21 @@ issueTrackerURL = "${mod_url}/issues"
 
 # Только сервер: своих пакетов, блоков и предметов у мода нет, поэтому игрокам он не нужен
 [[mods]]
-modId = "airstrike_gm"
+modId = "almighty"
 version = "${mod_version}"
-displayName = "Airstrike GM"
+displayName = "Almighty"
 authors = "${mod_authors}"
 displayURL = "${mod_url}"
-description = '''Server-side bridge for the game master: lets an AI game master see the world, follow the game and build on the server through a local HTTP API (no client install).'''
+description = '''Almighty AI for your Minecraft server. Server-side bridge for AI agents: lets an AI game master see the world, follow the game and act on the server through a local HTTP API and an MCP adapter (no client install).'''
 
-[[dependencies.airstrike_gm]]
+[[dependencies.almighty]]
 modId = "neoforge"
 type = "required"
 versionRange = "[${neo_version},)"
 ordering = "NONE"
 side = "BOTH"
 
-[[dependencies.airstrike_gm]]
+[[dependencies.almighty]]
 modId = "minecraft"
 type = "required"
 versionRange = "${minecraft_version_range}"

@@ -6,6 +6,8 @@ import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
 import com.mojang.util.UndashedUuid;
 import immersive_aircraft.entity.EngineVehicle;
+import immersive_aircraft.network.c2s.CommandMessage;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
@@ -14,7 +16,9 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.Connection;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -39,6 +43,7 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.neoforged.neoforge.network.connection.ConnectionType;
 import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.Api;
@@ -55,6 +60,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.UUID;
@@ -477,6 +483,48 @@ public final class GmBotGameTests {
                             "первое нажатие в другом самолёте: " + r + ", в самолёте " + (bot.player().getVehicle() == second.get()));
                     leave(h, "GmTestJumper");
                 })
+                .thenSucceed();
+    }
+
+    /**
+     * Пакет мода от клиента: бот шлёт пакет высадки Immersive Aircraft байтами, как клиент IA, — мод высаживает его
+     * своим обработчиком. Незнакомый пакет и лишние байты — ошибка шага.
+     */
+    @GameTest(template = "floor", batch = "gm_bot_payload", timeoutTicks = 200, skyAccess = true)
+    public static void botSendsModPayload(GameTestHelper h) {
+        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(ResourceLocation.fromNamespaceAndPath("immersive_aircraft", "biplane")).orElse(null);
+        check(type != null, "в запуске GameTest нет Immersive Aircraft");
+        // байты, как их пишет клиент IA: кодек пакета от клиента, id отдельно
+        RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), h.getLevel().registryAccess(), ConnectionType.NEOFORGE);
+        ServerboundCustomPayloadPacket.STREAM_CODEC.encode(buf, new ServerboundCustomPayloadPacket(new CommandMessage(CommandMessage.Key.DISMOUNT, Vec3.ZERO)));
+        String id = buf.readResourceLocation().toString();
+        byte[] body = new byte[buf.readableBytes()];
+        buf.readBytes(body);
+        buf.release();
+        String data = Base64.getEncoder().encodeToString(body);
+        byte[] longer = Arrays.copyOf(body, body.length + 1);
+        Bot bot = spawn(h, "GmTestCourier", 8.5, 10.5, ",\"gamemode\":\"creative\"");
+        Entity plane = h.spawn(type, new Vec3(8.5, GROUND, 10.5));
+        check(bot.player().startRiding(plane, true), "не сел в самолёт");
+        CompletableFuture<JsonElement> unknown = act(h, "GmTestCourier", "[{\"payload\":\"almighty:no_such_payload\",\"data\":\"\"}]");
+        AtomicReference<CompletableFuture<JsonElement>> extra = new AtomicReference<>(), send = new AtomicReference<>();
+        h.startSequence()
+                .thenWaitUntil(() -> check(unknown.isDone(), "программа ещё идёт"))
+                .thenExecute(() -> {
+                    JsonObject r = unknown.join().getAsJsonObject();
+                    check(r.get("state").getAsString().equals("failed") && r.get("error").getAsString().contains("нет пакета"), "незнакомый пакет: " + r);
+                    extra.set(act(h, "GmTestCourier", "[{\"payload\":\"" + id + "\",\"data\":\"" + Base64.getEncoder().encodeToString(longer) + "\"}]"));
+                })
+                .thenWaitUntil(() -> check(extra.get().isDone(), "программа ещё идёт"))
+                .thenExecute(() -> {
+                    JsonObject r = extra.get().join().getAsJsonObject();
+                    check(r.get("state").getAsString().equals("failed") && r.get("error").getAsString().contains("лишние байты"), "лишний байт: " + r);
+                    check(bot.player().getVehicle() == plane, "пакет с лишним байтом дошёл до мода");
+                    send.set(act(h, "GmTestCourier", "[{\"payload\":\"" + id + "\",\"data\":\"" + data + "\"}]"));
+                })
+                .thenWaitUntil(() -> finished(send.get()))
+                .thenWaitUntil(() -> check(!bot.player().isPassenger(), "мод не высадил бота по пакету " + id))
+                .thenExecute(() -> leave(h, "GmTestCourier"))
                 .thenSucceed();
     }
 

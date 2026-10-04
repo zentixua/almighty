@@ -89,29 +89,42 @@ def serve_mcp():
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     mcp = FastMCP("airstrike-gm", instructions=(
-        "Ведущий на сервере Minecraft (мод airstrike_gm): видеть мир, игроков и события, выполнять команды и функции, "
-        "строить частями с откатом. Координаты — блоки [x, y, z]; карта и вид — картинка с легендой. Долгие работы "
-        "(постройка, снимок) отвечают описанием, если не успели за wait секунд: дальше — job(id, wait)."))
+        "Ведущий на сервере Minecraft (мод airstrike_gm). Рычаги: command — команды и функции, script — код Groovy "
+        "в игре, rule — реакция на любое событие игры прямо на сервере, events — лента событий,\n"
+        "view — карта, вид и блоки текстом, build — постройка с откатом, area — загрузить место, где никого нет, "
+        "job — работы, status — сервер и игрок, entities — сущности, say — слова игрокам.\n"
+        "Координаты — блоки. Долгие работы (постройка, снимок) отвечают описанием, если не успели за wait секунд: "
+        "дальше — job(id, wait)."))
 
     def _out(result):
         png, rest = _split_image(result)
         text = json.dumps(rest, ensure_ascii=False, indent=1)
         return [Image(data=png, format="png"), text] if png else text
 
-    @mcp.tool()
-    def status() -> str:
-        """Сервер: темп тика (mspt, tps), игроки, чанки и сущности по измерениям, работы и чанки ведущего."""
-        return _out(rpc("status"))
+    # Проверки здесь, а не в моде: мост назвал бы from/to вместо start/end, а лишний параметр просто пропустил бы.
+    def _need(where, **given):
+        missing = [k for k, v in given.items() if v is None]
+        if missing:
+            raise GmError(f"{where}: нет параметра {', '.join(missing)}")
+
+    def _only(where, **given):
+        extra = [k for k, v in given.items() if v is not None]
+        if extra:
+            raise GmError(f"{where}: не берёт {', '.join(extra)}")
+
+    def _points(where, n, **given):
+        for k, v in given.items():
+            if v is not None and len(v) != n:
+                raise GmError(f"{where}: {k} — {'[x, z]' if n == 2 else '[x, y, z]'}")
 
     @mcp.tool()
-    def players() -> str:
-        """Игроки в игре: где, здоровье, еда, режим, права, пинг."""
-        return _out(rpc("players"))
-
-    @mcp.tool()
-    def player(name: str) -> str:
-        """Игрок подробно: инвентарь по слотам, эффекты, точка возрождения, на какой блок смотрит."""
-        return _out(rpc("player", {"name": name}))
+    def status(player: str | None = None) -> str:
+        """Без player — сервер: темп тика (mspt, tps), имена игроков, по измерениям чанки, сущности, время и погода,
+        работы и чанки ведущего. С player (имя) — игрок подробно: где, здоровье, режим, инвентарь по слотам, эффекты,
+        точка возрождения, на какой блок смотрит."""
+        if player is None:
+            return _out(rpc("status"))
+        return _out(rpc("player", {"name": player}))
 
     @mcp.tool()
     def entities(center: list[int] | None = None, radius: int | None = None, start: list[int] | None = None,
@@ -123,16 +136,19 @@ def serve_mcp():
                                      "limit": limit, "dimension": dimension}))
 
     @mcp.tool()
-    def command(commands: list[str], pos: list[int] | None = None, dimension: str | None = None) -> str:
-        """Команды от имени ведущего (права 4) по порядку, с выводом каждой: ok, result, output, errors. Источник —
-        точка появления мира или pos [x, y, z]. Тяжёлое (большой /fill) — через build."""
-        return _out(rpc("command", {"commands": commands, "pos": pos, "dimension": dimension}))
-
-    @mcp.tool()
-    def function(lines: list[str], args: dict | None = None, pos: list[int] | None = None,
-                 dimension: str | None = None) -> str:
-        """Функция из строк .mcfunction без файла и без /reload; строки на $ — макросы $(имя) из args.
-        Ошибка разбора называет строку."""
+    def command(commands: list[str] | None = None, lines: list[str] | None = None, args: dict | None = None,
+                pos: list[int] | None = None, dimension: str | None = None) -> str:
+        """От имени ведущего (права 4), одно из двух:
+        commands — команды по порядку, у каждой ok, result, output, errors;
+        lines — функция из строк .mcfunction без файла и без /reload: строки на $ — макросы $(имя) из args,
+        ошибка разбора называет строку.
+        Источник — точка появления мира или pos [x, y, z]. Тяжёлое (большой /fill) — через build."""
+        if (commands is None) == (lines is None):
+            raise GmError("command: нужно одно из двух — commands (команды) или lines (строки функции)")
+        if commands is not None:
+            if args is not None:
+                raise GmError("command: args — только для lines (макросы функции)")
+            return _out(rpc("command", {"commands": commands, "pos": pos, "dimension": dimension}))
         return _out(rpc("function", {"lines": lines, "args": args, "pos": pos, "dimension": dimension}))
 
     @mcp.tool()
@@ -143,79 +159,148 @@ def serve_mcp():
         return _out(rpc("say", {"text": text, "component": component, "to": to, "style": style}))
 
     @mcp.tool()
-    def map(center: list[int] | None = None, size: int = 128, start: list[int] | None = None,
-            end: list[int] | None = None, below: int | None = None, marks: list[dict] | None = None,
-            dimension: str | None = None, wait: int = 30):
-        """Карта сверху, как ванильная карта: center [x, z] и size (до 1024) или углы start/end [x, z]. Север вверху.
-        below — смотреть под потолок с этой высоты (пещеры, Незер, этажи). marks — свои метки [{label, x, z}].
-        Игроки — цветными квадратами (легенда). Серая шахматка — чанк не загружен (area_prepare)."""
-        return _out(rpc("map", {"center": center, "size": size if center else None, "from": start, "to": end,
-                                "below": below, "marks": marks, "dimension": dimension, "wait": wait}))
+    def script(code: str, args: dict | None = None, timeout_ms: int = 1000) -> str:
+        """Код Groovy в потоке сервера: доступно всё в игре и в любом моде. Переменные: server (MinecraftServer);
+        gm — помощник: gm.command('…') и gm.commandAs(entity, '…') — итоги как у command, gm.emit(data) — в ленту
+        событием emit, gm.player(имя), gm.level('minecraft:the_nether'); state — общая карта всех скриптов и правил
+        до перезапуска сервера; args. Частые классы уже импортированы (BlockPos, Blocks, Items, ServerPlayer, Entity,
+        Vec3, AABB, Component, BuiltInRegistries…).
+        Что код вернёт — JSON в value, println — в output; ошибка — ok=false, error и line.
+        Предел timeout_ms (до 10000): цикл прерывается, сделанное остаётся. Отката нет — большие правки блоков
+        через build."""
+        return _out(rpc("script", {"code": code, "args": args, "timeout_ms": timeout_ms}))
 
     @mcp.tool()
-    def look(start: list[int], end: list[int], direction: str, dimension: str | None = None, wait: int = 30):
-        """Вид на рамку start..end [x, y, z]: direction north/south/east/west (фасад, разрез), down (план), up.
-        Ближе — ярче; голубой — насквозь пусто. Грань до 256×256, глубина до 256."""
-        return _out(rpc("look", {"from": start, "to": end, "look": direction, "dimension": dimension, "wait": wait}))
-
-    @mcp.tool()
-    def blocks(start: list[int], end: list[int], properties: bool = True, dimension: str | None = None) -> str:
-        """Блоки рамки текстом (до 64 по оси, до 32768): палитра символ → блок, слои снизу вверх, строки с севера на
-        юг, символы с запада на восток; '.' воздух, '?' не загружено. Тот же вид принимает build (op layers)."""
-        return _out(rpc("blocks", {"from": start, "to": end, "properties": properties, "dimension": dimension}))
-
-    @mcp.tool()
-    def build(ops: list[dict], dimension: str | None = None, wait: int = 30) -> str:
-        """Постройка частями между тиками (сервер не встаёт), с откатом. ops по порядку:
-        {"op": "fill", "from": [x,y,z], "to": [x,y,z], "block": "stone", "mode": "replace|keep|hollow|outline"},
-        {"op": "set", "pos": [x,y,z], "block": "oak_stairs[facing=east]"},
-        {"op": "layers", "origin": [x,y,z], "palette": {"#": "stone"}, "layers": [["#.#", ...], ...]}
-        (символ не из палитры — не трогать). Ждёт загрузки чанков сам. Ответ — номер работы для undo."""
-        return _out(rpc("build", {"ops": ops, "dimension": dimension, "wait": wait}))
-
-    @mcp.tool()
-    def undo(job: int, wait: int = 30) -> str:
-        """Откатить постройку (или откат) с номером job: вернуть блоки и содержимое блок-сущностей."""
-        return _out(rpc("undo", {"job": job, "wait": wait}))
-
-    @mcp.tool()
-    def jobs() -> str:
-        """Работы ведущего: идущие и последние кончившиеся."""
-        return _out(rpc("jobs"))
-
-    @mcp.tool()
-    def job(id: int, wait: int = 0):
-        """Работа по номеру; wait — ждать её конца до стольких секунд. Снимок отдаёт картинку один раз."""
-        return _out(rpc("job", {"id": id, "wait": wait}))
-
-    @mcp.tool()
-    def cancel(id: int) -> str:
-        """Остановить работу (сделанное остаётся, откат — undo)."""
-        return _out(rpc("cancel", {"id": id}))
-
-    @mcp.tool()
-    def area_prepare(start: list[int], end: list[int], ttl_seconds: int = 300, wait: int = 0,
-                     dimension: str | None = None) -> str:
-        """Загрузить чанки рамки start..end [x, z] без тика (в фоне) и держать ttl_seconds: чтобы увидеть картой
-        или прочитать то, где никого нет. wait — ждать готовности."""
-        return _out(rpc("area.prepare", {"from": start, "to": end, "ttl_seconds": ttl_seconds, "wait": wait,
-                                         "dimension": dimension}))
-
-    @mcp.tool()
-    def area_release(id: int) -> str:
-        """Отпустить подготовленный район."""
-        return _out(rpc("area.release", {"id": id}))
-
-    @mcp.tool()
-    def areas() -> str:
-        """Чанки, которые держит ведущий: районы и постройки."""
-        return _out(rpc("areas"))
+    def rule(action: str = "list", event: str | None = None, script: str | None = None, name: str | None = None,
+             every: int | None = None, limit: int | None = None, priority: str | None = None,
+             canceled: bool | None = None, budget_ms: float | None = None, persist: bool | None = None,
+             id: int | None = None, query: str | None = None) -> str:
+        """Правило — реакция на любое событие игры прямо на сервере, в том же тике, без ведущего. action:
+        add — event: класс события NeoForge игры или любого мода коротким именем ("BlockEvent.BreakEvent",
+        "LivingDamageEvent.Pre", "CommandEvent") или "tick" — каждый тик сервера. Без script свойства события идут в
+        ленту (тип emit); script — Groovy с event и переменными script: gm.emit(data) пишет в ленту,
+        event.canceled = true отменяет отменяемое событие (запреты — с priority "highest"). canceled — получать и уже
+        отменённые. every — не чаще раза в N тиков (у tick — каждый N-й); limit — снять после N срабатываний;
+        budget_ms (по умолчанию 5) — среднее время за тик по последним 20 тикам, один запуск — не дольше 20×budget_ms
+        (не меньше 50 мс; первый запуск не в счёт). Превышение, 10 ошибок подряд или больше 200 записей в ленту за
+        секунду выключают правило (в ленте rule.off; ошибки — rule.error). name — то же имя заменяет прежнее
+        правило; persist — пережить перезапуск (хранится с миром).
+        remove — по id или name. list — все правила (выключенное — state off с причиной; сохранённое, что не встало
+        при запуске, — unloaded, убрать по name). types — найти классы событий по query (имя, мод, отменяемое)."""
+        given = {"event": event, "script": script, "name": name, "every": every, "limit": limit, "priority": priority,
+                 "canceled": canceled, "budget_ms": budget_ms, "persist": persist, "id": id, "query": query}
+        takes = {"add": ("event", "script", "name", "every", "limit", "priority", "canceled", "budget_ms", "persist"),
+                 "remove": ("id", "name"), "list": (), "types": ("query",)}
+        if action not in takes:
+            raise GmError(f"rule: action — add, remove, list или types, а не {action!r}")
+        _only(f"rule {action}", **{k: v for k, v in given.items() if k not in takes[action]})
+        if action == "add":
+            _need("rule add", event=event)
+            return _out(rpc("rule.add", {k: given[k] for k in takes["add"]}))
+        if action == "remove":
+            if id is None and name is None:
+                raise GmError("rule remove: нужен id или name")
+            return _out(rpc("rule.remove", {"id": id, "name": name}))
+        if action == "list":
+            return _out(rpc("rules"))
+        return _out(rpc("event.types", {"query": query}))
 
     @mcp.tool()
     def events(after: int = 0, wait: int = 0, limit: int = 200) -> str:
         """События после номера after: чат, входы и выходы, смерти с причиной, достижения, смена измерения, команды
-        игроков, паузы сервера (lag), конец работ (job). wait — ждать новых до 25 с. boot меняется при перезапуске."""
+        игроков, паузы сервера (lag), конец работ (job), emit (правила и скрипты), rule.off и rule.error (правило
+        выключено, ошибка правила). wait — ждать новых до 25 с. boot меняется при перезапуске."""
         return _out(rpc("events", {"after": after, "wait": wait, "limit": limit}))
+
+    @mcp.tool()
+    def view(kind: str, center: list[int] | None = None, size: int = 128, start: list[int] | None = None,
+             end: list[int] | None = None, below: int | None = None, marks: list[dict] | None = None,
+             direction: str | None = None, properties: bool = True, dimension: str | None = None, wait: int = 30):
+        """Посмотреть на мир; kind:
+        map — карта сверху, как ванильная карта: center [x, z] и size (до 1024) или углы start/end [x, z]; север
+        вверху. below — смотреть под потолок с этой высоты (пещеры, Незер, этажи); marks — свои метки [{label, x, z}].
+        Игроки — цветными квадратами (легенда). Серая шахматка — чанк не загружен (area prepare).
+        look — вид на рамку start..end [x, y, z] с direction: north/south/east/west (фасад, разрез), down (план), up.
+        Ближе — ярче; голубой — насквозь пусто. Грань до 256×256, глубина до 256.
+        blocks — блоки рамки start..end [x, y, z] текстом (до 64 по оси, до 32768): палитра символ → блок, слои снизу
+        вверх, строки с севера на юг, символы с запада на восток; '.' воздух, '?' не загружено; properties=false — без
+        свойств блоков. Тот же вид принимает build (op layers).
+        map и look — картинка; не успели за wait секунд — описание работы, дальше job."""
+        if kind == "map":
+            _only("view map", direction=direction)
+            by_center = center is not None and start is None and end is None
+            by_corners = center is None and start is not None and end is not None
+            if not (by_center or by_corners):
+                raise GmError("view map: center [x, z] или оба угла start и end [x, z]")
+            _points("view map", 2, center=center, start=start, end=end)
+            return _out(rpc("map", {"center": center, "size": size if center else None, "from": start, "to": end,
+                                    "below": below, "marks": marks, "dimension": dimension, "wait": wait}))
+        if kind == "look":
+            _only("view look", center=center, below=below, marks=marks)
+            _need("view look", start=start, end=end, direction=direction)
+            _points("view look", 3, start=start, end=end)
+            return _out(rpc("look", {"from": start, "to": end, "look": direction, "dimension": dimension,
+                                     "wait": wait}))
+        if kind == "blocks":
+            _only("view blocks", center=center, below=below, marks=marks, direction=direction)
+            _need("view blocks", start=start, end=end)
+            _points("view blocks", 3, start=start, end=end)
+            return _out(rpc("blocks", {"from": start, "to": end, "properties": properties, "dimension": dimension}))
+        raise GmError(f"view: kind — map, look или blocks, а не {kind!r}")
+
+    @mcp.tool()
+    def build(ops: list[dict] | None = None, undo: int | None = None, dimension: str | None = None,
+              wait: int = 30) -> str:
+        """Постройка частями между тиками (сервер не встаёт), с откатом; одно из двух:
+        ops — по порядку:
+        {"op": "fill", "from": [x,y,z], "to": [x,y,z], "block": "stone", "mode": "replace|keep|hollow|outline"},
+        {"op": "set", "pos": [x,y,z], "block": "oak_stairs[facing=east]"},
+        {"op": "layers", "origin": [x,y,z], "palette": {"#": "stone"}, "layers": [["#.#", ...], ...]}
+        (символ не из палитры — не трогать). Ждёт загрузки чанков сам. Ответ — номер работы для отката.
+        undo — номер работы: откатить её (постройку или откат), вернуть блоки и содержимое блок-сущностей."""
+        if (ops is None) == (undo is None):
+            raise GmError("build: нужно одно из двух — ops (постройка) или undo (номер работы для отката)")
+        if undo is not None:
+            _only("build undo", dimension=dimension)
+            return _out(rpc("undo", {"job": undo, "wait": wait}))
+        return _out(rpc("build", {"ops": ops, "dimension": dimension, "wait": wait}))
+
+    @mcp.tool()
+    def area(action: str = "list", start: list[int] | None = None, end: list[int] | None = None,
+             ttl_seconds: int = 300, wait: int = 0, id: int | None = None, dimension: str | None = None) -> str:
+        """Чанки ведущего; action:
+        prepare — загрузить чанки рамки start..end [x, z] без тика (в фоне) и держать ttl_seconds (до 3600): чтобы
+        увидеть картой или прочитать то, где никого нет; wait — ждать готовности. Ответ — район с номером.
+        release — отпустить район id. list — что держит ведущий: районы и постройки."""
+        if action == "prepare":
+            _only("area prepare", id=id)
+            _need("area prepare", start=start, end=end)
+            _points("area prepare", 2, start=start, end=end)
+            return _out(rpc("area.prepare", {"from": start, "to": end, "ttl_seconds": ttl_seconds, "wait": wait,
+                                             "dimension": dimension}))
+        if action == "release":
+            _only("area release", start=start, end=end, dimension=dimension)
+            _need("area release", id=id)
+            return _out(rpc("area.release", {"id": id}))
+        if action == "list":
+            _only("area list", start=start, end=end, id=id, dimension=dimension)
+            return _out(rpc("areas"))
+        raise GmError(f"area: action — prepare, release или list, а не {action!r}")
+
+    @mcp.tool()
+    def job(id: int | None = None, wait: int = 0, cancel: bool = False):
+        """Работы ведущего. Без id — идущие и последние кончившиеся. С id — работа по номеру; wait — ждать её конца
+        до стольких секунд; снимок отдаёт картинку один раз. С id и cancel=true — остановить работу (сделанное
+        остаётся, откат — build undo)."""
+        if id is None:
+            if cancel or wait:
+                raise GmError("job: cancel и wait — только с id работы")
+            return _out(rpc("jobs"))
+        if cancel:
+            if wait:
+                raise GmError("job: cancel не ждёт — без wait")
+            return _out(rpc("cancel", {"id": id}))
+        return _out(rpc("job", {"id": id, "wait": wait}))
 
     @mcp.tool()
     def call(method: str, params: dict | None = None):

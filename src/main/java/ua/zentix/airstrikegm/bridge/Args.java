@@ -50,6 +50,15 @@ public final class Args {
         return v;
     }
 
+    public double number(String name, double fallback, double min, double max) throws RpcException {
+        if (!has(name)) return fallback;
+        JsonPrimitive p = primitive(name, "число");
+        if (!p.isNumber()) throw RpcException.badRequest(name + ": ожидается число");
+        double v = p.getAsDouble();
+        if (!(v >= min && v <= max)) throw RpcException.badRequest(name + ": от " + min + " до " + max);
+        return v;
+    }
+
     public boolean bool(String name, boolean fallback) throws RpcException {
         if (!has(name)) return fallback;
         JsonPrimitive p = primitive(name, "true или false");

@@ -79,7 +79,8 @@ public final class FeedListeners {
     }
 
     private static void onCommand(CommandEvent e) {
-        if (!(e.getParseResults().getContext().getSource().getEntity() instanceof ServerPlayer p)) return;
+        // только набранное самим игроком: команда ведущего от лица игрока (commandAs) — не его
+        if (!(e.getParseResults().getContext().getSource().source instanceof ServerPlayer p)) return;
         String command = e.getParseResults().getReader().getString();
         String root = command.strip().split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
         if (root.startsWith("/")) root = root.substring(1);

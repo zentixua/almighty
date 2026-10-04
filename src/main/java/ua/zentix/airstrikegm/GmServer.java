@@ -4,11 +4,14 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.level.storage.LevelResource;
+import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 import ua.zentix.airstrikegm.bridge.Bridge;
 import ua.zentix.airstrikegm.bridge.RpcException;
 import ua.zentix.airstrikegm.bridge.Token;
 import ua.zentix.airstrikegm.feed.Feed;
+import ua.zentix.airstrikegm.rules.Rules;
 import ua.zentix.airstrikegm.work.Job;
 import ua.zentix.airstrikegm.work.Jobs;
 import ua.zentix.airstrikegm.world.Areas;
@@ -16,6 +19,8 @@ import ua.zentix.airstrikegm.world.Areas;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +41,9 @@ public final class GmServer {
     private final Feed feed = new Feed();
     private final Jobs jobs;
     private final Areas areas;
+    /** Общее для всех скриптов и правил до остановки сервера (переменная {@code state}); только поток сервера. */
+    private final Map<String, Object> state = new LinkedHashMap<>();
+    private final Rules rules;
     private Bridge bridge;
     private long lastTick;
 
@@ -43,6 +51,8 @@ public final class GmServer {
         this.server = server;
         this.jobs = new Jobs(feed, () -> clock.getAsLong());
         this.areas = new Areas(GmConfig.MAX_CHUNKS.get());
+        this.rules = new Rules(server, NeoForge.EVENT_BUS, feed, state,
+                server.getWorldPath(LevelResource.ROOT).resolve("airstrike_gm").resolve("rules.json"));
     }
 
     /** Ведущий этого сервера; null — сервер ещё не запустился или уже остановлен. */
@@ -54,6 +64,7 @@ public final class GmServer {
     static GmServer start(MinecraftServer server, Path tokenFile) {
         GmServer gm = new GmServer(server);
         current = gm;
+        gm.rules.load();
         if (server.isDedicatedServer() && GmConfig.BRIDGE_ENABLED.get()) {
             try {
                 InetSocketAddress address = new InetSocketAddress(GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PORT.get());
@@ -88,10 +99,11 @@ public final class GmServer {
         areas.tick(server.getTickCount());
     }
 
-    /** Остановка: мост закрыт, работы отменены, тикеты сняты сразу (до {@code StopDrain} Airstrike). */
+    /** Остановка: мост закрыт, правила сняты с шины, работы отменены, тикеты сняты сразу (до {@code StopDrain} Airstrike). */
     void stop() {
         if (bridge != null) bridge.stop();
         bridge = null;
+        rules.stop();
         jobs.cancelAll();
         areas.releaseAll();
     }
@@ -114,6 +126,15 @@ public final class GmServer {
 
     public Areas areas() {
         return areas;
+    }
+
+    public Rules rules() {
+        return rules;
+    }
+
+    /** Переменная {@code state} скриптов и правил. */
+    public Map<String, Object> state() {
+        return state;
     }
 
     /** Вызов в потоке сервера между тиками; ошибка — исключением в будущем. */

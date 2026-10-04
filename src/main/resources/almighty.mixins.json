@@ -4,6 +4,7 @@
   "package": "ua.zentix.almighty.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "DistanceManagerMixin",
     "PlayerListMixin"
   ],
   "injectors": {

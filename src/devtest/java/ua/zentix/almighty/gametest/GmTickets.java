@@ -4,11 +4,13 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import net.minecraft.server.level.DistanceManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.Ticket;
+import net.minecraft.server.level.TicketType;
 import net.minecraft.util.SortedArraySet;
+import net.minecraft.world.level.ChunkPos;
 
 import java.lang.reflect.Field;
 
-/** Тикеты ведущего в очереди ванили ({@code DistanceManager.tickets}, только чтение). */
+/** Тикеты в очереди ванили ({@code DistanceManager.tickets}, только чтение): ведущего и по типу на чанке. */
 final class GmTickets {
     private static final Field TICKETS;
 
@@ -23,15 +25,26 @@ final class GmTickets {
 
     private GmTickets() {}
 
-    @SuppressWarnings("unchecked")
     static int count(ServerLevel level) {
+        int n = 0;
+        for (SortedArraySet<Ticket<?>> set : tickets(level).values()) {
+            for (Ticket<?> t : set) if (t.getType().toString().equals("almighty")) n++;
+        }
+        return n;
+    }
+
+    /** Тикеты типа {@code type} на чанке. */
+    static int at(ServerLevel level, TicketType<?> type, int chunkX, int chunkZ) {
+        SortedArraySet<Ticket<?>> set = tickets(level).get(ChunkPos.asLong(chunkX, chunkZ));
+        int n = 0;
+        if (set != null) for (Ticket<?> t : set) if (t.getType() == type) n++;
+        return n;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Long2ObjectMap<SortedArraySet<Ticket<?>>> tickets(ServerLevel level) {
         try {
-            var map = (Long2ObjectMap<SortedArraySet<Ticket<?>>>) TICKETS.get(level.getChunkSource().chunkMap.getDistanceManager());
-            int n = 0;
-            for (SortedArraySet<Ticket<?>> set : map.values()) {
-                for (Ticket<?> t : set) if (t.getType().toString().equals("almighty")) n++;
-            }
-            return n;
+            return (Long2ObjectMap<SortedArraySet<Ticket<?>>>) TICKETS.get(level.getChunkSource().chunkMap.getDistanceManager());
         } catch (IllegalAccessException e) {
             throw new IllegalStateException(e);
         }

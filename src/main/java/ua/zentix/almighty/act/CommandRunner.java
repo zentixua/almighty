@@ -38,6 +38,7 @@ import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.GmConfig;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.world.Border;
 import ua.zentix.almighty.world.Dims;
 
 import java.util.ArrayList;
@@ -139,7 +140,7 @@ public final class CommandRunner {
                 source = source.withEntity(as).withLevel(own).withPosition(as.position()).withRotation(as.getRotationVector());
             }
             CommandSourceStack from = source.withCallback(capture.callback());
-            outsideCurrentExecution(() -> server.getCommands().performPrefixedCommand(from, command));
+            asGame(() -> server.getCommands().performPrefixedCommand(from, command));
             results.add(capture.describe("command", command));
         }
         return results;
@@ -169,22 +170,26 @@ public final class CommandRunner {
             throw RpcException.badRequest("Макрос не подставлен: " + e.messageComponent().getString());
         }
         LOG.info("Ведущий: функция из {} строк", lines.size());
-        outsideCurrentExecution(() -> Commands.executeCommandInContext(source,
+        asGame(() -> Commands.executeCommandInContext(source,
                 context -> ExecutionContext.queueInitialFunctionCall(context, instance, source, capture.callback())));
         return capture.describe("function", lines.size() + " строк");
     }
 
-    private static void outsideCurrentExecution(Runnable run) {
+    /**
+     * Команды — как их выполняет сама игра: своим выполнением, сразу (а не в очередь выполнения, идущего в этом потоке,
+     * {@link #CURRENT_EXECUTION}), и без проверки тикетов скрипта ({@link Border}): за предел мира (±30 млн блоков)
+     * команды игры не идут сами, а сперва меняют состояние ({@code /forceload} — список, {@code /tp} — ожидание
+     * телепорта) и только потом грузят чанк — отказ на загрузке оставил бы их сделанными наполовину.
+     */
+    private static void asGame(Runnable run) {
         Object outer = CURRENT_EXECUTION == null ? null : CURRENT_EXECUTION.get();
-        if (outer == null) {
-            run.run();
-            return;
-        }
-        CURRENT_EXECUTION.remove();
+        if (outer != null) CURRENT_EXECUTION.remove();
+        Boolean guarded = Border.guard(false);
         try {
             run.run();
         } finally {
-            CURRENT_EXECUTION.set(outer);
+            Border.restore(guarded);
+            if (outer != null) CURRENT_EXECUTION.set(outer);
         }
     }
 

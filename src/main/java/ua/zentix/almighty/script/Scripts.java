@@ -18,6 +18,7 @@ import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer;
 import org.codehaus.groovy.control.customizers.ImportCustomizer;
 import org.codehaus.groovy.runtime.InvokerHelper;
 import org.codehaus.groovy.runtime.InvokerInvocationException;
+import ua.zentix.almighty.world.Border;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -130,7 +131,8 @@ public final class Scripts {
     /**
      * Запуск в текущем потоке: переменные {@code vars} и {@code out} (вывод {@code println}). Ошибка скрипта — в
      * итоге, не исключением; нехватка памяти и прочие ошибки машины — дальше. Вложенный запуск (правило, которое
-     * сработало от команды скрипта) идёт со своим сроком, после него снова действует срок внешнего.
+     * сработало от команды скрипта) идёт со своим сроком, после него снова действует срок внешнего. Пока идёт скрипт,
+     * чанки за границей мира не грузятся ({@link Border}).
      */
     public static Result run(Compiled script, Map<String, Object> vars) {
         Output text = new Output();
@@ -143,6 +145,7 @@ public final class Scripts {
         // 0 — «срока нет»: настоящий срок, совпавший с нулём, сдвигается на 1 нс
         long own = start + script.timeoutMs() * 1_000_000L;
         deadline[0] = own == 0 ? 1 : own;
+        Boolean guarded = Border.guard(true);
         try {
             Script instance = InvokerHelper.createScript(script.type(), binding);
             Object value = instance.run();
@@ -154,6 +157,7 @@ public final class Scripts {
             return failed(script, e, text, start);
         } finally {
             deadline[0] = outer;
+            Border.restore(guarded);
         }
     }
 

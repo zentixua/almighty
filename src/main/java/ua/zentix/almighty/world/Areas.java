@@ -133,11 +133,16 @@ public final class Areas {
 
     /**
      * Взять чанки, на которые приходятся блоки {@code [x1..x2] × [z1..z2]}, с кольцом соседей. Срок — в тиках,
-     * {@code 0} — пока не отпустят.
+     * {@code 0} — пока не отпустят. Чанки за пределом {@link Border} — ошибка запроса до записи тикетов.
      */
     public Lease acquire(ServerLevel level, String owner, int x1, int z1, int x2, int z2, long ttlTicks) throws RpcException {
         int minX = (Math.min(x1, x2) >> 4) - MARGIN, maxX = (Math.max(x1, x2) >> 4) + MARGIN;
         int minZ = (Math.min(z1, z2) >> 4) - MARGIN, maxZ = (Math.max(z1, z2) >> 4) + MARGIN;
+        // предел — прямоугольник чанков: хватит двух углов
+        if (!Border.allows(level, minX, minZ) || !Border.allows(level, maxX, maxZ)) {
+            throw RpcException.badRequest("Блоки x " + Math.min(x1, x2) + "…" + Math.max(x1, x2) + ", z " + Math.min(z1, z2) + "…"
+                    + Math.max(z1, z2) + " за границей мира " + Border.limits(level));
+        }
         long area = (long) (maxX - minX + 1) * (maxZ - minZ + 1);
         Long2IntOpenHashMap counts = refs.computeIfAbsent(level, l -> new Long2IntOpenHashMap());
         long fresh = 0;

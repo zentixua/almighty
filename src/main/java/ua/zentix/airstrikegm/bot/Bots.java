@@ -24,6 +24,7 @@ import net.neoforged.fml.util.ObfuscationReflectionHelper;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.network.connection.ConnectionType;
 import org.slf4j.Logger;
+import ua.zentix.airstrikegm.AirstrikeGm;
 import ua.zentix.airstrikegm.GmConfig;
 import ua.zentix.airstrikegm.GmServer;
 import ua.zentix.airstrikegm.bridge.Args;
@@ -113,7 +114,7 @@ public final class Bots {
     private void check(Spec spec) throws RpcException {
         MinecraftServer server = gm.server();
         if (byName.containsKey(key(spec.name()))) throw RpcException.conflict("Бот " + spec.name() + " уже в игре");
-        if (byName.size() >= GmConfig.BOTS_MAX.get()) throw RpcException.conflict("Ботов уже " + byName.size() + " — это предел bots.max в config/airstrike_gm-common.toml");
+        if (byName.size() >= GmConfig.BOTS_MAX.get()) throw RpcException.conflict("Ботов уже " + byName.size() + " — это предел bots.max в config/" + AirstrikeGm.ID + "-common.toml");
         if (server.getPlayerList().getPlayerByName(spec.name()) != null) throw RpcException.conflict("Игрок " + spec.name() + " в игре: бот не займёт его имя");
         boolean disguise = GmConfig.BOTS_ALLOW_DISGUISE.get();
         if (!disguise && !spec.marker()) throw RpcException.badRequest("Бот без пометки — только с bots.allow_disguise = true (решает владелец сервера)");

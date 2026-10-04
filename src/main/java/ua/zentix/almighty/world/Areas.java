@@ -2,6 +2,7 @@ package ua.zentix.almighty.world;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
@@ -14,6 +15,7 @@ import net.minecraft.server.level.TicketType;
 import net.minecraft.util.SortedArraySet;
 import net.minecraft.world.level.ChunkPos;
 import net.neoforged.fml.util.ObfuscationReflectionHelper;
+import org.slf4j.Logger;
 import ua.zentix.almighty.bridge.RpcException;
 
 import java.lang.reflect.Field;
@@ -52,7 +54,9 @@ public final class Areas {
     private static final TicketType<Long> TICKET = TicketType.create("almighty", Long::compare);
     /** Радиус тикета региона: 0 — уровень 33, полный чанк без тика. */
     private static final int RADIUS = 0;
-    private static final Field TICKETS = ObfuscationReflectionHelper.findField(DistanceManager.class, "tickets");
+    private static final Logger LOG = LogUtils.getLogger();
+    /** Очередь тикетов ванили; нет поля — каждый тикет считается вставшим, как до проверки отказов. */
+    private static final Field TICKETS = ticketsField();
     static final int RELEASE_PER_TICK = 64;
     /** Кольцо соседей вокруг прямоугольника аренды, чанков. */
     static final int MARGIN = 1;
@@ -198,7 +202,7 @@ public final class Areas {
         LongLinkedOpenHashSet queue = releasing.computeIfAbsent(level, l -> new LongLinkedOpenHashSet());
         LongOpenHashSet no = refused.computeIfAbsent(level, l -> new LongOpenHashSet());
         ServerChunkCache chunks = level.getChunkSource();
-        Long2ObjectMap<SortedArraySet<Ticket<?>>> tickets = tickets(chunks);
+        Long2ObjectMap<SortedArraySet<Ticket<?>>> tickets = TICKETS == null ? null : tickets(chunks);
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
                 long chunk = ChunkPos.asLong(x, z);
@@ -206,7 +210,7 @@ public final class Areas {
                 // тикет ещё стоит, если чанк ждал отпуска
                 if (before == 0 && !queue.remove(chunk)) {
                     chunks.addRegionTicket(TICKET, new ChunkPos(chunk), RADIUS, chunk);
-                    if (!has(tickets.get(chunk))) no.add(chunk);
+                    if (tickets != null && !has(tickets.get(chunk))) no.add(chunk);
                 }
             }
         }
@@ -218,6 +222,16 @@ public final class Areas {
 
     public Lease get(long id) {
         return leases.get(id);
+    }
+
+    private static Field ticketsField() {
+        try {
+            return ObfuscationReflectionHelper.findField(DistanceManager.class, "tickets");
+        } catch (RuntimeException | LinkageError e) {
+            LOG.error("Ведущий: нет DistanceManager.tickets — аренда не видит, где мод отказал в тикете (участки кораблей Sable),"
+                    + " и снимает тикеты там тоже", e);
+            return null;
+        }
     }
 
     @SuppressWarnings("unchecked")

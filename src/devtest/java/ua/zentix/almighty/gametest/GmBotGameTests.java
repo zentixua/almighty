@@ -1,17 +1,21 @@
 package ua.zentix.almighty.gametest;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
 import com.mojang.util.UndashedUuid;
+import immersive_aircraft.entity.EngineVehicle;
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -19,9 +23,13 @@ import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.players.UserWhiteListEntry;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.animal.horse.Horse;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.animal.Pig;
+import net.minecraft.world.entity.vehicle.Boat;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -31,10 +39,12 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.Api;
 import ua.zentix.almighty.GmConfig;
 import ua.zentix.almighty.bot.Bot;
+import ua.zentix.almighty.bot.BotPlayer;
 import ua.zentix.almighty.bot.Bots;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
@@ -62,8 +72,8 @@ import static ua.zentix.almighty.gametest.GmGameTests.params;
 
 /**
  * Боты ведущего в мире: вход, ходьба, копание и постройка, сундук, чат и шёпот, смерть и возрождение, смена
- * измерения, зрение, защита имён игроков. Бот уходит в конце каждой проверки ({@code finally}/последний шаг): боты общие
- * на сервер. Каждая проверка — своей партией.
+ * измерения, транспорт (лошадь, лодка, самолёт IA), зрение, защита имён игроков. Бот уходит в конце каждой проверки
+ * ({@code finally}/последний шаг): боты общие на сервер. Каждая проверка — своей партией.
  */
 @GameTestHolder(Almighty.ID)
 @PrefixGameTestTemplate(false)
@@ -278,6 +288,8 @@ public final class GmBotGameTests {
                 .thenWaitUntil(() -> check(bot.player() != first && bot.player().isAlive(), "ещё не возродился"))
                 .thenExecute(() -> {
                     check(bot.online(), "бот ушёл после смерти");
+                    // своим классом бот правит транспортом; возрождение (новая сущность) — тем же классом
+                    check(first instanceof BotPlayer && bot.player() instanceof BotPlayer, "после возрождения бот — " + bot.player().getClass().getName());
                     start.set(bot.player().position());
                     walk.set(act(h, "GmTestPhoenix", "[{\"hold\":\"forward\"},{\"wait\":10},{\"release\":\"forward\"}]"));
                 })
@@ -308,6 +320,163 @@ public final class GmBotGameTests {
         h.startSequence()
                 .thenWaitUntil(() -> check(bot.player().level() == nether && !bot.player().isChangingDimension(), "ещё в переходе"))
                 .thenExecute(() -> leave(h, "GmTestTraveler"))
+                .thenSucceed();
+    }
+
+    /**
+     * Верхом: бот на лошади скачет на восток (движение лошади считает сервер, как клиент всадника) и прыгает —
+     * удержание прыжка копит силу, отпускание прыгает.
+     */
+    @GameTest(template = "floor", batch = "gm_bot_horse", timeoutTicks = 300, skyAccess = true)
+    public static void botRidesHorse(GameTestHelper h) {
+        Bot bot = spawn(h, "GmTestRider", 10.5, 10.5, ",\"gamemode\":\"survival\"");
+        Horse horse = h.spawn(EntityType.HORSE, new Vec3(10.5, GROUND, 10.5));
+        horse.setTamed(true);
+        horse.equipSaddle(new ItemStack(Items.SADDLE), null);
+        horse.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.3);
+        horse.getAttribute(Attributes.JUMP_STRENGTH).setBaseValue(0.7);
+        horse.setYRot(-90);
+        check(bot.player().startRiding(horse, true), "не сел на лошадь");
+        Vec3 start = horse.position();
+        CompletableFuture<JsonElement> ride = act(h, "GmTestRider", "[{\"hold\":\"forward\"},{\"wait\":20},{\"release\":\"all\"}]");
+        AtomicReference<CompletableFuture<JsonElement>> jump = new AtomicReference<>();
+        AtomicReference<Double> ground = new AtomicReference<>();
+        h.startSequence()
+                .thenWaitUntil(() -> finished(ride))
+                .thenExecute(() -> {
+                    Vec3 d = horse.position().subtract(start);
+                    check(d.x > 2.0 && Math.abs(d.z) < 1.0, "лошадь за 20 тиков: " + d);
+                    check(bot.player().getVehicle() == horse, "бот слез");
+                    JsonObject vehicle = bot.describe(0).getAsJsonObject("vehicle");
+                    check(vehicle != null && vehicle.get("type").getAsString().equals("minecraft:horse") && vehicle.get("driver").getAsBoolean(),
+                            "транспорт в состоянии бота: " + vehicle);
+                })
+                .thenWaitUntil(() -> check(horse.onGround(), "лошадь не на земле"))
+                .thenExecute(() -> {
+                    ground.set(horse.getY());
+                    jump.set(act(h, "GmTestRider", "[{\"hold\":\"jump\"},{\"wait\":10},{\"release\":\"jump\"}]"));
+                })
+                .thenWaitUntil(() -> check(horse.getY() - ground.get() > 1.0, "лошадь не прыгнула: над землёй " + (horse.getY() - ground.get())))
+                .thenExecute(() -> {
+                    check(bot.player().getVehicle() == horse, "бот слез при прыжке");
+                    leave(h, "GmTestRider");
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * Лодка: бот гребёт на восток — скорость через 60 тиков как у клиента (0.4·(1 − 0.9⁶⁰) блока за тик; руль после
+     * тика лодки без поправки на торможение дал бы 0.36), потом поворачивает влево.
+     */
+    @GameTest(template = "floor", batch = "gm_bot_boat", timeoutTicks = 400, skyAccess = true)
+    public static void botRowsBoat(GameTestHelper h) {
+        for (int x = 3; x <= 56; x++) {
+            for (int z = 6; z <= 14; z++) {
+                boolean shore = x == 3 || x == 56 || z == 6 || z == 14;
+                h.setBlock(new BlockPos(x, GROUND, z), shore ? Blocks.STONE : Blocks.WATER);
+            }
+        }
+        Bot bot = spawn(h, "GmTestRower", 8.5, 10.5, ",\"gamemode\":\"survival\"");
+        Boat boat = h.spawn(EntityType.BOAT, new Vec3(8.5, GROUND + 0.5, 10.5));
+        boat.setYRot(-90);
+        check(bot.player().startRiding(boat, true), "не сел в лодку");
+        CompletableFuture<JsonElement> row = act(h, "GmTestRower", "[{\"hold\":\"forward\"},{\"wait\":60}]");
+        AtomicReference<Vec3> at = new AtomicReference<>();
+        AtomicReference<Float> yaw = new AtomicReference<>();
+        AtomicReference<CompletableFuture<JsonElement>> turn = new AtomicReference<>();
+        h.startSequence()
+                .thenWaitUntil(() -> finished(row))
+                .thenExecute(() -> at.set(boat.position()))
+                .thenExecuteAfter(1, () -> {
+                    Vec3 d = boat.position().subtract(at.get());
+                    double speed = d.horizontalDistance();
+                    check(speed > 0.395 && speed < 0.401 && Math.abs(d.z) < 0.01, "лодка за тик: " + d + ", скорость " + speed + " (у клиента 0.3993)");
+                    yaw.set(boat.getYRot());
+                    turn.set(act(h, "GmTestRower", "[{\"release\":\"forward\"},{\"hold\":\"left\"},{\"wait\":20},{\"release\":\"all\"}]"));
+                })
+                .thenWaitUntil(() -> finished(turn.get()))
+                .thenExecute(() -> {
+                    float turned = boat.getYRot() - yaw.get();
+                    check(turned < -95 && turned > -140, "поворот влево за 20 тиков: " + turned + "° (у клиента около −121°)");
+                    check(bot.player().getVehicle() == boat, "бот вышел из лодки");
+                    leave(h, "GmTestRower");
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * Самолёт Immersive Aircraft: бот в творческом (топливо не нужно) поднимает тягу прыжком, самолёт разбегается на
+     * восток; присед — тяга вниз и тормоз; на земле клавиша высадки IA высаживает.
+     */
+    @GameTest(template = "floor", batch = "gm_bot_plane", timeoutTicks = 400, skyAccess = true)
+    public static void botFliesPlane(GameTestHelper h) {
+        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(ResourceLocation.fromNamespaceAndPath("immersive_aircraft", "biplane")).orElse(null);
+        check(type != null, "в запуске GameTest нет Immersive Aircraft");
+        Bot bot = spawn(h, "GmTestPilot", 8.5, 10.5, ",\"gamemode\":\"creative\"");
+        Entity plane = h.spawn(type, new Vec3(8.5, GROUND, 10.5));
+        plane.setYRot(-90);
+        check(bot.player().startRiding(plane, true) && plane.getControllingPassenger() == bot.player(), "не сел в самолёт пилотом");
+        JsonObject vehicle = bot.describe(0).getAsJsonObject("vehicle");
+        check(vehicle != null && vehicle.get("type").getAsString().equals("immersive_aircraft:biplane") && vehicle.get("driver").getAsBoolean()
+                && vehicle.getAsJsonArray("keys").toString().contains("key.immersive_aircraft.dismount"), "транспорт в состоянии бота: " + vehicle);
+        Vec3 start = plane.position();
+        CompletableFuture<JsonElement> fly = act(h, "GmTestPilot", "[{\"hold\":\"jump\"},{\"wait\":12},{\"release\":\"jump\"},{\"wait\":40}]");
+        AtomicReference<CompletableFuture<JsonElement>> brake = new AtomicReference<>(), out = new AtomicReference<>();
+        h.startSequence()
+                .thenWaitUntil(() -> finished(fly))
+                .thenExecute(() -> {
+                    Vec3 d = plane.position().subtract(start);
+                    check(((EngineVehicle) plane).getEngineTarget() == 1.0F, "тяга: " + ((EngineVehicle) plane).getEngineTarget());
+                    check(d.x > 4.0 && Math.abs(d.z) < 1.0, "самолёт на разбеге: " + d + ", скорость " + plane.getDeltaMovement());
+                    brake.set(act(h, "GmTestPilot", "[{\"hold\":\"sneak\"},{\"wait\":12},{\"release\":\"all\"}]"));
+                })
+                .thenWaitUntil(() -> finished(brake.get()))
+                .thenExecute(() -> check(((EngineVehicle) plane).getEngineTarget() == 0.0F && bot.player().getVehicle() == plane,
+                        "после приседа: тяга " + ((EngineVehicle) plane).getEngineTarget() + ", в самолёте " + (bot.player().getVehicle() == plane)))
+                .thenWaitUntil(() -> check(plane.onGround() && plane.getDeltaMovement().horizontalDistance() < 0.05, "самолёт ещё катится: " + plane.getDeltaMovement()))
+                .thenExecute(() -> out.set(act(h, "GmTestPilot", "[{\"press\":\"key.immersive_aircraft.dismount\"}]")))
+                .thenWaitUntil(() -> finished(out.get()))
+                .thenExecute(() -> {
+                    JsonObject r = out.get().join().getAsJsonObject().getAsJsonArray("results").get(0).getAsJsonObject();
+                    check(r.get("result").getAsString().equals("высадка") && !bot.player().isPassenger(), "высадка: " + r + ", в самолёте " + bot.player().isPassenger());
+                    leave(h, "GmTestPilot");
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * Высадка из самолёта IA в воздухе — как у клиента: первое нажатие предупреждает, второе высаживает; в другом
+     * самолёте — снова сперва предупреждение (оно — свойство самолёта, а не бота).
+     */
+    @GameTest(template = "floor", batch = "gm_bot_plane_air", timeoutTicks = 100, skyAccess = true)
+    public static void botLeavesPlaneInAir(GameTestHelper h) {
+        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(ResourceLocation.fromNamespaceAndPath("immersive_aircraft", "biplane")).orElse(null);
+        check(type != null, "в запуске GameTest нет Immersive Aircraft");
+        Bot bot = spawn(h, "GmTestJumper", 8.5, 10.5, ",\"gamemode\":\"creative\"");
+        Entity first = h.spawn(type, new Vec3(8.5, GROUND + 8, 10.5));
+        check(bot.player().startRiding(first, true) && !first.onGround(), "не сел в самолёт в воздухе");
+        CompletableFuture<JsonElement> twice = act(h, "GmTestJumper",
+                "[{\"press\":\"key.immersive_aircraft.dismount\"},{\"press\":\"key.immersive_aircraft.dismount\"}]");
+        AtomicReference<Entity> second = new AtomicReference<>();
+        AtomicReference<CompletableFuture<JsonElement>> once = new AtomicReference<>();
+        h.startSequence()
+                .thenWaitUntil(() -> finished(twice))
+                .thenExecute(() -> {
+                    JsonArray results = twice.join().getAsJsonObject().getAsJsonArray("results");
+                    check(results.get(0).getAsJsonObject().get("result").getAsString().startsWith("в воздухе")
+                            && results.get(1).getAsJsonObject().get("result").getAsString().equals("высадка") && !bot.player().isPassenger(),
+                            "два нажатия в воздухе: " + results + ", в самолёте " + bot.player().isPassenger());
+                    second.set(h.spawn(type, new Vec3(20.5, GROUND + 8, 10.5)));
+                    check(bot.player().startRiding(second.get(), true) && !second.get().onGround(), "не сел во второй самолёт в воздухе");
+                    once.set(act(h, "GmTestJumper", "[{\"press\":\"key.immersive_aircraft.dismount\"}]"));
+                })
+                .thenWaitUntil(() -> finished(once.get()))
+                .thenExecute(() -> {
+                    JsonObject r = once.get().join().getAsJsonObject().getAsJsonArray("results").get(0).getAsJsonObject();
+                    check(r.get("result").getAsString().startsWith("в воздухе") && bot.player().getVehicle() == second.get(),
+                            "первое нажатие в другом самолёте: " + r + ", в самолёте " + (bot.player().getVehicle() == second.get()));
+                    leave(h, "GmTestJumper");
+                })
                 .thenSucceed();
     }
 
@@ -469,6 +638,8 @@ public final class GmBotGameTests {
             real = new ServerPlayer(server, h.getLevel(), profile, cookie.clientInformation());
             Connection connection = new Connection(PacketFlow.SERVERBOUND);
             new EmbeddedChannel(connection);
+            // клиент со всеми модами сервера: моды шлют свои пакеты при входе (Immersive Aircraft)
+            NetworkRegistry.configureMockConnection(connection);
             server.getPlayerList().placeNewPlayer(connection, real, cookie);
             check(gm(h).bots().find("GmTestFriend") == null && !bot.online(), "бот не уступил имя игроку");
         } finally {

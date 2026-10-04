@@ -327,7 +327,8 @@ final class Controls {
 
     /**
      * Ходьба — как {@code LocalPlayer.aiStep}: толчки от клавиш (присед и использование предмета замедляют), бег,
-     * присед, полёт вверх-вниз; верхом — пакет ввода транспорту. Потом физика игрока сервером ({@code doTick}) и то,
+     * присед, полёт вверх-вниз; верхом — пакет ввода транспорту и то, что клиент делает с ним сам ({@link Vehicles}).
+     * Потом физика игрока сервером ({@code doTick}) и то,
      * что сервер делает после пакета движения: чанки вокруг, урон от падения, статистика и голод от ходьбы.
      */
     private void move(ServerPlayer p) {
@@ -353,9 +354,9 @@ final class Controls {
             p.serverLevel().getChunkSource().move(p);
             return;
         }
-        if (p.isPassenger()) {
-            bot.send(new ServerboundPlayerInputPacket(strafe, forward, jump, sneak));
-        } else {
+        if (p.isPassenger()) bot.send(new ServerboundPlayerInputPacket(strafe, forward, jump, sneak));
+        bot.vehicles.tick(p, held);
+        if (!p.isPassenger()) {
             p.xxa = strafe;
             p.zza = forward;
             p.setJumping(jump);
@@ -376,10 +377,10 @@ final class Controls {
         }
     }
 
-    /** Готовы все чанки вокруг рамки бота с запасом в блок и его скоростью за тик ({@code getChunkNow}). */
-    private static boolean ready(ServerPlayer p) {
+    /** Готовы все чанки вокруг рамки бота (транспорта) с запасом в блок и его скоростью за тик ({@code getChunkNow}). */
+    static boolean ready(Entity p) {
         AABB box = p.getBoundingBox().expandTowards(p.getDeltaMovement()).inflate(1.0);
-        ServerChunkCache chunks = p.serverLevel().getChunkSource();
+        ServerChunkCache chunks = ((ServerLevel) p.level()).getChunkSource();
         for (int cx = Mth.floor(box.minX) >> 4; cx <= Mth.floor(box.maxX) >> 4; cx++) {
             for (int cz = Mth.floor(box.minZ) >> 4; cz <= Mth.floor(box.maxZ) >> 4; cz++) {
                 if (chunks.getChunkNow(cx, cz) == null) return false;

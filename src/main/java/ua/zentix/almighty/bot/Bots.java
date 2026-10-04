@@ -223,7 +223,7 @@ public final class Bots {
         ServerLevel level = spec.dimension() != null ? Dims.level(server, spec.dimension()) : server.overworld();
         // как вход игрока (getPlayerForLogin): в верхнем мире — конструктор ищет место у точки появления, а в чужом
         // измерении с небом искал бы его, загружая чанки в тике сразу
-        ServerPlayer player = new ServerPlayer(server, server.overworld(), profile, info);
+        ServerPlayer player = new BotPlayer(server, server.overworld(), profile, info);
         Bot bot = new Bot(this, profile, spec.marker(), spec.autoRespawn());
         // до входа: имя в табе считается при входе, событие должно уже знать бота
         byName.put(key(spec.name()), bot);

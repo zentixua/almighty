@@ -25,6 +25,11 @@ configurations {
 
 repositories {
     mavenCentral()
+    // Immersive Aircraft: самолёты под ботом (bot/ImmersiveAircraft) — компиляция и GameTest; в jar и mods.toml его нет
+    exclusiveContent {
+        forRepository { maven { url = 'https://api.modrinth.com/maven' } }
+        filter { includeGroup 'maven.modrinth' }
+    }
 }
 
 neoForge {
@@ -42,6 +47,8 @@ neoForge {
         }
         gameTestServer {
             type = 'gameTestServer'
+            // моды рядом (самолёты IA) — из devtestRuntimeOnly
+            sourceSet = sourceSets.devtest
             gameDirectory = project.file('run/gametest')
             systemProperty 'neoforge.enabledGameTestNamespaces', 'almighty'
         }
@@ -74,6 +81,10 @@ dependencies {
         }
     }
     additionalRuntimeClasspath 'org.apache.groovy:groovy:4.0.33'
+
+    // Immersive Aircraft 1.5.2 (Modrinth, версия ZZTlNkV9): привод самолётов ботом вызывается, только когда мод стоит
+    compileOnly 'maven.modrinth:immersive-aircraft:ZZTlNkV9'
+    devtestRuntimeOnly 'maven.modrinth:immersive-aircraft:ZZTlNkV9'
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'

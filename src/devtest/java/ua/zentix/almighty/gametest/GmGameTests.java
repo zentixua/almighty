@@ -27,6 +27,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.core.Direction;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.Api;
 import ua.zentix.almighty.GmConfig;
@@ -426,6 +427,8 @@ public final class GmGameTests {
         ServerPlayer player = new ServerPlayer(h.getLevel().getServer(), h.getLevel(), profile, cookie.clientInformation());
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
         new EmbeddedChannel(connection);
+        // клиент со всеми модами сервера: моды шлют свои пакеты при входе (Immersive Aircraft)
+        NetworkRegistry.configureMockConnection(connection);
         h.getLevel().getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
         // команда ведущего от лица игрока — не его: в ленту не идёт; набранная им самим — идёт
         new ScriptApi(h.getLevel().getServer(), true, data -> {}).commandAs(player, "list");

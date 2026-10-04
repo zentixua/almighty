@@ -140,6 +140,7 @@ final class Steps {
             return packet("sign", new ServerboundSignUpdatePacket(new BlockPos(pos[0], pos[1], pos[2]), a.bool("front", true), four[0], four[1], four[2], four[3]));
         }
         if (a.has("respawn")) return new Respawn();
+        if (a.has("press")) return new Press(a.string("press"));
         if (a.has("fly")) {
             Abilities abilities = new Abilities();
             abilities.flying = a.bool("fly", true);
@@ -160,7 +161,7 @@ final class Steps {
             double[] v = numbers(a, "walk_to", to.size());
             return new WalkTo(v[0], v.length == 3 ? v[2] : v[1], a.bool("sprint", false), a.number("within", 0.6, 0.1, 8), a.integer("max_ticks", 1200, 1, MAX_WAIT));
         }
-        throw RpcException.badRequest("неизвестный шаг " + a.raw().keySet() + ": wait, hold, release, look, turn, look_at, click, slot, drop, swap_hands, menu, menu_button, close, chat, sign, respawn, fly, player_command, walk_to");
+        throw RpcException.badRequest("неизвестный шаг " + a.raw().keySet() + ": wait, hold, release, look, turn, look_at, click, slot, drop, swap_hands, menu, menu_button, close, chat, sign, respawn, press, fly, player_command, walk_to");
     }
 
     private static Set<Controls.Key> keys(Args a, String name) throws RpcException {
@@ -268,6 +269,17 @@ final class Steps {
         public boolean tick(Bot bot, ServerPlayer p, JsonObject out) {
             out.addProperty("do", "hold");
             for (Controls.Key key : keys) bot.controls.press(p, key, out);
+            return true;
+        }
+    }
+
+    /** Клавиша транспорта мода по имени в настройках управления (высадка и ускоритель самолёта IA). */
+    private record Press(String key) implements Step {
+        @Override
+        public boolean tick(Bot bot, ServerPlayer p, JsonObject out) {
+            out.addProperty("do", "press");
+            out.addProperty("key", key);
+            out.addProperty("result", bot.vehicles.press(p, key));
             return true;
         }
     }

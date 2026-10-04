@@ -32,6 +32,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.fml.util.ObfuscationReflectionHelper;
 import org.slf4j.Logger;
 import ua.zentix.airstrikegm.AirstrikeGm;
 import ua.zentix.airstrikegm.GmConfig;
@@ -52,6 +53,12 @@ import java.util.Map;
  */
 public final class CommandRunner {
     private static final Logger LOG = LogUtils.getLogger();
+    /**
+     * Выполнение команд, идущее в этом потоке ({@code Commands.CURRENT_EXECUTION_CONTEXT}): команда, поданная внутри
+     * него (правило на событие, которое вызвала команда или функция), только встала бы в его очередь — без итога и
+     * после выхода из правила. Ведущий выполняет свои команды сразу, своим выполнением.
+     */
+    private static final ThreadLocal<Object> CURRENT_EXECUTION = currentExecution();
     static final int MAX_COMMANDS = 100;
     static final int MAX_LINES = 10_000;
     private static final TextColor RED = TextColor.fromLegacyFormat(ChatFormatting.RED);
@@ -131,7 +138,8 @@ public final class CommandRunner {
             if (as != null && as.level() instanceof ServerLevel own) {
                 source = source.withEntity(as).withLevel(own).withPosition(as.position()).withRotation(as.getRotationVector());
             }
-            server.getCommands().performPrefixedCommand(source.withCallback(capture.callback()), command);
+            CommandSourceStack from = source.withCallback(capture.callback());
+            outsideCurrentExecution(() -> server.getCommands().performPrefixedCommand(from, command));
             results.add(capture.describe("command", command));
         }
         return results;
@@ -161,9 +169,33 @@ public final class CommandRunner {
             throw RpcException.badRequest("Макрос не подставлен: " + e.messageComponent().getString());
         }
         LOG.info("Ведущий: функция из {} строк", lines.size());
-        Commands.executeCommandInContext(source,
-                context -> ExecutionContext.queueInitialFunctionCall(context, instance, source, capture.callback()));
+        outsideCurrentExecution(() -> Commands.executeCommandInContext(source,
+                context -> ExecutionContext.queueInitialFunctionCall(context, instance, source, capture.callback())));
         return capture.describe("function", lines.size() + " строк");
+    }
+
+    private static void outsideCurrentExecution(Runnable run) {
+        Object outer = CURRENT_EXECUTION == null ? null : CURRENT_EXECUTION.get();
+        if (outer == null) {
+            run.run();
+            return;
+        }
+        CURRENT_EXECUTION.remove();
+        try {
+            run.run();
+        } finally {
+            CURRENT_EXECUTION.set(outer);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ThreadLocal<Object> currentExecution() {
+        try {
+            return (ThreadLocal<Object>) ObfuscationReflectionHelper.findField(Commands.class, "CURRENT_EXECUTION_CONTEXT").get(null);
+        } catch (RuntimeException | IllegalAccessException e) {
+            LOG.error("Ведущий: нет Commands.CURRENT_EXECUTION_CONTEXT — команды правил внутри чужих команд встанут в их очередь", e);
+            return null;
+        }
     }
 
     private static CommandSourceStack source(MinecraftServer server, ServerLevel level, Vec3 pos, CommandSource capture) {

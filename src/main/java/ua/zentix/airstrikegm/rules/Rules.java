@@ -4,7 +4,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.MinecraftServer;
@@ -37,7 +36,7 @@ import java.util.function.Consumer;
  * события в ленту ({@code emit}); со скриптом — Groovy с переменной {@code event}, его {@code gm.emit} пишет в ленту,
  * {@code event.canceled = true} отменяет отменяемое. Правило выключается само и пишет {@code rule.off}: в среднем
  * дольше {@code budget_ms} за тик по последним 20 тикам, один запуск дольше {@link #runLimitMs} (его обрывает срок
- * скрипта), {@value #ERRORS_OFF} ошибок подряд, больше {@value #EMITS_PER_SECOND} записей в ленту за 20 тиков, событие
+ * скрипта; первый такой обрыв — только ошибка), {@value #ERRORS_OFF} ошибок подряд, больше {@value #EMITS_PER_SECOND} записей в ленту за 20 тиков, событие
  * не из потока сервера. Первый запуск в счёт времени не идёт: в нём Groovy связывает вызовы (до десятков мс). Время —
  * настенное: пауза сборщика мусора внутри запуска в него попадает, поэтому счёт средний, а не по одному тику. Всё — в
  * потоке сервера: разбор и компиляция — в потоке моста ({@link #parse}), остальное — {@code GmServer.onMain}.
@@ -182,7 +181,8 @@ public final class Rules {
         JsonArray saved;
         try {
             saved = JsonParser.parseString(Files.readString(store, StandardCharsets.UTF_8)).getAsJsonObject().getAsJsonArray("rules");
-        } catch (IOException | JsonParseException | IllegalStateException | NullPointerException e) {
+            if (saved == null) throw new IllegalStateException("нет списка rules");
+        } catch (IOException | RuntimeException e) {
             // следующее сохранение перепишет файл: испорченный — в сторону
             Path bad = store.resolveSibling(store.getFileName() + ".bad");
             LOG.error("Правила ведущего не прочитаны из {}, файл перенесён в {}", store, bad, e);
@@ -194,20 +194,23 @@ public final class Rules {
             return;
         }
         loading = true;
-        for (JsonElement e : saved) {
-            try {
-                Spec spec = parse(new Args(e.getAsJsonObject()));
-                add(spec);
-            } catch (RpcException | RuntimeException ex) {
-                LOG.warn("Сохранённое правило не встало: {} — {}", e, ex.getMessage());
-                JsonObject d = new JsonObject();
-                d.add("spec", e);
-                d.addProperty("error", ex.getMessage());
-                feed.add("rule.error", d);
-                if (e.isJsonObject()) unloaded.add(d.deepCopy());
+        try {
+            for (JsonElement e : saved) {
+                try {
+                    Spec spec = parse(new Args(e.getAsJsonObject()));
+                    add(spec);
+                } catch (RpcException | RuntimeException ex) {
+                    LOG.warn("Сохранённое правило не встало: {} — {}", e, ex.getMessage());
+                    JsonObject d = new JsonObject();
+                    d.add("spec", e);
+                    d.addProperty("error", ex.getMessage());
+                    feed.add("rule.error", d);
+                    if (e.isJsonObject()) unloaded.add(d.deepCopy());
+                }
             }
+        } finally {
+            loading = false;
         }
-        loading = false;
     }
 
     /** Остановка сервера: правила снимаются с шины (статической — в одиночной игре она переживает мир). */
@@ -342,7 +345,8 @@ public final class Rules {
                 turnOff(ERRORS_OFF + " ошибок подряд, последняя: " + r.message() + (r.line() > 0 ? " (строка " + r.line() + ")" : ""));
                 return;
             }
-            if (r.timedOut()) {
+            // первый запуск может съесть срок на связывании вызовов Groovy: его обрыв — ошибка, выключает — второй
+            if (r.timedOut() && warm) {
                 turnOff(r.message() + " (budget_ms)");
                 return;
             }

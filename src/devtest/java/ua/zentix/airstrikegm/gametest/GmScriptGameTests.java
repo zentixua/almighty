@@ -7,6 +7,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.animal.Pig;
 import net.minecraft.world.level.block.Blocks;
@@ -223,8 +224,27 @@ public final class GmScriptGameTests {
             JsonObject unknown = new JsonObject();
             unknown.addProperty("event", "NoSuchEventAtAll");
             check(rejected(h, "rule.add", unknown).startsWith("Нет события"), "неизвестное событие принято");
+
+            // событие из команды ведущего: команды правила выполняются сразу (а не в очередь внешней команды),
+            // вызванное ими то же событие правило не запускает снова
+            BlockPos gold = h.absolutePos(new BlockPos(2, 2, 12)), spot = h.absolutePos(new BlockPos(3, 2, 12));
+            rule(h, "EntityJoinLevelEvent", "gm-test-nested", String.format(Locale.ROOT, """
+                    if (!event.entity.tags.contains('gm_nested') || (state.gmNested ?: 0) >= 3) return
+                    state.gmNested = (state.gmNested ?: 0) + 1
+                    gm.command('setblock %1$d %2$d %3$d gold_block', 'summon marker %4$d %5$d %6$d {Tags:["gm_nested"]}')
+                    state.gmGold = event.level.getBlockState(new BlockPos(%1$d, %2$d, %3$d)).is(Blocks.GOLD_BLOCK)
+                    """, gold.getX(), gold.getY(), gold.getZ(), spot.getX(), spot.getY(), spot.getZ()));
+            JsonObject summon = new JsonObject();
+            JsonArray commands = new JsonArray();
+            commands.add(String.format(Locale.ROOT, "summon marker %d %d %d {Tags:[\"gm_nested\"]}", spot.getX(), spot.getY(), spot.getZ()));
+            summon.add("commands", commands);
+            now(call(h, "command", summon));
+            int markers = h.getLevel().getEntities(EntityType.MARKER, e -> e.getTags().contains("gm_nested")).size();
+            check(Integer.valueOf(1).equals(gm.state().get("gmNested")) && Boolean.TRUE.equals(gm.state().get("gmGold")) && markers == 2,
+                    "правило внутри команды: запусков " + gm.state().get("gmNested") + ", золото " + gm.state().get("gmGold") + ", меток " + markers);
         } finally {
-            drop(h, "gm-test-guard", "gm-test-tag");
+            drop(h, "gm-test-guard", "gm-test-tag", "gm-test-nested");
+            h.getLevel().getEntities(EntityType.MARKER, e -> e.getTags().contains("gm_nested")).forEach(Entity::discard);
         }
         h.succeed();
     }
@@ -274,7 +294,8 @@ public final class GmScriptGameTests {
     }
 
     /**
-     * Правило выключается само: запуск дольше своего срока (20 бюджетов, не меньше 50 мс) прерывается; в среднем больше
+     * Правило выключается само: запуск дольше своего срока (20 бюджетов, не меньше 50 мс) прерывается (первый такой — только
+     * ошибка: в нём могло уйти время на связывание вызовов Groovy, второй — выключает); в среднем больше
      * {@code budget_ms} за тик — выключено со второго запуска (первый, с связыванием вызовов Groovy, не в счёт); ошибка —
      * в ленту с номером строки, {@value Rules#ERRORS_OFF} ошибок подряд — выключено. Выключенное видно в списке с причиной.
      */
@@ -298,8 +319,10 @@ public final class GmScriptGameTests {
                 .thenExecute(() -> {
                     try {
                         JsonObject slowOff = find(gm, after, "rule.off", e -> of(e, slow));
+                        JsonObject slowCold = find(gm, after, "rule.error", e -> of(e, slow));
+                        check(slowCold != null && slowCold.get("error").getAsString().contains("прерван"), "первый обрыв — не ошибка: " + slowCold);
                         check(slowOff != null && slowOff.get("reason").getAsString().contains("прерван"), "долгое правило: " + slowOff);
-                        check(described(gm, "gm-test-slow").get("fired").getAsInt() == 1, "долгое правило запускалось ещё: " + described(gm, "gm-test-slow"));
+                        check(described(gm, "gm-test-slow").get("fired").getAsInt() == 2, "долгое правило: запусков " + described(gm, "gm-test-slow"));
                         JsonObject heavyOff = find(gm, after, "rule.off", e -> of(e, heavy));
                         check(heavyOff != null && heavyOff.get("reason").getAsString().contains("budget_ms")
                                 && described(gm, "gm-test-heavy").get("fired").getAsInt() == 2, "тяжёлое правило: " + heavyOff + ", " + described(gm, "gm-test-heavy"));
@@ -348,6 +371,9 @@ public final class GmScriptGameTests {
             Rules other = new Rules(h.getLevel().getServer(), NeoForge.EVENT_BUS, gm.feed(), new HashMap<>(), broken);
             other.load();
             check(!Files.exists(broken) && read(dir.resolve("rules-broken-test.json.bad")).equals("{\"rules\": ["), "испорченный файл не перенесён");
+            Files.writeString(broken, "{}");
+            new Rules(h.getLevel().getServer(), NeoForge.EVENT_BUS, gm.feed(), new HashMap<>(), broken).load();
+            check(!Files.exists(broken) && read(dir.resolve("rules-broken-test.json.bad")).equals("{}"), "файл без списка rules не перенесён");
         } catch (IOException | RpcException e) {
             throw new GameTestAssertException(e.toString());
         } finally {

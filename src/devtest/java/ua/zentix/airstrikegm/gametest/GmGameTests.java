@@ -33,6 +33,7 @@ import ua.zentix.airstrikegm.GmConfig;
 import ua.zentix.airstrikegm.GmServer;
 import ua.zentix.airstrikegm.bridge.Args;
 import ua.zentix.airstrikegm.bridge.RpcException;
+import ua.zentix.airstrikegm.script.ScriptApi;
 import ua.zentix.airstrikegm.view.Png;
 import ua.zentix.airstrikegm.world.Areas;
 
@@ -394,7 +395,7 @@ public final class GmGameTests {
                 .thenSucceed();
     }
 
-    /** Лента: вход, смерть с причиной и выход игрока. */
+    /** Лента: вход, команда игрока (не команда ведущего от его лица), смерть с причиной и выход игрока. */
     @GameTest(template = "floor", batch = "gm_feed", skyAccess = true)
     public static void feedSeesJoinDeathLeave(GameTestHelper h) throws InterruptedException {
         GmServer gm = gm(h);
@@ -407,6 +408,9 @@ public final class GmGameTests {
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
         new EmbeddedChannel(connection);
         h.getLevel().getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
+        // команда ведущего от лица игрока — не его: в ленту не идёт; набранная им самим — идёт
+        new ScriptApi(h.getLevel().getServer(), true, data -> {}).commandAs(player, "list");
+        h.getLevel().getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack(), "list");
         player.hurt(player.damageSources().genericKill(), Float.MAX_VALUE);
         h.getLevel().getServer().getPlayerList().remove(player);
         JsonArray events = gm.feed().read(after, 100, 0).getAsJsonArray("events");
@@ -418,7 +422,7 @@ public final class GmGameTests {
             types.append(o.get("type").getAsString()).append(' ');
             if (o.get("type").getAsString().equals("death")) death = o.get("message").getAsString().contains("gm-feed-player");
         }
-        check(types.toString().equals("join death leave "), "события: " + types + "в " + events);
+        check(types.toString().equals("join command death leave "), "события: " + types + "в " + events);
         check(death, "у смерти нет причины: " + events);
         h.succeed();
     }

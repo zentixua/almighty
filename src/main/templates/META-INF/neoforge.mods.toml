@@ -3,6 +3,10 @@ loaderVersion = "${loader_version_range}"
 license = "${mod_license}"
 issueTrackerURL = "${mod_url}/issues"
 
+# Миксин один: возрождение бота его же классом (mixin/PlayerListMixin) — API для этого нет
+[[mixins]]
+config = "almighty.mixins.json"
+
 # Только сервер: своих пакетов, блоков и предметов у мода нет, поэтому игрокам он не нужен
 [[mods]]
 modId = "almighty"

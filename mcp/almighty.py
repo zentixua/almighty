@@ -360,8 +360,9 @@ def serve_mcp():
         или {value, signature}), auto_respawn (да); место входа загружается до входа (до 30 с). Имя или скин игрока
         сервера и вход без пометки (marker=false) —
         только если владелец включил bots.allow_disguise; игрок с именем бота заходит — бот уступает.
-        remove — name. list — все боты. state — бот подробно: тело, инвентарь, открытое меню (ячейки по номерам),
-        клавиши, программа, почта (чат, шёпот, экраны, титры, смерть) после номера after.
+        remove — name. list — все боты. state — бот подробно: тело, инвентарь, транспорт (vehicle: тип, ведёт ли,
+        клавиши мода keys), открытое меню (ячейки по номерам), клавиши, программа, почта (чат, шёпот, экраны, титры,
+        смерть) после номера after.
         act — программа actions по шагам; мгновенные идут подряд в одном тике, ждут только wait, walk_to и hold
         до release. Шаги: {"hold": "forward"|["forward","sprint"]} (forward back left right jump sneak sprint attack
         use), {"release": "all"|клавиши}, {"wait": тиков}, {"look": [yaw, pitch]}, {"turn": [dyaw, dpitch]},
@@ -370,10 +371,15 @@ def serve_mcp():
         "pickup"|"quick_move"|"swap"|"throw"|"pickup_all"|"clone"|"quick_craft"} (−999 — вне окна),
         {"menu_button": n}, {"close": true}, {"chat": "текст" | "/команда"}, {"sign": [x, y, z], "lines": [...]},
         {"respawn": true}, {"fly": true|false}, {"player_command": "start_fall_flying"|…}, {"walk_to": [x, z],
-        "sprint": false, "within": 0.6}. Ошибка шага останавливает программу. replace — снять идущую программу,
-        иначе новая ждёт в очереди. wait — ждать конца до стольких секунд (до 50); не дождались — описание, конец
-        программы — событие bot_done в ленте, итог — в state. Транспорт, которым правит клиент (самолёты, лодки,
-        лошади), бот на сервере не ведёт."""
+        "sprint": false, "within": 0.6}, {"press": "key.immersive_aircraft.dismount"} (клавиша транспорта мода по
+        имени в настройках управления; какие есть — keys в state). Ошибка шага останавливает программу. replace —
+        снять идущую программу, иначе новая ждёт в очереди. wait — ждать конца до стольких секунд (до 50); не
+        дождались — описание, конец программы — событие bot_done в ленте, итог — в state.
+        Транспорт: сесть — click use по нему, слезть — sneak. Лошадь, лодку, свинью, верблюда бот ведёт клавишами,
+        как клиент (прыжок верхом — удержать и отпустить jump). Транспорт Immersive Aircraft: left/right, jump/sneak,
+        forward/back — его рули, как у игрока (у самолёта — курс, тяга больше/меньше с тормозом, штурвал); выйти —
+        press key.immersive_aircraft.dismount (в воздухе — дважды за секунду), ускоритель —
+        key.immersive_aircraft.boost."""
         given = {"name": name, "actions": actions, "pos": pos, "dimension": dimension, "yaw": yaw, "pitch": pitch,
                  "gamemode": gamemode, "skin": skin, "marker": marker, "auto_respawn": auto_respawn, "after": after}
         takes = {"spawn": ("name", "pos", "dimension", "yaw", "pitch", "gamemode", "skin", "marker", "auto_respawn"),

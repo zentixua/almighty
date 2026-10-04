@@ -79,6 +79,7 @@ public final class Bot {
     private final EmbeddedChannel channel;
     private final BotSink sink = new BotSink();
     final Controls controls = new Controls(this);
+    final Vehicles vehicles = new Vehicles(this);
     boolean autoRespawn;
 
     private final ArrayDeque<Program> programs = new ArrayDeque<>();
@@ -415,6 +416,8 @@ public final class Bot {
         controls.held().forEach(k -> keys.add(k.id()));
         o.add("keys", keys);
         if (teleportPending) o.addProperty("loading", "ждёт загрузки чанков места: стоит, пока они не готовы");
+        JsonObject vehicle = Vehicles.describe(player());
+        if (vehicle != null) o.add("vehicle", vehicle);
         o.add("menu", menu(player().containerMenu));
         if (current != null) o.add("program", current.describe());
         if (last != null) o.add("last_program", last.describe());

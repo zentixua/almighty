@@ -1,0 +1,85 @@
+# Сборка, юнит-тесты и GameTest мода (сервер NeoForge без других модов, ~1 мин); jar — в артефактах запуска.
+# Ручной запуск на main с release=true: проверка, после неё — релиз v<mod_version> на GitHub с этим jar и заметками
+# из docs/releases/<mod_version>.md.
+name: build
+
+# Каждый коммит проверяется один раз: ветки — запуском pull_request (он и решает слияние), main — push.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Выпустить релиз v<mod_version> (только с main)
+        type: boolean
+        default: false
+
+# пуш отменяет прежнюю сборку той же ветки; ручной запуск (релиз) — в своей группе, пуш в main его не отменит
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && format('release-{0}', github.run_id) || format('build-{0}', github.ref) }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Сборка и тесты
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Сборка и юнит-тесты
+        run: ./gradlew build --console=plain
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: djinn-jar
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+      - name: GameTest
+        run: |
+          ./gradlew runGameTestServer --console=plain
+          grep -E 'All [0-9]+ required tests passed' run/gametest/logs/latest.log
+
+      - name: Отчёты при падении
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: reports
+          path: |
+            build/reports/
+            run/gametest/logs/
+          if-no-files-found: ignore
+
+  release:
+    name: Релиз
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.release && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
+        with:
+          name: djinn-jar
+          path: build/libs
+      - name: Релиз
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(sed -n 's/^mod_version=//p' gradle.properties)
+          gh release create "v$v" build/libs/*.jar --target "$GITHUB_SHA" \
+            --title "Djinn $v" --notes-file "docs/releases/$v.md"

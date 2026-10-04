@@ -6,7 +6,7 @@ issueTrackerURL = "${mod_url}/issues"
 # Только сервер: своих пакетов, блоков и предметов у мода нет, поэтому игрокам он не нужен
 [[mods]]
 modId = "airstrike_gm"
-version = "${gm_version}"
+version = "${mod_version}"
 displayName = "Airstrike GM"
 authors = "${mod_authors}"
 displayURL = "${mod_url}"

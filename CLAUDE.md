@@ -1,16 +1,30 @@
----
-paths:
-  - "mod/gm/**"
-  - "tools/gm.py"
----
+# Мост ведущего (`airstrike_gm`)
 
-# Мод ведущего (`mod/gm`, `airstrike_gm`)
+Серверный мод NeoForge для Minecraft 1.21.1, через который ИИ-агент (ведущий) видит мир и действует на сервере:
+HTTP-мост на сервере и MCP-адаптер `mcp/djinn.py` у агента. Своих блоков, предметов, пакетов и записей в
+реестрах нет — клиентам ставить не нужно, от других модов мод не зависит. Репозиторий
+https://github.com/zentixua/djinn (публичный) выделен из zentixua/airstrike вместе с историей: номера
+PR до переезда — `zentixua/airstrike#N`. Мост стоит на сервере сборки «Airstrike Pack» (zentixua/airstrike-pack,
+`side = "server"`).
 
-Серверный мод, через который Claude-ведущий видит мир и действует на сервере: HTTP-мост на сервере и MCP-адаптер
-`tools/gm.py` у Claude. Своих блоков, предметов, пакетов и записей в реестрах нет — клиентам ставить не нужно, мод
-не зависит от Airstrike. Отдельный подпроект Gradle: свой jar `airstrike-gm-<gm_version>.jar` (`mod/gradle.properties`),
-свои запуски `runGmServer`, `runGmGameTestServer` (`./gradlew runGameTestServer` в `mod/` по-прежнему только Airstrike),
-`./gradlew build` собирает и проверяет оба.
+## Люди и правила
+- Автор: **Артём** (GitHub zentixua, в игре ZentixUA). Общаемся по-русски, кратко и по делу.
+- Качество важнее скорости: перед сдачей — сборка, юнит-тесты, GameTest, ревью диффа. Готовый PR вливать самому
+  после зелёного CI, чистого независимого ревью и вердикта координатора.
+- Публичные шаги (релиз на GitHub, Modrinth) — только по прямому слову Артёма.
+- `Locale.ROOT` для чисел в тексте для игры и команд: у Артёма русская локаль, `String.format("%.1f")` даёт запятую.
+
+## Рабочий цикл
+```sh
+./gradlew build                          # компиляция (-Xlint:all без предупреждений) и юнит-тесты
+./gradlew runGameTestServer              # GameTest: сервер без окна, только этот мод
+./gradlew runServer                      # пробный выделенный сервер с мостом (run/server)
+uv run mcp/djinn.py call status   # один вызов моста (адрес и токен — в начале скрипта)
+```
+CI (GitHub Actions) проверяет каждый PR и push в `main`: сборка, юнит-тесты, GameTest; jar — артефакт
+`djinn-jar`. Релиз: поднять `mod_version` (`gradle.properties`), написать `docs/releases/<версия>.md`, влить в
+`main` и запустить `build` вручную на `main` с `release=true` — workflow выпускает `v<версия>` с jar. Потом — PR в
+airstrike-pack с jar выпуска.
 
 ## Устройство (`ua.zentix.airstrikegm`)
 - `AirstrikeGm` — подписки; `GmServer` — состояние одного запуска сервера (`ServerStartedEvent` … `ServerStoppedEvent`):
@@ -52,7 +66,7 @@ paths:
 `bot.remove {name}`, `bot.act {name, actions, replace?, wait?}`,
 `see {name | uuid | at+yaw+pitch, image? (да), width?, height?, fov?, distance?, radius?, sounds_ticks?}`. Везде `dimension` (по умолчанию верхний мир);
 у долгих — `wait` (по умолчанию 30 с, до 50): не успела работа — её описание, дальше `job`. Картинка снимка
-выдаётся один раз (`png_base64`), после этого работа её не держит. MCP-инструментов `tools/gm.py` — 13, по
+выдаётся один раз (`png_base64`), после этого работа её не держит. MCP-инструментов `mcp/djinn.py` — 13, по
 принципу Артёма «мало рычагов, но каждый достаёт до дна»: `status` (+ игрок), `entities`, `command` (команды или
 строки функции), `say`, `script`, `rule` (add/remove/list/types), `events`, `view` (map/look/blocks/eye), `build` (+ undo),
 `area`, `job` (+ cancel), `bot` (spawn/remove/list/state/act), `call` — любой метод. Новое — сперва подумать, не делается ли оно скриптом или правилом;
@@ -71,14 +85,14 @@ paths:
 
 ## Подводные камни
 - Чанки — только тикетом загрузки ванили (`DistanceManager.addTicket`, уровень 33 = полный чанк без тика): тикет
-  региона пускает тик сразу, без готовых соседей (`server-chunks.md`), `TicketController.forceChunk` NeoForge и
+  региона пускает тик сразу, без готовых соседей, `TicketController.forceChunk` NeoForge и
   `level.getChunk` грузят синхронно. Одинаковые ванильные тикеты сливаются — аренды считает `Areas`.
 - Запись блока читает соседей (форма по соседям, обновление соседей, Sable — до двух блоков): кольцо соседей в
   аренде обязательно, иначе соседний чанк не в полной загрузке грузился бы синхронно. Работа ждёт, пока полны все
   чанки аренды (`getChunkNow`), не дольше 2400 тиков.
 - Отпуск — не больше 64 чанков за тик (ваниль выгружает больше 2000 держателей разом в одном тике). Остановка
-  сервера снимает всё сразу в `ServerStoppingEvent` с обычным приоритетом — раньше `StopDrain` Airstrike (`LOWEST`),
-  иначе он ждал бы генерацию по тикетам ведущего. Предел — `work.max_chunks` (1500) вместе с кольцами.
+  сервера снимает всё сразу в `ServerStoppingEvent` с обычным приоритетом — раньше модов, которые на `LOWEST` ждут
+  конца генерации (`StopDrain` у Airstrike), иначе они ждали бы её и по тикетам ведущего. Предел — `work.max_chunks` (1500) вместе с кольцами.
 - Чтение — только `getChunkNow` и сам `LevelChunk`: снимки и `blocks` незагруженное не грузят (шахматка, `?`);
   загрузить — `area.prepare`. Сущности — `getEntities` по рамке (загруженные секции, снимок списка).
 - Постройка ставит место как `/fill` (`FillCommand`): сперва `getBlockEntity` (поднимает отложенную блок-сущность
@@ -109,9 +123,9 @@ paths:
 - Скрипт — вызовы, которые кончаются в нём самом. Замыкания и объекты скрипта игре не отдавать (тикеты, сравнения,
   слушатели шины, задачи на потом): вызванные игрой позже, они идут без срока (бесконечный цикл — сторож тика), их
   ошибка роняет тик, а загрузчик скрипта не выгружается. Надёжно это не запретить (замыкание приводится к любому
-  интерфейсу Java), поэтому — правило в подсказках `tools/gm.py`; реакции — правила (`rule.add`). Чанки скрипт
-  не грузит (свой `TicketType`, `level.getChunk`): далёкое место — `area.prepare`, удары Airstrike свои районы
-  грузят сами (`FlightTickets`, `AreaLoader` — `strike.md`).
+  интерфейсу Java), поэтому — правило в подсказках `mcp/djinn.py`; реакции — правила (`rule.add`). Чанки скрипт
+  не грузит (свой `TicketType`, `level.getChunk`): далёкое место — `area.prepare` (моды, которые грузят свои районы
+  сами, как удары Airstrike, этого не требуют).
 - Первый запуск скрипта связывает вызовы Groovy: 5–80 мс (GameTest). Правило поэтому первый запуск в счёт времени не
   берёт, а считает среднее по 20 тикам: время настенное, пауза сборщика внутри запуска иначе выключала бы правила.
 - Данные сканирования FML (`EventTypes`): у `module-info` (есть в jar многих модов) предка нет —
@@ -126,7 +140,7 @@ paths:
   `CURRENT_EXECUTION_CONTEXT` (рефлексией) и выполняет их своим выполнением, сразу.
 - Лента пишет команду, только если её источник — сам игрок (`CommandSourceStack.source`): `commandAs` от лица игрока
   иначе выглядела бы его командой.
-  Тесты сервера с мостом в облаке — на петле (`server-ip=127.0.0.1`, `tools/rig_config.py` — без объявления в LAN).
+  Тесты сервера с мостом в облаке — на петле (`server-ip=127.0.0.1`, без объявления в LAN).
 
 ## Боты и зрение
 Бот — настоящий `ServerPlayer` с соединением без сети, как игрок Carpet, но без миксинов: всё, что он делает, идёт
@@ -184,7 +198,7 @@ paths:
   вода и стекло — оттенком, дымка), сущности — рамками по цвету рода.
 
 ## Проверки
-- Юнит-тесты (`mod/gm/src/test`): мост по HTTP на петле, токен, лента, PNG (чтение стандартным декодером), план
+- Юнит-тесты (`src/test`): мост по HTTP на петле, токен, лента, PNG (чтение стандартным декодером), план
   постройки, параметры макроса, список событий, срок скрипта (`ScriptsTest`: замыкание и объект после вызова,
   прерывание идущего, вложенный запуск).
 - GameTest ботов и зрения — `GmBotGameTests`: ходьба бегом, копание и постройка, сундук, чат и шёпот (14 сообщений
@@ -194,12 +208,12 @@ paths:
   Площадка: блок структуры GameTest — под шаблоном, `absolutePos` считает от него — камень пола на y=1, стоять — на 2.
 - GameTest скриптов и правил — `GmScriptGameTests`: правила снимаются в `finally` (шина общая на сервер). Вложенный
   jar Groovy GameTest не проверяет: после правки сборки — выделенный сервер NeoForge из установщика
-  (`java -jar neoforge-<версия>-installer.jar --installServer`, каталог в `mod/run/`), jar из `gm/build/libs` в `mods/`,
-  `server-ip=127.0.0.1`, вызов `script` через `tools/gm.py call`.
-- GameTest (`mod/gm/src/devtest`, шаблон `airstrike_gm:floor` — `mod/scripts/gen_test_structures.py`): каждая проверка —
+  (`java -jar neoforge-<версия>-installer.jar --installServer`, каталог в `run/`), jar из `build/libs` в `mods/`,
+  `server-ip=127.0.0.1`, вызов `script` через `mcp/djinn.py call`.
+- GameTest (`src/devtest`, шаблон `airstrike_gm:floor` — `scripts/gen_test_structures.py`): каждая проверка —
   своей партией (часы работ и тикеты ведущего общие на сервер). Часы работ подменяются (`GmServer.clock`, 1 мс на
   вызов) — порции по тикам без настенного времени; чанки под постройку грузятся тестом сразу (`level.getChunk`).
   Ответ снимка (и `job` снимка) дописывает поток вне сервера (`thenApplyAsync`, PNG): сервер GameTest пробегает срок
   в тиках раньше, чем тот успевает (CI: 200 тиков за 0,3 с). Конец работы ждать по тикам, ответ — `get` со сроком.
-- Пробный сервер: `./gradlew :gm:runGmServer` (каталог `mod/gm/run/server`, `eula.txt`, `server.properties` с
-  `server-ip=127.0.0.1`), затем `AIRSTRIKE_GM_TOKEN_FILE=mod/gm/run/server/config/airstrike_gm/token uv run tools/gm.py call status`.
+- Пробный сервер: `./gradlew runServer` (каталог `run/server`, `eula.txt`, `server.properties` с
+  `server-ip=127.0.0.1`), затем `AIRSTRIKE_GM_TOKEN_FILE=run/server/config/airstrike_gm/token uv run mcp/djinn.py call status`.

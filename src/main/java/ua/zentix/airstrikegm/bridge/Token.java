@@ -12,7 +12,7 @@ import java.util.HexFormat;
 
 /**
  * Токен моста: файл {@code config/airstrike_gm/token} (только владельцу), создаётся при первом запуске. Клиент моста
- * читает его оттуда же ({@code tools/gm.py --token-file}); в лог токен не пишется.
+ * читает его оттуда же ({@code mcp/djinn.py}); в лог токен не пишется.
  */
 public final class Token {
     private final byte[] value;

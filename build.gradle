@@ -1,12 +1,10 @@
-// Мод ведущего: мост к серверу для ведущего-Claude (только сервер, игрокам не нужен). Свой jar airstrike-gm-<версия>.jar;
-// свойства (версии NeoForge, Parchment) — общие, из mod/gradle.properties. Запуски названы runGm*, чтобы
-// ./gradlew runGameTestServer в mod/ по-прежнему запускал только GameTest Airstrike.
+// Мод ведущего: мост к серверу для ведущего-Claude (только сервер, игрокам не нужен).
 plugins {
     id 'java-library'
-    id 'net.neoforged.moddev'
+    id 'net.neoforged.moddev' version '2.0.147'
 }
 
-version = gm_version
+version = mod_version
 group = 'ua.zentix.airstrikegm'
 
 base { archivesName = 'airstrike-gm' }
@@ -36,13 +34,13 @@ neoForge {
         minecraftVersion = project.parchment_minecraft_version
     }
     runs {
-        // выделенный сервер с мостом (проверка tools/gm.py руками): ./gradlew :gm:runGmServer
-        gmServer {
+        // выделенный сервер с мостом (проверка mcp/djinn.py руками): ./gradlew runServer
+        server {
             server()
             gameDirectory = project.file('run/server')
             programArgument '--nogui'
         }
-        gmGameTestServer {
+        gameTestServer {
             type = 'gameTestServer'
             gameDirectory = project.file('run/gametest')
             systemProperty 'neoforge.enabledGameTestNamespaces', 'airstrike_gm'
@@ -63,7 +61,7 @@ neoForge.addModdingDependenciesTo(sourceSets.devtest)
 neoForge.addModdingDependenciesTo(sourceSets.test)
 
 // мир GameTest — каждый раз новый, как в CI
-tasks.matching { it.name == 'runGmGameTestServer' }.configureEach { task ->
+tasks.matching { it.name == 'runGameTestServer' }.configureEach { task ->
     doFirst { project.delete(new File(task.gameDirectory.get().asFile, 'world')) }
 }
 
@@ -89,7 +87,7 @@ test {
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
     var replaceProperties = [
         minecraft_version_range: minecraft_version_range, neo_version: neo_version,
-        loader_version_range: loader_version_range, gm_version: gm_version,
+        loader_version_range: loader_version_range, mod_version: mod_version,
         mod_license: mod_license, mod_authors: mod_authors, mod_url: mod_url,
     ]
     inputs.properties replaceProperties

@@ -10,16 +10,16 @@
 
 Мод слушает HTTP на сервере (по умолчанию 127.0.0.1:25650, только POST /rpc с токеном), этот скрипт — мост к нему:
 
-  uv run tools/gm.py mcp                          — MCP-сервер (stdio) для Claude Code:
-                                                    claude mcp add gm -- uv run /путь/tools/gm.py mcp
-  uv run tools/gm.py call status                  — один вызов: метод и параметры JSON, ответ — JSON
-  uv run tools/gm.py call map '{"center": [0, 0], "size": 256}' --png карта.png
-  uv run tools/gm.py follow                       — лента событий: строка JSON на событие (для Monitor);
-                                                    --from-start — с начала кольца, иначе — с этой минуты
+  uv run mcp/djinn.py mcp           — MCP-сервер (stdio) для Claude Code:
+                                             claude mcp add gm -- uv run /путь/mcp/djinn.py mcp
+  uv run mcp/djinn.py call status   — один вызов: метод и параметры JSON, ответ — JSON
+  uv run mcp/djinn.py call map '{"center": [0, 0], "size": 256}' --png карта.png
+  uv run mcp/djinn.py follow        — лента событий: строка JSON на событие (для Monitor);
+                                             --from-start — с начала кольца, иначе — с этой минуты
 
 Адрес — AIRSTRIKE_GM_URL (по умолчанию http://127.0.0.1:25650), токен — AIRSTRIKE_GM_TOKEN или файл из
 AIRSTRIKE_GM_TOKEN_FILE (мод пишет его в config/airstrike_gm/token каталога сервера при первом запуске).
-Методы и их параметры — .claude/rules/gm.md.
+Методы и их параметры — CLAUDE.md.
 """
 import argparse
 import base64

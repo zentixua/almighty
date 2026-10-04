@@ -1,5 +1,6 @@
 package ua.zentix.almighty.gametest;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
@@ -439,6 +440,42 @@ public final class GmBotGameTests {
                     JsonObject r = out.get().join().getAsJsonObject().getAsJsonArray("results").get(0).getAsJsonObject();
                     check(r.get("result").getAsString().equals("высадка") && !bot.player().isPassenger(), "высадка: " + r + ", в самолёте " + bot.player().isPassenger());
                     leave(h, "GmTestPilot");
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * Высадка из самолёта IA в воздухе — как у клиента: первое нажатие предупреждает, второе высаживает; в другом
+     * самолёте — снова сперва предупреждение (оно — свойство самолёта, а не бота).
+     */
+    @GameTest(template = "floor", batch = "gm_bot_plane_air", timeoutTicks = 100, skyAccess = true)
+    public static void botLeavesPlaneInAir(GameTestHelper h) {
+        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(ResourceLocation.fromNamespaceAndPath("immersive_aircraft", "biplane")).orElse(null);
+        check(type != null, "в запуске GameTest нет Immersive Aircraft");
+        Bot bot = spawn(h, "GmTestJumper", 8.5, 10.5, ",\"gamemode\":\"creative\"");
+        Entity first = h.spawn(type, new Vec3(8.5, GROUND + 8, 10.5));
+        check(bot.player().startRiding(first, true) && !first.onGround(), "не сел в самолёт в воздухе");
+        CompletableFuture<JsonElement> twice = act(h, "GmTestJumper",
+                "[{\"press\":\"key.immersive_aircraft.dismount\"},{\"press\":\"key.immersive_aircraft.dismount\"}]");
+        AtomicReference<Entity> second = new AtomicReference<>();
+        AtomicReference<CompletableFuture<JsonElement>> once = new AtomicReference<>();
+        h.startSequence()
+                .thenWaitUntil(() -> finished(twice))
+                .thenExecute(() -> {
+                    JsonArray results = twice.join().getAsJsonObject().getAsJsonArray("results");
+                    check(results.get(0).getAsJsonObject().get("result").getAsString().startsWith("в воздухе")
+                            && results.get(1).getAsJsonObject().get("result").getAsString().equals("высадка") && !bot.player().isPassenger(),
+                            "два нажатия в воздухе: " + results + ", в самолёте " + bot.player().isPassenger());
+                    second.set(h.spawn(type, new Vec3(20.5, GROUND + 8, 10.5)));
+                    check(bot.player().startRiding(second.get(), true) && !second.get().onGround(), "не сел во второй самолёт в воздухе");
+                    once.set(act(h, "GmTestJumper", "[{\"press\":\"key.immersive_aircraft.dismount\"}]"));
+                })
+                .thenWaitUntil(() -> finished(once.get()))
+                .thenExecute(() -> {
+                    JsonObject r = once.get().join().getAsJsonObject().getAsJsonArray("results").get(0).getAsJsonObject();
+                    check(r.get("result").getAsString().startsWith("в воздухе") && bot.player().getVehicle() == second.get(),
+                            "первое нажатие в другом самолёте: " + r + ", в самолёте " + (bot.player().getVehicle() == second.get()));
+                    leave(h, "GmTestJumper");
                 })
                 .thenSucceed();
     }

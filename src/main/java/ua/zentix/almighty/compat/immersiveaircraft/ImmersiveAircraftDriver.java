@@ -11,6 +11,7 @@ import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import ua.zentix.almighty.bot.VehicleDriver;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -21,10 +22,16 @@ import java.util.List;
  * читает, а «местным» бот для IA быть не может (на выделенном сервере классов клавиш нет), поэтому бот делает шаг
  * пилота сам, после тика самолёта, — методами IA в том же порядке: рули ({@code setInputs}), скорость
  * ({@code updateVelocity}), ускоритель ({@code applyBoost}), управление ({@code updateController}), движение
- * ({@code move}), сглаживание рулей. Три метода шага у IA защищённые — рефлексией; не нашлись — предупреждение в лог,
- * самолёты бот не ведёт. Удар о препятствие (его считает клиент в {@code move}) и клавиши высадки и ускорителя —
- * сообщения клиента IA, их обработкой на сервере ({@code receiveServer}). Класс грузится, только когда мод стоит
- * ({@code Compat}). Поток сервера.
+ * ({@code move}), сглаживание рулей. Удар о препятствие (его считает клиент в {@code move}) и клавиши высадки и
+ * ускорителя — сообщения клиента IA, их обработкой на сервере ({@code receiveServer}). Класс грузится, только когда мод
+ * стоит ({@code Compat}). Поток сервера.
+ * <p>
+ * Рефлексия — только там, где открытого пути нет. Проверено по Immersive Aircraft 1.5.2+1.21.1 (NeoForge): шаг пилота
+ * — защищённые {@code updateVelocity}, {@code applyBoost}, {@code updateController} класса {@code VehicleEntity}
+ * (подклассы их переопределяют), зовёт их только {@code VehicleEntity.tick}, когда пилот «местный»; открытого метода
+ * шага нет. Методы берутся у {@code VehicleEntity} ({@code getDeclaredMethod}), вызов идёт к переопределению
+ * подкласса. Остальное — открытое: {@code setInputs}, {@code move}, сглаживание рулей, сообщения. Нет метода в другой
+ * версии IA — предупреждение в лог, привод выключен ({@link #drives} — нет), самолёты бот не ведёт.
  */
 public final class ImmersiveAircraftDriver implements VehicleDriver {
     public static final String MOD_ID = "immersive_aircraft";
@@ -38,9 +45,17 @@ public final class ImmersiveAircraftDriver implements VehicleDriver {
     private static final Method UPDATE_CONTROLLER = method("updateController");
     private static final boolean BROKEN = UPDATE_VELOCITY == null || APPLY_BOOST == null || UPDATE_CONTROLLER == null;
 
-    /** Тик самолёта, когда клиент пилота предупредил о высадке в воздухе. */
-    private int lastTriedToExit = Integer.MIN_VALUE / 2;
-    /** Ускоритель в конце прошлого шага пилота: клиент смотрит его до того, как тик самолёта убавит его на единицу. */
+    /**
+     * Самолёт, в котором клиент пилота предупредил о высадке в воздухе, и его тик: у IA это поле самолёта, у другого
+     * самолёта (и у того же после перезагрузки чанка — это новая сущность) предупреждения не было.
+     */
+    private WeakReference<Entity> warned = new WeakReference<>(null);
+    private int warnedAt;
+    /**
+     * Самолёт прошлого шага пилота и его ускоритель в конце шага: клиент смотрит ускоритель до того, как тик самолёта
+     * убавит его на единицу.
+     */
+    private WeakReference<Entity> flown = new WeakReference<>(null);
     private int boost;
 
     private static Method method(String name) {
@@ -63,7 +78,7 @@ public final class ImmersiveAircraftDriver implements VehicleDriver {
     @Override
     public void tick(ServerPlayer pilot, Entity vehicle, float x, float y, float z) {
         VehicleEntity v = (VehicleEntity) vehicle;
-        int before = boost;
+        int before = flown.get() == v ? boost : 0;
         v.setInputs(x, y, z);
         call(UPDATE_VELOCITY, v);
         if (before > 0 || v.getBoost() > 0) call(APPLY_BOOST, v);
@@ -75,6 +90,7 @@ public final class ImmersiveAircraftDriver implements VehicleDriver {
         v.pressingInterpolatedX.update(x);
         v.pressingInterpolatedY.update(y);
         v.pressingInterpolatedZ.update(z);
+        if (flown.get() != v) flown = new WeakReference<>(v);
         boost = v.getBoost();
     }
 
@@ -112,8 +128,9 @@ public final class ImmersiveAircraftDriver implements VehicleDriver {
         VehicleEntity v = (VehicleEntity) vehicle;
         if (key.equals(DISMOUNT)) {
             // в воздухе клиент сперва предупреждает, высадка — вторым нажатием за секунду
-            if (!v.onGround() && v.tickCount - lastTriedToExit >= 20) {
-                lastTriedToExit = v.tickCount;
+            if (!v.onGround() && (warned.get() != v || v.tickCount - warnedAt >= 20)) {
+                warned = new WeakReference<>(v);
+                warnedAt = v.tickCount;
                 return "в воздухе: высадка — ещё одним нажатием в течение секунды";
             }
             new CommandMessage(CommandMessage.Key.DISMOUNT, v.getDeltaMovement()).receiveServer(pilot);

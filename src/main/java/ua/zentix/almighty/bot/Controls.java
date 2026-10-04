@@ -329,8 +329,8 @@ final class Controls {
      * Ходьба — как {@code LocalPlayer.aiStep}: толчки от клавиш (присед и использование предмета замедляют), бег,
      * присед, полёт вверх-вниз; верхом — пакет ввода транспорту и то, что клиент делает с ним сам ({@link Vehicles}).
      * Потом физика игрока сервером ({@code doTick}) и то,
-     * что сервер делает после пакета движения: чанки вокруг, урон от падения, статистика и голод от ходьбы. Седока
-     * физика не сдвигает: его место — в транспорте.
+     * что сервер делает после пакета движения: чанки вокруг, урон от падения, движение игрока (его берут снаряды —
+     * {@code getKnownMovement}), статистика и голод от ходьбы. Седока физика не сдвигает: его место — в транспорте.
      */
     private void move(ServerPlayer p) {
         float forward = impulse(Key.FORWARD, Key.BACK), strafe = impulse(Key.LEFT, Key.RIGHT);
@@ -379,6 +379,7 @@ final class Controls {
         p.serverLevel().getChunkSource().move(p);
         if (!riding && !p.isPassenger()) {
             p.doCheckFallDamage(d.x, d.y, d.z, p.onGround());
+            p.setKnownMovement(d);
             p.checkMovementStatistics(d.x, d.y, d.z);
         }
     }

@@ -107,6 +107,8 @@ final class Vehicles {
      * вне дальности симуляции: шаг пилота уводил самолёт туда, бот оставался, с ним — его чанки, и самолёт уже не тикал.
      */
     private static void moved(ServerPlayer p, Entity v, Vec3 from) {
+        // удар о препятствие мог разбить транспорт и высадить бота
+        if (p.getVehicle() != v) return;
         Vec3 old = p.position();
         float yRot = p.getYRot(), xRot = p.getXRot(), head = p.getYHeadRot();
         v.positionRider(p);

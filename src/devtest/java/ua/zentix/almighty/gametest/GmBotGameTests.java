@@ -503,12 +503,16 @@ public final class GmBotGameTests {
         check(type != null, "в запуске GameTest нет Immersive Aircraft");
         ServerLevel level = h.getLevel();
         Bot bot = spawn(h, "GmTestCaptain", 8.5, 10.5, ",\"gamemode\":\"creative\"");
-        // путь дирижабля тест генерирует сам: фоновая генерация не успевает к тикам GameTest. Площадка — x от 0 до 63,
-        // её чанки кончаются не дальше 79, восточнее площадок ещё нет (их ставят по порядку на восток и на юг)
+        // путь дирижабля с чанками бота вокруг (дальность обзора GameTest — 2, сущности тикают, когда готовы ещё два
+        // чанка вокруг) тест генерирует сам: фоновая генерация не успевает к тикам GameTest, и мир долго не тикал бы
+        // дирижабль, а двигатель IA раскручивает тик в мире. Площадка — x от 0 до 63, её чанки кончаются не дальше 79,
+        // восточнее площадок ещё нет (их ставят по порядку на восток и на юг)
         ChunkPos path = new ChunkPos(h.absolutePos(new BlockPos(80, GROUND, 10)));
-        for (int x = path.x; x <= path.x + 40; x++) for (int z = path.z - 1; z <= path.z + 1; z++) level.getChunk(x, z);
-        // сперва набор высоты, потом прямо на запад
-        Entity ship = h.spawn(type, new Vec3(680.5, GROUND + 14, 10.5));
+        for (int x = path.x; x <= path.x + 40; x++) for (int z = path.z - 4; z <= path.z + 4; z++) level.getChunk(x, z);
+        // дирижабль — посреди чанка: место пилота IA — в полблока сбоку, а в соседнем от бота чанке мир дирижабль не тикал
+        // бы вовсе (и двигатель не раскрутился бы); сперва набор высоты, потом прямо на запад
+        BlockPos base = h.absolutePos(BlockPos.ZERO), at = h.absolutePos(new BlockPos(680, GROUND, 10));
+        Entity ship = h.spawn(type, new Vec3((at.getX() & ~15) + 8.5 - base.getX(), GROUND + 14, (at.getZ() & ~15) + 8.5 - base.getZ()));
         ship.setYRot(90);
         check(bot.player().startRiding(ship, true) && ship.getControllingPassenger() == bot.player(), "не сел в дирижабль пилотом");
         Vec3 start = ship.position();

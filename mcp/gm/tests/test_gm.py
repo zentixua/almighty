@@ -294,6 +294,9 @@ class RecipesTest(Tmp):
         self.assertEqual(params["script"], 'def s = gm.ship("Grand")\nif (s.pos().y < 120) gm.emit("low ${s.name()}")')
         self.assertEqual(b.calls[1][1]["code"], 'return "Grand" == "Grand"')
         self.assertEqual(recipes.resources(r, {"ship": "Grand", "alt": 120}), ["ship:Grand", "sky"])
+        for bad in ("", "a b:,/<>"):
+            with self.assertRaises(recipes.RecipeError):
+                recipes.resources(r, {"ship": bad, "alt": 120})
         self.assertFalse(recipes.TYPES["number"](float("nan")) or recipes.TYPES["number"](float("inf")))
         self.assertFalse(recipes.TYPES["text"]('${"x".execute()}'))
         with self.assertRaises(recipes.RecipeError):

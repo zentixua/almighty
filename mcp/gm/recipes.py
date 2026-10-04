@@ -52,6 +52,7 @@ ALLOWED = {"command", "function", "script", "rule.add", "rule.remove", "build", 
 # значения шагов с кодом Groovy: параметры в них — как в блоке groovy
 GROOVY_KEYS = ("code", "script")
 KINDS = ("instant", "task", "show")
+RESOURCE_VALUE = re.compile(r"[A-Za-z0-9_.-]+")
 TYPES = {
     "int": lambda v: isinstance(v, int) and not isinstance(v, bool),
     "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v),
@@ -225,7 +226,13 @@ def _text(v):
 
 def resources(recipe, values):
     """Ресурсы задачи по рецепту: ${имя} — текстом ("ship:${ship}" → "ship:Grand")."""
-    return [PARAM.sub(lambda m: _text(values[m.group(1)]), r) for r in recipe.resources]
+    def put(m):
+        text = _text(values[m.group(1)])
+        # пустое или с разделителями — общий замок на всех («ship:») или чужой ресурс
+        if not RESOURCE_VALUE.fullmatch(text):
+            raise RecipeError(f"{recipe.name}: {m.group(1)}={text!r} в resources — только латиница, цифры, _ . -")
+        return text
+    return [PARAM.sub(put, r) for r in recipe.resources]
 
 
 def substitute(obj, values, code=None):

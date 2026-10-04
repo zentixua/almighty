@@ -13,6 +13,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PlayerRideableJumping;
 import net.minecraft.world.entity.vehicle.Boat;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.util.ObfuscationReflectionHelper;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.compat.Compat;
@@ -75,8 +76,12 @@ final class Vehicles {
             VehicleDriver driver = driver(v);
             if (driver != null) {
                 // клиент не двигает транспорт в чанках, которых у него нет; бот — пока они не готовы на сервере
-                if (Controls.ready(v)) driver.tick(p, v, axis(held, Controls.Key.LEFT, Controls.Key.RIGHT), axis(held, Controls.Key.JUMP, Controls.Key.SNEAK),
-                        axis(held, Controls.Key.FORWARD, Controls.Key.BACK));
+                if (Controls.ready(v)) {
+                    Vec3 from = v.position();
+                    driver.tick(p, v, axis(held, Controls.Key.LEFT, Controls.Key.RIGHT), axis(held, Controls.Key.JUMP, Controls.Key.SNEAK),
+                            axis(held, Controls.Key.FORWARD, Controls.Key.BACK));
+                    moved(p, v, from);
+                }
             } else if (local(p)) {
                 if (v instanceof Boat boat) {
                     steer(boat, held.contains(Controls.Key.LEFT), held.contains(Controls.Key.RIGHT), held.contains(Controls.Key.FORWARD), held.contains(Controls.Key.BACK));
@@ -92,6 +97,30 @@ final class Vehicles {
     private static float axis(Set<Controls.Key> held, Controls.Key plus, Controls.Key minus) {
         boolean a = held.contains(plus), b = held.contains(minus);
         return a == b ? 0.0F : a ? 1.0F : -1.0F;
+    }
+
+    /**
+     * Ход транспорта от клиента водителя сервер принимает так ({@code handleMoveVehicle}): водитель садится на своё
+     * место в сдвинутом транспорте ({@code positionRider}; взгляд и прошлое место — свои:
+     * {@code resyncPlayerWithVehicle} NeoForge), движение и статистика езды — по ходу транспорта; чанки за ним — в конце
+     * тика бота ({@link Controls}). Иначе место седоку давал бы только тик транспорта в мире, а мир не тикает транспорт
+     * вне дальности симуляции: шаг пилота уводил самолёт туда, бот оставался, с ним — его чанки, и самолёт уже не тикал.
+     */
+    private static void moved(ServerPlayer p, Entity v, Vec3 from) {
+        // удар о препятствие мог разбить транспорт и высадить бота
+        if (p.getVehicle() != v) return;
+        Vec3 old = p.position();
+        float yRot = p.getYRot(), xRot = p.getXRot(), head = p.getYHeadRot();
+        v.positionRider(p);
+        p.setYRot(yRot);
+        p.setXRot(xRot);
+        p.setYHeadRot(head);
+        p.xo = old.x;
+        p.yo = old.y;
+        p.zo = old.z;
+        Vec3 d = v.position().subtract(from);
+        p.setKnownMovement(d);
+        p.checkRidingStatistics(d.x, d.y, d.z);
     }
 
     /**

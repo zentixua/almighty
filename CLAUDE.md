@@ -24,7 +24,7 @@ PR до переезда — `zentixua/airstrike#N`. Мост стоит на с
 ./gradlew runServer                      # пробный выделенный сервер с мостом (run/server)
 uv run mcp/almighty.py call status       # один вызов моста (адрес и токен — в начале скрипта)
 ```
-CI (GitHub Actions) проверяет каждый PR и push в `main`: сборка, юнит-тесты, GameTest; jar — артефакт
+CI (GitHub Actions) проверяет каждый PR и push в `main`: набор ведущего, сборка, юнит-тесты, GameTest; jar — артефакт
 `almighty-jar`. Релиз: поднять `mod_version` (`gradle.properties`), написать `docs/releases/<версия>.md`, влить в
 `main` и запустить `build` вручную на `main` с `release=true` — workflow выпускает `v<версия>` с jar. Потом — PR в
 airstrike-pack с jar выпуска.
@@ -86,8 +86,11 @@ airstrike-pack с jar выпуска.
 строки функции), `say`, `script`, `rule` (add/remove/list/types), `events`, `view` (map/look/blocks/eye), `build` (+ undo),
 `area`, `job` (+ cancel), `bot` (spawn/remove/list/state/act), `notes`, `call` — любой метод. Новое — сперва подумать, не делается ли оно скриптом или правилом;
 отдельный инструмент — только когда он и правда снимает ошибки. `from`/`to` там `start`/`end`.
-Рядом — `mcp/gm/` (не инструменты MCP, только Python 3): охраняемые зоны сессий ведущего (`zones.py`: путь удара с
-разбросом против зон, точка обхода) и README — когда проверять и что говорить игрокам только после проверки в мире.
+Рядом — `mcp/gm/` (README): набор ведущего на Claude — диспетчер `gmd.py` (служба без ИИ: лента, голос, очередь
+исполнителей, наставник), инструменты сессий `gm.py` (MCP gm), охрана `guard.py` (хук PreToolUse и шаги рецептов),
+ворота навыка `gate.py`, навык `skill/` (ядро, правила, роли, рычаги, рецепты), проверочный набор `evals/`,
+охраняемые зоны `zones.py`. Python 3.11 без зависимостей (кроме `gm.py mcp` — пакет mcp); тесты —
+`python3 -m unittest discover -s mcp/gm/tests`.
 
 Скрипт и правило: Groovy в потоке сервера, переменные `server`, `gm` (`command`, `commandAs(entity, …)` — от лица
 сущности, `emit(data)` — в ленту событием `emit`, `fields(event)`, `player(name)`, `level(dim)`), `state` (общая карта

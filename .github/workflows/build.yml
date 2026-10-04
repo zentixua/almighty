@@ -1,4 +1,4 @@
-# Сборка, юнит-тесты и GameTest мода (сервер NeoForge без других модов, ~1 мин); jar — в артефактах запуска.
+# Набор ведущего (Python), сборка, юнит-тесты и GameTest мода (сервер NeoForge, ~1 мин); jar — в артефактах.
 # Ручной запуск на main с release=true: проверка, после неё — релиз v<mod_version> на GitHub с этим jar и заметками
 # из docs/releases/<mod_version>.md.
 name: build
@@ -30,6 +30,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+
+      - name: Набор ведущего (mcp/gm)
+        run: python3 -m unittest discover -s mcp/gm/tests
 
       - uses: actions/setup-java@v5
         with:

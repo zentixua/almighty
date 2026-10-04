@@ -1,0 +1,19 @@
+# Ведущий: служба пользователя systemd (на сервере, где игра и мост).
+#   cp gm.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now gm
+#   loginctl enable-linger $USER   — служба живёт без входа в систему
+# Пути — свои: набор (клон almighty) и каталог сервера (gm.py init). Журнал — journalctl --user -u gm.
+[Unit]
+Description=Ведущий Minecraft (Almighty): голос, исполнители, наставник
+After=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/uv run --quiet --script %h/airstrike-server/almighty/mcp/gm/gmd.py --config %h/airstrike-server/gm/config.toml
+Restart=on-failure
+RestartSec=10
+# голос, два исполнителя, наставник с воротами — до 5 процессов claude; рядом — сервер игры
+MemoryMax=4G
+CPUQuota=200%
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

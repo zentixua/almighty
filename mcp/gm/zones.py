@@ -25,12 +25,14 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FILE = os.environ.get("GM_ZONES", os.path.join(HERE, "zones.json"))
-LOCK = FILE + ".lock"
 
 
 class Locked:
+    def __init__(self, path=None):
+        self.lock = (path or FILE) + ".lock"
+
     def __enter__(self):
-        self.fd = open(LOCK, "a")
+        self.fd = open(self.lock, "a")
         fcntl.flock(self.fd, fcntl.LOCK_EX)
         return self
 
@@ -39,9 +41,9 @@ class Locked:
         self.fd.close()
 
 
-def load():
+def load(path=None):
     try:
-        with open(FILE, encoding="utf-8") as f:
+        with open(path or FILE, encoding="utf-8") as f:
             zones = json.load(f)
     except FileNotFoundError:
         return {}
@@ -49,11 +51,12 @@ def load():
     return {k: v for k, v in zones.items() if not v.get("expires") or v["expires"] > now}
 
 
-def save(zones):
-    tmp = FILE + ".tmp"
+def save(zones, path=None):
+    path = path or FILE
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(zones, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, FILE)
+    os.replace(tmp, path)
 
 
 def segment_distance(p, a, b):
@@ -81,37 +84,39 @@ def detour(center, clearance, a, b):
     return round(center[0] + ox * k), round(center[1] + oz * k)
 
 
-def check(args, zones):
-    target = tuple(args.to)
-    points = []
-    if args.frm:
-        points.append(tuple(args.frm))
-    points += [tuple(v) for v in args.via or []]
-    points.append(target)
-    conflicts = []
+def conflicts(zones, target, frm=None, via=(), spread=0, margin=64):
+    """Чем путь от frm через via к target (x, z) и круг разброса у цели задевают зоны; пусто — можно."""
+    target = tuple(target)
+    points = ([tuple(frm)] if frm else []) + [tuple(v) for v in via] + [target]
+    found = []
     for name, zone in sorted(zones.items()):
         center = (zone["x"], zone["z"])
         r = zone["r"]
         hit = math.hypot(center[0] - target[0], center[1] - target[1])
-        if hit < r + args.spread + args.margin:
+        if hit < r + spread + margin:
             where = "в зоне" if hit < r else f"в {round(hit - r)} блоках от края зоны"
-            conflicts.append(f"цель ({target[0]}, {target[1]}) с разбросом {args.spread} {where} «{name}» "
-                             f"({zone['x']}, {zone['z']}, r={r}) — выбрать другую цель")
+            found.append(f"цель ({target[0]}, {target[1]}) с разбросом {spread} {where} «{name}» "
+                         f"({zone['x']}, {zone['z']}, r={r}) — выбрать другую цель")
             continue
         legs = list(zip(points, points[1:]))
         for i, (a, b) in enumerate(legs):
             d, t = segment_distance(center, a, b)
             # снаряды расходятся к разбросу цели на последнем отрезке: у цели — на весь разброс
-            need = r + args.margin + (args.spread * t if i == len(legs) - 1 else 0)
+            need = r + margin + (spread * t if i == len(legs) - 1 else 0)
             if d < need:
-                via = detour(center, need, a, b)
+                v = detour(center, need, a, b)
                 where = "проходит через зону" if d < r else f"в {round(d - r)} блоках от края зоны"
-                conflicts.append(f"путь ({a[0]}, {a[1]})→({b[0]}, {b[1]}) {where} «{name}» ({zone['x']}, {zone['z']}, r={r}); "
-                                 f"обход: --via {via[0]} {via[1]} (проверить снова)")
+                found.append(f"путь ({a[0]}, {a[1]})→({b[0]}, {b[1]}) {where} «{name}» "
+                             f"({zone['x']}, {zone['z']}, r={r}); обход: --via {v[0]} {v[1]} (проверить снова)")
                 break
-    if conflicts:
+    return found
+
+
+def check(args, zones):
+    found = conflicts(zones, args.to, args.frm, args.via or [], args.spread, args.margin)
+    if found:
         print("НЕЛЬЗЯ:")
-        for c in conflicts:
+        for c in found:
             print("  " + c)
         return 1
     print(f"можно: зоны не задеты (зон {len(zones)}, запас {args.margin}, разброс {args.spread})")

@@ -1,0 +1,56 @@
+# Ведущий: настройки сервера. Скопировать в каталог оверлея (например ~/airstrike-server/gm/config.toml);
+# рядом диспетчер держит gm.db, zones.json, runs/ и знания сервера в skill/ (git). Значения по умолчанию — conf.py.
+
+[bridge]                      # мост игры (Almighty), только петля
+url = "http://127.0.0.1:25650"
+token_file = "~/airstrike-server/gm-token"
+
+[test_bridge]                 # тестовый сервер на копии мира: там наставник пробует рецепты
+url = "http://127.0.0.1:25651"
+token_file = "~/airstrike-work/gm-test/token"
+
+[gm]
+names = ["ведущий", "ведущая", "ведущему", "ведущего", "ведущим", "ведучий", "ведучому", "гм", "gm"]
+owners = ["ZentixUA"]
+default_language = "ru"
+languages = { WallyFillmark = "uk" }
+
+[models]                      # голос — быстрый и дешёвый (выбор — по проверочному набору: gate.py evals)
+voice = "haiku"
+voice_effort = "low"
+worker = "sonnet"
+worker_effort = "medium"
+teacher = "sonnet"
+teacher_effort = "high"
+reviewer = "sonnet"
+reviewer_effort = "medium"
+fallback = "sonnet"
+
+[limits]
+workers = 2
+task_minutes = 20
+teacher_gap_minutes = 10
+
+[guard]
+owner_only = ['^(op|deop|whitelist|ban|ban-ip|pardon|pardon-ip|kick)\b', '^airstrike\s+(nuke|radiation)\b']
+script_never = ['ua\.zentix\.airstrike\.(strike|nuclear|launcher)']
+
+# Удары Airstrike: первое подходящее правило решает. Цель — «at x y z» числами, путь — «from x z» и «via x z …».
+[[guard.strike]]
+match = '^airstrike\s+launcher\b.*\bfire\b'
+deny = "пуск со стационарной пусковой ведущий не даёт: её цель не проверить по зонам — удар залпом с from"
+
+[[guard.strike]]
+match = '^airstrike\s+launcher\b.*\bmission\b'
+target = '\bmission\s+\S+\s+\d+\s+\d+\s+(\S+)\s+(\S+)\s+(\S+)'
+from = '^airstrike\s+launcher\s+(\S+)\s+\S+\s+(\S+)'
+spread = '\bmission\s+\S+\s+\d+\s+(\d+)'
+
+[[guard.strike]]
+match = '^airstrike\s+nuke\b'
+owner = true
+margin = 600
+
+[[guard.strike]]
+match = '^airstrike\s+(salvo\s+)?(drone|shahed|missile|bunker|rocket|grad|loiter|lancet)\b'
+spread = '^airstrike\s+salvo\s+\S+\s+\d+\s+(\d+)'

@@ -91,8 +91,8 @@ class Gm:
             if recipe not in found:
                 raise GmError(f"рецепта {recipe!r} нет" + (f": {errors[recipe]}" if recipe in errors else ""))
             r = found[recipe]
-            recipesmod.bind(r, params)
-            resources = sorted(set(resources or []) | set(r.resources))
+            values = recipesmod.bind(r, params)
+            resources = sorted(set(resources or []) | set(recipesmod.resources(r, values)))
         limit = self.cfg["limits"]["task_minutes"]
         minutes = min(minutes or limit, limit * 3)
         turn = self.store.get("voice.turn") or {}

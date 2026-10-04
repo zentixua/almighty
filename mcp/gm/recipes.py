@@ -20,8 +20,9 @@
     ```
 
 name — как имя файла; kind: instant — делает голос сразу, task — исполнитель, show — долгое, правилом в игре;
-resources — что занимает (две задачи с общим ресурсом не идут одновременно). Шапка — строки «ключ: значение»,
-значение — JSON или строка. Шаги — вызовы моста (методы ALLOWED, слов игрокам среди них нет), ${имя} — параметр:
+resources — что занимает (две задачи с общим ресурсом не идут одновременно; ${имя} — текстом: "ship:${ship}").
+Шапка — строки «ключ: значение», значение — JSON или строка. Шаги — вызовы моста (методы ALLOWED, слов игрокам
+среди них нет), ${имя} — параметр:
 строка целиком — значение своего типа, внутри строки — текстом. Каждый шаг перед вызовом проходит охрану
 (guard.check_call). check — Groovy, который после шагов говорит, вышло ли (true или {ok: true, …}); у task и show
 он обязателен: «готово» — по миру.
@@ -41,6 +42,7 @@ resources — что занимает (две задачи с общим рес�
 трогаем.
 """
 import json
+import math
 import os
 import re
 
@@ -50,9 +52,10 @@ ALLOWED = {"command", "function", "script", "rule.add", "rule.remove", "build", 
 # значения шагов с кодом Groovy: параметры в них — как в блоке groovy
 GROOVY_KEYS = ("code", "script")
 KINDS = ("instant", "task", "show")
+RESOURCE_VALUE = re.compile(r"[A-Za-z0-9_.-]+")
 TYPES = {
     "int": lambda v: isinstance(v, int) and not isinstance(v, bool),
-    "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+    "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v),
     "bool": lambda v: isinstance(v, bool),
     "name": lambda v: isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9_]{1,16}", v) is not None,
     "block": lambda v: isinstance(v, str) and re.fullmatch(r"[a-z0-9_.:/-]+(\[[a-z0-9_=,]*\])?", v) is not None,
@@ -138,8 +141,10 @@ def validate(recipe):
             t = p.get("type") if isinstance(p, dict) else p
             if t not in TYPES:
                 errors.append(f"параметр {k}: тип {t!r} — один из {', '.join(TYPES)}")
-    if not isinstance(recipe.resources, list):
-        errors.append("resources — список")
+    if not isinstance(recipe.resources, list) or not all(isinstance(x, str) and x.strip() for x in recipe.resources):
+        errors.append("resources — список непустых строк")
+    elif any(CODE.search(x) for x in recipe.resources):
+        errors.append("${code:…} в resources нельзя: ресурс — имя места или корабля")
     if not isinstance(recipe.steps, list) or not recipe.steps:
         errors.append("нет шагов (```steps со списком JSON)")
     else:
@@ -148,10 +153,10 @@ def validate(recipe):
                 errors.append(f"шаг {i}: {{\"method\", \"params\"}}")
             elif s.get("method") not in ALLOWED:
                 errors.append(f"шаг {i}: метод {s.get('method')!r} нельзя (можно: {', '.join(sorted(ALLOWED))})")
-    steps_text = json.dumps(recipe.steps, ensure_ascii=False)
+    steps_text = json.dumps([recipe.steps, recipe.resources], ensure_ascii=False)
     for k in sorted(set(PARAM.findall(steps_text)) - set(recipe.params if isinstance(recipe.params, dict) else {})):
         errors.append(f"${{{k}}} не объявлен в params")
-    refs = set(CODE.findall(steps_text))
+    refs = set(CODE.findall(json.dumps(recipe.steps, ensure_ascii=False)))
     for k in sorted(refs - set(recipe.code)):
         errors.append(f"${{code:{k}}}: нет блока ```groovy {k}")
     for k in sorted(set(recipe.code) - refs):
@@ -217,6 +222,17 @@ def _text(v):
     if isinstance(v, float):
         return repr(round(v, 6)).removesuffix(".0") if v == int(v) else repr(round(v, 6))
     return str(v)
+
+
+def resources(recipe, values):
+    """Ресурсы задачи по рецепту: ${имя} — текстом ("ship:${ship}" → "ship:Grand")."""
+    def put(m):
+        text = _text(values[m.group(1)])
+        # пустое или с разделителями — общий замок на всех («ship:») или чужой ресурс
+        if not RESOURCE_VALUE.fullmatch(text):
+            raise RecipeError(f"{recipe.name}: {m.group(1)}={text!r} в resources — только латиница, цифры, _ . -")
+        return text
+    return [PARAM.sub(put, r) for r in recipe.resources]
 
 
 def substitute(obj, values, code=None):

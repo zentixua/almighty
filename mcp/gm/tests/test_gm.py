@@ -275,6 +275,34 @@ class RecipesTest(Tmp):
         with self.assertRaises(recipes.RecipeError):
             recipes.run(r, {}, FakeBridge(), self.ctx(), guard.check_call)
 
+    def test_groovy_blocks(self):
+        path = os.path.join(self.tmp, "skill", "recipes", "ap.md")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write('---\nname: ap\ndescription: x\nkind: show\nparams: {"ship": "name", "alt": "int"}\n---\n'
+                    '```groovy pilot\ndef s = gm.ship("${ship}")\n'
+                    'if (s.pos().y < ${alt}) gm.emit("low ${s.name()}")\n```\n'
+                    '```steps\n[{"method": "rule.add", "params": {"event": "ServerTickEvent.Post",'
+                    ' "name": "ap_${ship}", "script": "${code:pilot}"}}]\n```\n'
+                    '```check\nreturn "${ship}" == "Grand"\n```\n')
+        r = recipes.parse(path)
+        self.assertEqual(recipes.validate(r), [])
+        b = FakeBridge({"rule.add": {"rule": 1}, "script": {"ok": True, "value": True}})
+        self.assertTrue(recipes.run(r, {"ship": "Grand", "alt": 120}, b, self.ctx(), guard.check_call)["ok"])
+        params = b.calls[0][1]
+        self.assertEqual(params["name"], "ap_Grand")
+        self.assertEqual(params["script"], 'def s = gm.ship("Grand")\nif (s.pos().y < 120) gm.emit("low ${s.name()}")')
+        self.assertEqual(b.calls[1][1]["code"], 'return "Grand" == "Grand"')
+        self.assertFalse(recipes.TYPES["text"]('${"x".execute()}'))
+        with self.assertRaises(recipes.RecipeError):
+            recipes.groovy("gm.emit('${t}')", {"t": "п'ять"})
+        with open(path, "w", encoding="utf-8") as f:
+            f.write('---\nname: ap\ndescription: x\nkind: instant\nparams: {}\n---\n```groovy a\n1\n```\n'
+                    '```groovy b\n2\n```\n```steps\n[{"method": "script", "params": {"code": "x ${code:a}"}},'
+                    ' {"method": "script", "params": {"code": "${code:c}"}}]\n```\n')
+        problems = " | ".join(recipes.validate(recipes.parse(path)))
+        for part in ("${code:c}", "блок groovy b", "целой строкой"):
+            self.assertIn(part, problems)
+
     def test_validate(self):
         path = os.path.join(self.tmp, "skill", "recipes", "x.md")
         with open(path, "w", encoding="utf-8") as f:

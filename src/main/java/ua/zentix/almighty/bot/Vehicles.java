@@ -3,15 +3,19 @@ package ua.zentix.almighty.bot;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PlayerRideableJumping;
 import net.minecraft.world.entity.vehicle.Boat;
-import net.neoforged.fml.ModList;
 import net.neoforged.fml.util.ObfuscationReflectionHelper;
+import ua.zentix.almighty.Almighty;
+import ua.zentix.almighty.compat.Compat;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -20,51 +24,59 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Транспорт под ботом — то, что делает с ним клиент водителя. Ванильный транспорт сервер двигает сам
- * ({@link BotPlayer}): ездовым животным хватает пакета ввода, а то, что клиент делает сверх него, бот повторяет по коду
- * клиента — руль лодки ({@code Boat.controlBoat}) и прыжок верхом ({@code LocalPlayer.aiStep}). Транспорт модов —
- * своим приводом: самолёты Immersive Aircraft ({@link ImmersiveAircraft}). Клавиши мода, которых нет в ванили
- * (высадка, ускоритель), — шаг {@code press} по имени клавиши в настройках управления. Поток сервера.
+ * Транспорт под ботом — то, что делает с ним клиент водителя. Общий путь — ввод игрока: транспорт с меткой
+ * {@link #DRIVEN_BY_RIDER} (ванильный — лошади, лодки, свинья, страйдер, верблюд; моды и датапаки добавляют свой) сервер
+ * двигает сам ({@link BotPlayer}) по пакету ввода, а то, что ванильный клиент делает сверх него, бот повторяет по коду
+ * клиента — руль лодки ({@code Boat.controlBoat}) и прыжок верхом ({@code LocalPlayer.aiStep}). Транспорт мода, который
+ * клиент ведёт своим кодом, — привод из совместимости с модом ({@link VehicleDriver}, {@code Compat}); его клавиши
+ * сверх ванильных — шаг {@code press} по имени клавиши в настройках управления. Поток сервера.
  */
 final class Vehicles {
-    private static final boolean IMMERSIVE_AIRCRAFT = ModList.get().isLoaded(ImmersiveAircraft.MOD_ID);
+    /**
+     * Транспорт, который ведёт ввод водителя ({@code xxa}/{@code zza}, прыжок, присед), а не клавиши клиента: его бот
+     * ведёт «местным», движение считает сервер. Код мода за проверкой «водитель местный» может читать классы клиента —
+     * транспорт мода в метку только после проверки, что он ведёт себя как ванильный.
+     */
+    static final TagKey<EntityType<?>> DRIVEN_BY_RIDER = TagKey.create(Registries.ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath(Almighty.ID, "driven_by_rider"));
     private static final Method BOAT_STATUS = ObfuscationReflectionHelper.findMethod(Boat.class, "getStatus");
     private static final Field STATUS = ObfuscationReflectionHelper.findField(Boat.class, "status");
     private static final Field DELTA_ROTATION = ObfuscationReflectionHelper.findField(Boat.class, "deltaRotation");
     private static final Field LAND_FRICTION = ObfuscationReflectionHelper.findField(Boat.class, "landFriction");
 
     private final Bot bot;
+    /** Приводы транспорта модов, которые стоят (совместимость), — свои у каждого бота. */
+    private final List<VehicleDriver> drivers = Compat.vehicleDrivers();
     /** Прыжок верхом, как у клиента: тики удержания, сила и было ли нажато в прошлом тике. */
     private int jumpTicks;
     private float jumpScale;
     private boolean jumpWas;
-    /** Тик транспорта, когда клиент пилота IA предупредил о высадке в воздухе. */
-    private int lastTriedToExit = Integer.MIN_VALUE / 2;
-    /** Ускоритель самолёта IA в конце прошлого шага пилота. */
-    private int boost;
 
     Vehicles(Bot bot) {
         this.bot = bot;
     }
 
-    /** Ведёт ли игрок ванильный транспорт: его движение тогда считает сервер. */
+    /** Ведёт ли игрок транспорт, который ведёт ввод водителя: его движение тогда считает сервер. */
     static boolean local(ServerPlayer p) {
         Entity v = p.getVehicle();
-        return v != null && v.getControllingPassenger() == p
-                && BuiltInRegistries.ENTITY_TYPE.getKey(v.getType()).getNamespace().equals(ResourceLocation.DEFAULT_NAMESPACE);
+        return v != null && v.getControllingPassenger() == p && v.getType().is(DRIVEN_BY_RIDER);
+    }
+
+    /** Привод транспорта мода под ботом; null — нет. */
+    private VehicleDriver driver(Entity v) {
+        for (VehicleDriver d : drivers) if (d.drives(v)) return d;
+        return null;
     }
 
     /** Тик бота, после пакета ввода: руль, прыжок верхом, привод транспорта мода. */
     void tick(ServerPlayer p, Set<Controls.Key> held) {
         boolean jump = held.contains(Controls.Key.JUMP);
-        int before = boost;
-        boost = 0;
         Entity v = p.getVehicle();
         if (v != null && v.getControllingPassenger() == p) {
-            if (IMMERSIVE_AIRCRAFT && ImmersiveAircraft.is(v)) {
+            VehicleDriver driver = driver(v);
+            if (driver != null) {
                 // клиент не двигает транспорт в чанках, которых у него нет; бот — пока они не готовы на сервере
-                if (Controls.ready(v)) boost = ImmersiveAircraft.fly(p, v, axis(held, Controls.Key.LEFT, Controls.Key.RIGHT), axis(held, Controls.Key.JUMP, Controls.Key.SNEAK),
-                        axis(held, Controls.Key.FORWARD, Controls.Key.BACK), before);
+                if (Controls.ready(v)) driver.tick(p, v, axis(held, Controls.Key.LEFT, Controls.Key.RIGHT), axis(held, Controls.Key.JUMP, Controls.Key.SNEAK),
+                        axis(held, Controls.Key.FORWARD, Controls.Key.BACK));
             } else if (local(p)) {
                 if (v instanceof Boat boat) {
                     steer(boat, held.contains(Controls.Key.LEFT), held.contains(Controls.Key.RIGHT), held.contains(Controls.Key.FORWARD), held.contains(Controls.Key.BACK));
@@ -149,44 +161,34 @@ final class Vehicles {
         };
     }
 
-    /** Клавиша транспорта по имени в настройках управления (шаг {@code press}). Итог — что сделано. */
+    /** Клавиша транспорта мода по имени в настройках управления (шаг {@code press}). Итог — что сделано. */
     String press(ServerPlayer p, String key) {
         Entity v = p.getVehicle();
         if (v == null || v.getControllingPassenger() != p) throw new Steps.Failed("бот не ведёт транспорт: клавиш транспорта нет");
-        if (IMMERSIVE_AIRCRAFT && ImmersiveAircraft.is(v)) {
-            String done = ImmersiveAircraft.press(p, v, key, this);
-            if (done != null) return done;
-        }
-        throw new Steps.Failed("у " + BuiltInRegistries.ENTITY_TYPE.getKey(v.getType()) + " нет клавиши «" + key + "»; есть: " + String.join(", ", keys(v)));
-    }
-
-    int lastTriedToExit() {
-        return lastTriedToExit;
-    }
-
-    void triedToExit(int tick) {
-        lastTriedToExit = tick;
+        VehicleDriver driver = driver(v);
+        String done = driver != null ? driver.press(p, v, key) : null;
+        if (done != null) return done;
+        List<String> keys = driver != null ? driver.keys() : List.of();
+        throw new Steps.Failed("у " + BuiltInRegistries.ENTITY_TYPE.getKey(v.getType()) + " нет клавиши «" + key + "»"
+                + (keys.isEmpty() ? ": клавиш мода у него нет" : "; есть: " + String.join(", ", keys)));
     }
 
     /** Транспорт под ботом для {@code bot}: кто его ведёт и клавиши мода. null — бот пешком. */
-    static JsonObject describe(ServerPlayer p) {
+    JsonObject describe(ServerPlayer p) {
         Entity v = p.getVehicle();
         if (v == null) return null;
         JsonObject o = new JsonObject();
         o.addProperty("type", BuiltInRegistries.ENTITY_TYPE.getKey(v.getType()).toString());
-        boolean driver = v.getControllingPassenger() == p;
-        o.addProperty("driver", driver);
-        if (driver) {
-            boolean mod = IMMERSIVE_AIRCRAFT && ImmersiveAircraft.is(v);
-            o.addProperty("steering", mod || local(p) ? "клавиши бота" : "привода нет: если этот транспорт ведёт клиент водителя, клавиши бота его не двигают");
+        boolean driving = v.getControllingPassenger() == p;
+        o.addProperty("driver", driving);
+        if (driving) {
+            VehicleDriver driver = driver(v);
+            o.addProperty("steering", driver != null || local(p) ? "клавиши бота"
+                    : "сервер этот транспорт не ведёт: нет метки almighty:driven_by_rider и привода мода");
             JsonArray keys = new JsonArray();
-            keys(v).forEach(keys::add);
+            if (driver != null) driver.keys().forEach(keys::add);
             if (!keys.isEmpty()) o.add("keys", keys);
         }
         return o;
-    }
-
-    private static List<String> keys(Entity v) {
-        return IMMERSIVE_AIRCRAFT && ImmersiveAircraft.is(v) ? ImmersiveAircraft.KEYS : List.of();
     }
 }

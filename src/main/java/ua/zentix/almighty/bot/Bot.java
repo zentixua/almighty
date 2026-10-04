@@ -416,7 +416,7 @@ public final class Bot {
         controls.held().forEach(k -> keys.add(k.id()));
         o.add("keys", keys);
         if (teleportPending) o.addProperty("loading", "ждёт загрузки чанков места: стоит, пока они не готовы");
-        JsonObject vehicle = Vehicles.describe(player());
+        JsonObject vehicle = vehicles.describe(player());
         if (vehicle != null) o.add("vehicle", vehicle);
         o.add("menu", menu(player().containerMenu));
         if (current != null) o.add("program", current.describe());

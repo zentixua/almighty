@@ -1,4 +1,4 @@
-package ua.zentix.almighty.bot;
+package ua.zentix.almighty.compat.immersiveaircraft;
 
 import com.mojang.logging.LogUtils;
 import immersive_aircraft.entity.VehicleEntity;
@@ -9,37 +9,39 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
+import ua.zentix.almighty.bot.VehicleDriver;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
 
 /**
- * Самолёты Immersive Aircraft под ботом. Полёт IA двигает клиент пилота: в тике самолёта, когда пилот «местный», IA
- * читает его клавиши ({@code VehicleEntity.tickPilot}, классы клиента) и считает полёт. На сервере клиента нет, поэтому
- * бот для IA не «местный» ({@link Vehicles#local}), а шаг пилота делает сам, после тика самолёта, — методами IA в том
- * же порядке: рули ({@code setInputs}), скорость ({@code updateVelocity}), ускоритель ({@code applyBoost}),
- * управление ({@code updateController}), движение ({@code move}), сглаживание рулей. Удар о препятствие (его считает
- * клиент в {@code move}) и клавиши высадки и ускорителя — сообщения клиента IA, их обработкой на сервере
- * ({@code receiveServer}). Класс грузится, только когда мод стоит. Поток сервера.
+ * Совместимость с Immersive Aircraft: самолёты под ботом. Полёт IA считает клиент пилота — в тике самолёта, когда
+ * пилот «местный», IA читает его клавиши ({@code VehicleEntity.tickPilot}, классы клиента). Ввод игрока на сервере IA не
+ * читает, а «местным» бот для IA быть не может (на выделенном сервере классов клавиш нет), поэтому бот делает шаг
+ * пилота сам, после тика самолёта, — методами IA в том же порядке: рули ({@code setInputs}), скорость
+ * ({@code updateVelocity}), ускоритель ({@code applyBoost}), управление ({@code updateController}), движение
+ * ({@code move}), сглаживание рулей. Три метода шага у IA защищённые — рефлексией; не нашлись — предупреждение в лог,
+ * самолёты бот не ведёт. Удар о препятствие (его считает клиент в {@code move}) и клавиши высадки и ускорителя —
+ * сообщения клиента IA, их обработкой на сервере ({@code receiveServer}). Класс грузится, только когда мод стоит
+ * ({@code Compat}). Поток сервера.
  */
-final class ImmersiveAircraft {
-    static final String MOD_ID = "immersive_aircraft";
+public final class ImmersiveAircraftDriver implements VehicleDriver {
+    public static final String MOD_ID = "immersive_aircraft";
     /** Клавиши IA сверх ванильных (имена в настройках управления). Рули — клавиши бота, как у клиента IA в NeoForge. */
     static final String DISMOUNT = "key.immersive_aircraft.dismount", BOOST = "key.immersive_aircraft.boost";
-    static final List<String> KEYS = List.of(DISMOUNT, BOOST);
+    private static final List<String> KEYS = List.of(DISMOUNT, BOOST);
 
     private static final Logger LOG = LogUtils.getLogger();
     private static final Method UPDATE_VELOCITY = method("updateVelocity");
     private static final Method APPLY_BOOST = method("applyBoost");
     private static final Method UPDATE_CONTROLLER = method("updateController");
-    private static final boolean broken = UPDATE_VELOCITY == null || APPLY_BOOST == null || UPDATE_CONTROLLER == null;
+    private static final boolean BROKEN = UPDATE_VELOCITY == null || APPLY_BOOST == null || UPDATE_CONTROLLER == null;
 
-    private ImmersiveAircraft() {}
-
-    static boolean is(Entity e) {
-        return e instanceof VehicleEntity;
-    }
+    /** Тик самолёта, когда клиент пилота предупредил о высадке в воздухе. */
+    private int lastTriedToExit = Integer.MIN_VALUE / 2;
+    /** Ускоритель в конце прошлого шага пилота: клиент смотрит его до того, как тик самолёта убавит его на единицу. */
+    private int boost;
 
     private static Method method(String name) {
         try {
@@ -52,17 +54,19 @@ final class ImmersiveAircraft {
         }
     }
 
-    /**
-     * Шаг пилота — то, что делает тик самолёта у клиента пилота: x — влево (+1) или вправо, y — вверх (прыжок) или
-     * вниз (присед), z — вперёд или назад (у самолёта — штурвал от себя или на себя). {@code boost} — ускоритель в конце
-     * прошлого шага: клиент смотрит его до того, как тик самолёта убавит его на единицу. Итог — ускоритель после шага.
-     */
-    static int fly(ServerPlayer pilot, Entity e, float x, float y, float z, int boost) {
-        VehicleEntity v = (VehicleEntity) e;
-        if (broken) return v.getBoost();
+    @Override
+    public boolean drives(Entity vehicle) {
+        return !BROKEN && vehicle instanceof VehicleEntity;
+    }
+
+    /** Шаг пилота — то, что делает тик самолёта у клиента пилота (у самолёта y — тяга, z — штурвал). */
+    @Override
+    public void tick(ServerPlayer pilot, Entity vehicle, float x, float y, float z) {
+        VehicleEntity v = (VehicleEntity) vehicle;
+        int before = boost;
         v.setInputs(x, y, z);
         call(UPDATE_VELOCITY, v);
-        if (boost > 0 || v.getBoost() > 0) call(APPLY_BOOST, v);
+        if (before > 0 || v.getBoost() > 0) call(APPLY_BOOST, v);
         call(UPDATE_CONTROLLER, v);
         Vec3 movement = v.getDeltaMovement();
         Vec3 prediction = v.position().add(movement);
@@ -71,7 +75,7 @@ final class ImmersiveAircraft {
         v.pressingInterpolatedX.update(x);
         v.pressingInterpolatedY.update(y);
         v.pressingInterpolatedZ.update(z);
-        return v.getBoost();
+        boost = v.getBoost();
     }
 
     private static void call(Method m, VehicleEntity v) {
@@ -97,13 +101,19 @@ final class ImmersiveAircraft {
         if (repeat > 1.0E-4F) new CollisionMessage(collision * repeat * repeat).receiveServer(pilot);
     }
 
-    /** Клавиша IA — как клиент пилота ({@code VehicleEntity.tickPilot}). null — такой клавиши у IA нет. */
-    static String press(ServerPlayer pilot, Entity e, String key, Vehicles state) {
-        VehicleEntity v = (VehicleEntity) e;
+    @Override
+    public List<String> keys() {
+        return KEYS;
+    }
+
+    /** Клавиша IA — как клиент пилота ({@code VehicleEntity.tickPilot}). */
+    @Override
+    public String press(ServerPlayer pilot, Entity vehicle, String key) {
+        VehicleEntity v = (VehicleEntity) vehicle;
         if (key.equals(DISMOUNT)) {
             // в воздухе клиент сперва предупреждает, высадка — вторым нажатием за секунду
-            if (!v.onGround() && v.tickCount - state.lastTriedToExit() >= 20) {
-                state.triedToExit(v.tickCount);
+            if (!v.onGround() && v.tickCount - lastTriedToExit >= 20) {
+                lastTriedToExit = v.tickCount;
                 return "в воздухе: высадка — ещё одним нажатием в течение секунды";
             }
             new CommandMessage(CommandMessage.Key.DISMOUNT, v.getDeltaMovement()).receiveServer(pilot);

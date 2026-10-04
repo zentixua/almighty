@@ -52,7 +52,7 @@
 `skill/knowledge/*.md`, `skill/recipes/*.md`, `skill/rules.local.md`, `evals/learned.jsonl`. Общий опыт —
 после игрового дня PR сюда (ядро, рычаги, рецепты без привязки к серверу).
 
-Сессии чистые: свой системный промпт (роль + ядро + правила + выученное), без памяти Claude Code, без CLAUDE.md,
+Сессии чистые: свой системный промпт (роль + ядро + правила + выученное + список рецептов), без памяти Claude Code, без CLAUDE.md,
 без чужих навыков и настроек (`--setting-sources project`, `--strict-mcp-config`, `--disable-slash-commands`),
 права — `dontAsk` с разрешёнными MCP, чтение — только каталоги навыка, токены моста — запрет чтения.
 
@@ -64,7 +64,8 @@ uv run mcp/gm/gate.py --config ~/airstrike-server/gm/config.toml evals   # на�
 cp mcp/gm/systemd/gm.service ~/.config/systemd/user/ && systemctl --user enable --now gm
 ```
 Тестовый сервер (`test_bridge`) — копия мира на своём порту: на нём наставник пробует рецепты; без него рецепты не
-учатся (знания и правила — учатся). Люди: `gm.py tasks`, `gm.py log --last 50`, `gm.py recipes`,
+учатся (знания и правила — учатся). Репетиция ботами — там же: ботов ведущий не слушает, кроме названных в
+`gm.bot_players`. Люди: `gm.py tasks`, `gm.py log --last 50`, `gm.py recipes`,
 `gm.py run <рецепт> '{…}' [--test]`.
 
 ## Охраняемые зоны — `zones.py`

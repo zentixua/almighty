@@ -257,7 +257,7 @@ class Dispatcher:
 
     def on_event(self, e):
         t = e.get("type")
-        if t in ("chat", "gm") and not e.get("bot"):
+        if t in ("chat", "gm") and (not e.get("bot") or e.get("player") in self.cfg["gm"]["bot_players"]):
             player, text = e.get("player"), (e.get("text") or "").strip()
             if not player or not text:
                 return

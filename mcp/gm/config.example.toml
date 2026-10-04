@@ -14,6 +14,7 @@ names = ["ведущий", "ведущая", "ведущему", "ведущег
 owners = ["ZentixUA"]
 default_language = "ru"
 languages = { WallyFillmark = "uk" }
+# bot_players = ["Tester"]    # репетиция: этих ботов ведущий слушает как игроков (на тестовом сервере)
 
 [models]                      # голос — быстрый и дешёвый (выбор — по проверочному набору: gate.py evals)
 voice = "haiku"               # у Haiku уровня усилий нет; для sonnet — voice_effort = "low"

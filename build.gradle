@@ -68,6 +68,15 @@ tasks.matching { it.name == 'runGmGameTestServer' }.configureEach { task ->
 }
 
 dependencies {
+    // скрипты ведущего (Groovy): в jar мода вложенным jar (Jar-in-Jar), в запусках из Gradle — рядом с игрой
+    jarJar(implementation('org.apache.groovy:groovy')) {
+        version {
+            strictly '[4.0.33,5)'
+            prefer '4.0.33'
+        }
+    }
+    additionalRuntimeClasspath 'org.apache.groovy:groovy:4.0.33'
+
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

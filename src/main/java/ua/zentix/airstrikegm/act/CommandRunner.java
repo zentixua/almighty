@@ -29,6 +29,7 @@ import net.minecraft.network.chat.TextColor;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
@@ -111,12 +112,26 @@ public final class CommandRunner {
             throw RpcException.badRequest("commands: от 1 до " + MAX_COMMANDS + " команд");
         }
         ServerLevel level = Dims.level(server, args);
-        Vec3 pos = origin(level, args);
+        return run(server, level, origin(level, args), null, commands, false);
+    }
+
+    /**
+     * Команды по порядку, вывод каждой. Источник — ведущий в {@code level}/{@code pos} или, если задана {@code as},
+     * от лица сущности: {@code @s}, её место, поворот и измерение (права — по-прежнему 4). {@code quiet} — строка лога
+     * DEBUG, а не INFO: правило может звать команду каждый тик.
+     */
+    public static JsonArray run(MinecraftServer server, ServerLevel level, Vec3 pos, Entity as, List<String> commands, boolean quiet) {
         JsonArray results = new JsonArray();
         for (String command : commands) {
             Capture capture = new Capture();
-            LOG.info("Ведущий: /{}", command.startsWith("/") ? command.substring(1) : command);
-            server.getCommands().performPrefixedCommand(source(server, level, pos, capture).withCallback(capture.callback()), command);
+            String text = command.startsWith("/") ? command.substring(1) : command;
+            if (quiet) LOG.debug("Ведущий: /{}", text);
+            else LOG.info("Ведущий: /{}", text);
+            CommandSourceStack source = source(server, level, pos, capture);
+            if (as != null && as.level() instanceof ServerLevel own) {
+                source = source.withEntity(as).withLevel(own).withPosition(as.position()).withRotation(as.getRotationVector());
+            }
+            server.getCommands().performPrefixedCommand(source.withCallback(capture.callback()), command);
             results.add(capture.describe("command", command));
         }
         return results;

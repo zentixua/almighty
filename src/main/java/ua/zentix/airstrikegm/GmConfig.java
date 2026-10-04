@@ -16,6 +16,7 @@ public final class GmConfig {
     public static final ModConfigSpec.IntValue BUILD_MAX_BLOCKS;
     public static final ModConfigSpec.IntValue MAX_CHUNKS;
     public static final ModConfigSpec.IntValue LAG_MS;
+    public static final ModConfigSpec.BooleanValue SCRIPTS_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> NAME;
 
     static {
@@ -40,6 +41,11 @@ public final class GmConfig {
         b.push("feed");
         LAG_MS = b.comment("Событие lag, когда между двумя тиками сервера прошло больше, мс.")
                 .defineInRange("lag_ms", 1000, 100, 60_000);
+        b.pop();
+        b.push("scripts");
+        SCRIPTS_ENABLED = b.comment("Скрипты ведущего (Groovy): метод script и правила со скриптом. Выключить, если правило мешает",
+                        "серверу: сохранённые с миром правила со скриптом тогда не встанут (правила без скрипта — встанут).")
+                .define("enabled", true);
         b.pop();
         NAME = b.comment("Имя, под которым ведущий пишет в чат и выполняет команды.").define("name", "Claude");
         SPEC = b.build();

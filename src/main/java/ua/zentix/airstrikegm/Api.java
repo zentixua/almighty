@@ -3,6 +3,7 @@ package ua.zentix.airstrikegm;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.logging.LogUtils;
 import net.minecraft.commands.arguments.blocks.BlockInput;
 import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.HolderLookup;
@@ -10,6 +11,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
+import org.slf4j.Logger;
 import ua.zentix.airstrikegm.act.Chat;
 import ua.zentix.airstrikegm.act.CommandRunner;
 import ua.zentix.airstrikegm.bridge.Args;
@@ -17,6 +19,11 @@ import ua.zentix.airstrikegm.bridge.Method;
 import ua.zentix.airstrikegm.bridge.RpcException;
 import ua.zentix.airstrikegm.building.BuildJob;
 import ua.zentix.airstrikegm.building.BuildPlan;
+import ua.zentix.airstrikegm.rules.EventTypes;
+import ua.zentix.airstrikegm.rules.Rules;
+import ua.zentix.airstrikegm.script.Json;
+import ua.zentix.airstrikegm.script.ScriptApi;
+import ua.zentix.airstrikegm.script.Scripts;
 import ua.zentix.airstrikegm.view.BlockText;
 import ua.zentix.airstrikegm.view.LookView;
 import ua.zentix.airstrikegm.view.MapView;
@@ -42,6 +49,9 @@ public final class Api {
     static final int MAX_WAIT = 50;
     /** Сколько тиков постройка ждёт загрузки своих чанков: 2 минуты при 20 тиках в секунду. */
     static final long CHUNK_WAIT_TICKS = 2400;
+    /** Самый долгий разовый скрипт: столько стоит поток сервера. */
+    static final int MAX_SCRIPT_MS = 10_000;
+    private static final Logger LOG = LogUtils.getLogger();
 
     private Api() {}
 
@@ -111,6 +121,18 @@ public final class Api {
             });
         });
         m.put("areas", a -> gm.onMain(() -> gm.areas().describe()));
+        m.put("script", a -> script(gm, a));
+        m.put("rule.add", a -> {
+            Rules.Spec spec = Rules.parse(a);
+            return gm.onMain(() -> gm.rules().add(spec));
+        });
+        m.put("rule.remove", a -> gm.onMain(() -> gm.rules().remove(a)));
+        m.put("rules", a -> gm.onMain(() -> gm.rules().describe()));
+        m.put("event.types", a -> {
+            String query = a.string("query", "");
+            int limit = a.integer("limit", 50, 1, 500);
+            return CompletableFuture.completedFuture(Json.from(EventTypes.search(query, limit)));
+        });
         m.put("events", a -> {
             long after = a.longValue("after", 0, 0, Long.MAX_VALUE);
             int wait = a.integer("wait", 0, 0, 25);
@@ -123,6 +145,49 @@ public final class Api {
             }
         });
         return m;
+    }
+
+    /**
+     * Скрипт Groovy в потоке сервера между тиками: компиляция — здесь, в потоке моста; значение — JSON, вывод
+     * {@code println} — строкой; ошибка — {@code ok: false} с текстом и строкой скрипта. Код целиком — в лог INFO.
+     */
+    private static CompletableFuture<JsonElement> script(GmServer gm, Args a) throws RpcException {
+        if (!GmConfig.SCRIPTS_ENABLED.get()) throw Rules.scriptsOff();
+        String code = a.string("code");
+        if (code.length() > Rules.MAX_SCRIPT) throw RpcException.badRequest("code: не больше " + Rules.MAX_SCRIPT / 1024 + " КБ");
+        int timeout = a.integer("timeout_ms", 1000, 1, MAX_SCRIPT_MS);
+        Object args = a.has("args") ? Json.toJava(a.raw().get("args")) : new LinkedHashMap<String, Object>();
+        Scripts.Compiled compiled;
+        try {
+            compiled = Scripts.compile("script", code, timeout);
+        } catch (Scripts.CompileError e) {
+            JsonObject out = new JsonObject();
+            out.addProperty("ok", false);
+            out.addProperty("error", "Скрипт не разобран: " + e.getMessage());
+            return CompletableFuture.completedFuture(out);
+        }
+        return gm.onMain(() -> {
+            LOG.info("Ведущий: скрипт\n{}", code);
+            ScriptApi api = new ScriptApi(gm.server(), false, data -> {
+                JsonObject d = new JsonObject();
+                d.addProperty("script", true);
+                d.add("data", data);
+                gm.feed().add("emit", d);
+            });
+            try {
+                Scripts.Result r = Scripts.run(compiled, Map.of("server", gm.server(), "gm", api, "state", gm.state(), "args", args));
+                JsonObject out = new JsonObject();
+                out.addProperty("ok", r.ok());
+                if (r.ok()) out.add("value", Json.from(r.value()));
+                else out.addProperty("error", r.message());
+                if (r.line() > 0) out.addProperty("line", r.line());
+                if (!r.output().isEmpty()) out.addProperty("output", r.output());
+                out.addProperty("ms", Math.round(r.nanos() / 1e4) / 100.0);
+                return out;
+            } finally {
+                compiled.close();
+            }
+        });
     }
 
     private static int waitSeconds(Args a) throws RpcException {

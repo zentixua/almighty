@@ -61,13 +61,13 @@ import java.util.function.LongSupplier;
 public final class GmGameTests {
     private GmGameTests() {}
 
-    private static GmServer gm(GameTestHelper h) {
+    static GmServer gm(GameTestHelper h) {
         GmServer gm = GmServer.of(h.getLevel().getServer());
         if (gm == null) throw new GameTestAssertException("ведущий не запущен");
         return gm;
     }
 
-    private static CompletableFuture<JsonElement> call(GameTestHelper h, String method, JsonObject params) {
+    static CompletableFuture<JsonElement> call(GameTestHelper h, String method, JsonObject params) {
         try {
             return Api.methods(gm(h)).get(method).call(new Args(params));
         } catch (RpcException e) {
@@ -75,7 +75,7 @@ public final class GmGameTests {
         }
     }
 
-    private static JsonObject params(String json, Object... args) {
+    static JsonObject params(String json, Object... args) {
         return JsonParser.parseString(String.format(Locale.ROOT, json, args)).getAsJsonObject();
     }
 
@@ -89,7 +89,7 @@ public final class GmGameTests {
     }
 
     /** Вызов, который выполнился сразу (поток сервера зовёт метод из теста — без очереди задач). */
-    private static JsonElement now(CompletableFuture<JsonElement> f) {
+    static JsonElement now(CompletableFuture<JsonElement> f) {
         check(f.isDone(), "вызов из потока сервера не выполнился сразу");
         return f.join();
     }
@@ -131,7 +131,7 @@ public final class GmGameTests {
         }
     }
 
-    private static void check(boolean ok, String message) {
+    static void check(boolean ok, String message) {
         if (!ok) throw new GameTestAssertException(message);
     }
 

@@ -25,6 +25,7 @@ import ua.zentix.almighty.bridge.Method;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.building.BuildJob;
 import ua.zentix.almighty.building.BuildPlan;
+import ua.zentix.almighty.notes.Notes;
 import ua.zentix.almighty.rules.EventTypes;
 import ua.zentix.almighty.rules.Rules;
 import ua.zentix.almighty.script.Json;
@@ -67,6 +68,7 @@ public final class Api {
         MinecraftServer server = gm.server();
         Map<String, Method> m = new LinkedHashMap<>();
         m.put("status", a -> gm.onMain(() -> Observe.status(gm)));
+        m.put("notes", a -> gm.onMain(() -> Notes.read(server.getResourceManager())));
         m.put("players", a -> gm.onMain(() -> Observe.players(server)));
         m.put("player", a -> gm.onMain(() -> Observe.player(server, a)));
         m.put("entities", a -> gm.onMain(() -> Observe.entities(server, a)));

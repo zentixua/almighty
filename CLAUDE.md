@@ -52,8 +52,13 @@ airstrike-pack с jar выпуска.
   (`<мир>/almighty/rules.json`); `EventTypes` — все события NeoForge и модов по данным сканирования FML.
 - `bot/` — боты-игроки (`Bots` — вход, выход, пометка, защита имён; `Bot` — соединение, приём пакетов, почта, слух;
   `Controls` — клавиатура и мышь клиента; `Steps`/`Program` — шаги `bot.act`; `Eye` — зрение без картинки).
-  `view/EyeView` — картинка глазами, `world/Rays` — лучи по готовым чанкам. Бот не знает ничего об Airstrike:
-  мод ведущего переезжает в отдельный репозиторий, id мода — не в данных бота (UUID — `AgentBot:<имя>`).
+  `view/EyeView` — картинка глазами, `world/Rays` — лучи по готовым чанкам. Бот не знает ничего о других модах,
+  id мода — не в данных бота (UUID — `AgentBot:<имя>`).
+- `notes/Notes` — памятки агенту от модов и датапаков: `data/<namespace>/almighty/notes/<имя>.md` из текущих данных
+  сервера (`server.getResourceManager()`, после `/reload` — новые), id — `<namespace>:<имя>`. Датапак перекрывает
+  памятку мода тем же путём, пустой файл её убирает. Адаптер при запуске берёт их (5 с) и дописывает в конец
+  инструкций MCP; не взял — там строка про инструмент `notes`. Подсказки под конкретный мод — только в его памятке,
+  не в адаптере: мост ни от какого мода не зависит.
 
 ## Методы
 `status`, `players`, `player {name}`, `entities {center+radius | from/to, type, limit}`,
@@ -66,12 +71,13 @@ airstrike-pack с jar выпуска.
 `rules`, `event.types {query, limit?}`, `bots`, `bot {name, after?}`,
 `bot.spawn {name, pos?, dimension?, yaw?, pitch?, gamemode?, skin? (имя аккаунта | {value, signature}), marker?, auto_respawn?}`,
 `bot.remove {name}`, `bot.act {name, actions, replace?, wait?}`,
-`see {name | uuid | at+yaw+pitch, image? (да), width?, height?, fov?, distance?, radius?, sounds_ticks?}`. Везде `dimension` (по умолчанию верхний мир);
+`see {name | uuid | at+yaw+pitch, image? (да), width?, height?, fov?, distance?, radius?, sounds_ticks?}`,
+`notes` → `[{id, source, text}]`. Везде `dimension` (по умолчанию верхний мир);
 у долгих — `wait` (по умолчанию 30 с, до 50): не успела работа — её описание, дальше `job`. Картинка снимка
-выдаётся один раз (`png_base64`), после этого работа её не держит. MCP-инструментов `mcp/almighty.py` — 13, по
+выдаётся один раз (`png_base64`), после этого работа её не держит. MCP-инструментов `mcp/almighty.py` — 14, по
 принципу Артёма «мало рычагов, но каждый достаёт до дна»: `status` (+ игрок), `entities`, `command` (команды или
 строки функции), `say`, `script`, `rule` (add/remove/list/types), `events`, `view` (map/look/blocks/eye), `build` (+ undo),
-`area`, `job` (+ cancel), `bot` (spawn/remove/list/state/act), `call` — любой метод. Новое — сперва подумать, не делается ли оно скриптом или правилом;
+`area`, `job` (+ cancel), `bot` (spawn/remove/list/state/act), `notes`, `call` — любой метод. Новое — сперва подумать, не делается ли оно скриптом или правилом;
 отдельный инструмент — только когда он и правда снимает ошибки. `from`/`to` там `start`/`end`.
 
 Скрипт и правило: Groovy в потоке сервера, переменные `server`, `gm` (`command`, `commandAs(entity, …)` — от лица
@@ -127,7 +133,7 @@ airstrike-pack с jar выпуска.
   ошибка роняет тик, а загрузчик скрипта не выгружается. Надёжно это не запретить (замыкание приводится к любому
   интерфейсу Java), поэтому — правило в подсказках `mcp/almighty.py`; реакции — правила (`rule.add`). Чанки скрипт
   не грузит (свой `TicketType`, `level.getChunk`): далёкое место — `area.prepare` (моды, которые грузят свои районы
-  сами, как удары Airstrike, этого не требуют).
+  сами, этого не требуют).
 - Первый запуск скрипта связывает вызовы Groovy: 5–80 мс (GameTest). Правило поэтому первый запуск в счёт времени не
   берёт, а считает среднее по 20 тикам: время настенное, пауза сборщика внутри запуска иначе выключала бы правила.
 - Данные сканирования FML (`EventTypes`): у `module-info` (есть в jar многих модов) предка нет —

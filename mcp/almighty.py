@@ -52,15 +52,15 @@ def _token():
 _client = None
 
 
-def rpc(method, params=None):
-    """Вызов метода мода; ошибка мода — GmError с его текстом."""
+def rpc(method, params=None, timeout=None):
+    """Вызов метода мода; ошибка мода — GmError с его текстом. timeout — свой срок ответа в секундах."""
     global _client
     if _client is None:
         # мост ждёт ответа сервера до 60 с; прокси окружения к петле не нужен
         _client = httpx.Client(timeout=70, trust_env=False, headers={"Authorization": "Bearer " + _token()})
     body = {"method": method, "params": {k: v for k, v in (params or {}).items() if v is not None}}
     try:
-        r = _client.post(URL, json=body)
+        r = _client.post(URL, json=body, **({"timeout": timeout} if timeout else {}))
     except httpx.HTTPError as e:
         raise GmError(f"мост {URL} недоступен: {e}") from e
     try:
@@ -82,6 +82,18 @@ def _split_image(result):
     return None, result
 
 
+def _notes():
+    """Памятки модов и датапаков сервера — в конец инструкций MCP; сервер недоступен — строка, где их взять."""
+    try:
+        notes = rpc("notes", timeout=5)
+    except (GmError, OSError) as e:
+        return f"\nПамятки модов и датапаков сервера — инструмент notes (при запуске не получены: {e})."
+    if not notes:
+        return ""
+    return "\nПамятки модов и датапаков сервера (свежие — инструмент notes):\n\n" + "\n\n".join(
+        f"[{n['id']}]\n{n.get('text') or n.get('error', '')}" for n in notes)
+
+
 def serve_mcp():
     from mcp.server.fastmcp import FastMCP, Image
 
@@ -96,15 +108,10 @@ def serve_mcp():
         "bot — свои игроки-боты: входят как игроки и действуют только тем, что есть у игрока (клавиши, мышь, меню, "
         "чат); view eye — что видит глаз игрока, бота или свободной камеры.\n"
         "Игроки пишут ведущему лично командой /gm <текст> (событие gm в ленте), отвечать лично — say с to.\n"
-        "Удар Airstrike — command «airstrike salvo <оружие> <число> <разброс> at x y z [from x z] [via x z …]»: "
-        "from — место пуска (там встаёт пусковая и стоит до airstrike clear), via — до 5 точек маршрута по порядку "
-        "(drone, missile, loiter); один снаряд — число 1, разброс 0. Стационарная пусковая (блок airstrike:fixed_launcher) — "
-        "command «airstrike launcher x y z [mission <оружие> <число> <разброс> x y z [via …] | load N | fire | clear | "
-        "owner <игрок>|none]»; редстоун у блока — тот же fire.\n"
-        "Далёкое место загрузить — area prepare (удары Airstrike свои районы грузят сами). Скрипт не отдаёт игре свои "
+        "Далёкое место загрузить — area prepare. Скрипт не отдаёт игре свои "
         "замыкания и объекты (тикеты, сравнения, слушатели, задачи на потом) и не грузит чанки сам: реакции — rule.\n"
         "Координаты — блоки. Долгие работы (постройка, снимок) отвечают описанием, если не успели за wait секунд: "
-        "дальше — job(id, wait)."))
+        "дальше — job(id, wait)." + _notes()))
 
     def _out(result):
         png, rest = _split_image(result)
@@ -386,6 +393,12 @@ def serve_mcp():
             return _out(rpc("bot", {"name": name, "after": after}))
         _need("bot act", actions=actions)
         return _out(rpc("bot.act", {"name": name, "actions": actions, "replace": replace, "wait": wait}))
+
+    @mcp.tool()
+    def notes() -> str:
+        """Памятки модов и датапаков сервера: как работать с их механиками (команды, правила). При запуске адаптера
+        они уже в инструкциях; здесь — из текущих данных сервера, после /reload или смены модов."""
+        return _out(rpc("notes"))
 
     @mcp.tool()
     def call(method: str, params: dict | None = None):

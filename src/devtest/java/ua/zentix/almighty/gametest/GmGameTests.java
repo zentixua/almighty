@@ -354,6 +354,22 @@ public final class GmGameTests {
      * незагруженные чанки — шахматка. Вид с юга на север: колонна — золото темнее по глубине, пустой луч — небо, небо
      * за стеклом — с налётом. Картинка выдаётся один раз: работа после этого её не держит.
      */
+    /** Памятки из данных сервера: файл ресурсов проверки есть, пустой файл памятку убирает. */
+    @GameTest(template = "floor", batch = "gm_notes", skyAccess = true)
+    public static void notesFromServerData(GameTestHelper h) {
+        JsonArray notes = now(call(h, "notes", new JsonObject())).getAsJsonArray();
+        JsonObject note = null;
+        for (JsonElement e : notes) {
+            String id = e.getAsJsonObject().get("id").getAsString();
+            check(!id.equals("almighty:empty"), "пустая памятка не убрана: " + notes);
+            if (id.equals("almighty:gametest")) note = e.getAsJsonObject();
+        }
+        check(note != null, "нет памятки almighty:gametest: " + notes);
+        check(note.get("text").getAsString().startsWith("Памятка проверки:"), "текст памятки: " + note);
+        check(note.has("source"), "нет источника памятки: " + note);
+        h.succeed();
+    }
+
     @GameTest(template = "floor", batch = "gm_view", timeoutTicks = 200, skyAccess = true)
     public static void mapAndLookViews(GameTestHelper h) {
         for (int y = 2; y <= 4; y++) h.setBlock(new BlockPos(32, y, 32), Blocks.GOLD_BLOCK);

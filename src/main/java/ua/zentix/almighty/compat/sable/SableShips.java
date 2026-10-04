@@ -89,9 +89,10 @@ public final class SableShips implements Ships.Source {
             return velocityAt(pos());
         }
 
+        /** {@code getVelocity} Sable берёт точку участка (сам переводит её в мир): мировая там — ошибка ω × 2·10^7 блоков. */
         @Override
         public Vec3 velocityAt(Vec3 world) {
-            return companion().getVelocity(level, sub, (Position) world);
+            return companion().getVelocity(level, sub, (Position) toPlot(world));
         }
 
         /** v(p + e) − v(p) = ω × e: по единичному шагу вдоль каждой оси. */

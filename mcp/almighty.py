@@ -368,7 +368,8 @@ def serve_mcp():
         act — программа actions по шагам; мгновенные идут подряд в одном тике, ждут только wait и walk_to.
         Шаги: {"hold": "forward"|["forward","sprint"], "ticks": n} (forward back left right jump sneak sprint attack
         use; без ticks — держать до release, с ticks — клавиша отпустится сама через n тиков, новый hold продлевает:
-        так автопилот правилом держит рули, и рули встают в ноль, когда правило упало), {"release": "all"|клавиши},
+        так автопилот правилом держит рули, и рули встают в ноль, когда правило упало; правило каждый тик — ticks ≥ 2),
+        {"release": "all"|клавиши},
         {"wait": тиков}, {"look": [yaw, pitch]}, {"turn": [dyaw, dpitch]},
         {"look_at": [x, y, z] | UUID | имя} (целые — центр блока), {"click": "attack"|"use", "at": …},
         {"slot": 0–8}, {"drop": "one"|"stack"}, {"swap_hands": true}, {"menu": ячейка, "button": 0, "mode":

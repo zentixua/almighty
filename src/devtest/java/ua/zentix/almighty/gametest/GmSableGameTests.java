@@ -1,5 +1,6 @@
 package ua.zentix.almighty.gametest;
 
+import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
@@ -20,6 +21,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.RpcException;
@@ -138,11 +141,16 @@ public final class GmSableGameTests {
         level.getServer().getCommands().performPrefixedCommand(level.getServer().createCommandSourceStack().withSuppressedOutput(),
                 String.format(Locale.ROOT, "sable assemble area %d %d %d %d %d %d", a.getX(), a.getY(), a.getZ(), b.getX(), b.getY() + 1, b.getZ()));
         AtomicReference<Ship> ship = new AtomicReference<>();
+        AtomicReference<ServerSubLevel> sub = new AtomicReference<>();
+        AtomicReference<Double> yaw = new AtomicReference<>();
         List<Vec3> pos = new ArrayList<>(), vel = new ArrayList<>();
         var seq = h.startSequence()
                 .thenWaitUntil(() -> {
                     for (SubLevel s : container.getAllSubLevels()) {
-                        if (!before.contains(s)) ((ServerSubLevel) s).setName("GmTestShip");
+                        if (!before.contains(s)) {
+                            sub.set((ServerSubLevel) s);
+                            sub.get().setName("GmTestShip");
+                        }
                     }
                     ship.set(Ships.find(level.getServer(), "GmTestShip"));
                     if (ship.get() == null) throw new GameTestAssertException("корабль не собрался: " + Ships.all(level).size());
@@ -186,11 +194,34 @@ public final class GmSableGameTests {
             check(moved.y < -1, "корабль не падает: ход " + moved + " блоков/с, места " + pos);
             check(Math.abs(mean.y - moved.y) < 0.3 * Math.abs(moved.y) + 0.2, "скорость " + mean + " — не блоков в секунду: ход " + moved + ", скорости " + vel);
             check(ship.get().angularVelocity().length() < 0.2, "падение без вращения: ω " + ship.get().angularVelocity());
+            // закрутить вокруг вертикали: скорость Sable берёт точку участка, а не мира (иначе ошибка — ω × 2·10^7 блоков)
+            yaw.set(yaw(ship.get()));
+            RigidBodyHandle.of(sub.get()).addLinearAndAngularVelocity(new Vector3d(), new Vector3d(0, 1, 0));
+        }).thenExecuteAfter(5, () -> {
+            RigidBodyHandle body = RigidBodyHandle.of(sub.get());
+            Vec3 lin = vec(body.getLinearVelocity()), omega = vec(body.getAngularVelocity());
+            check(omega.y > 0.5, "корабль не закрутился: ω Sable " + omega);
+            double turned = Math.abs(Math.toDegrees(yaw(ship.get()) - yaw.get()));
+            check(turned > 5, "корабль не повернулся: " + turned + "°");
+            check(ship.get().velocity().distanceTo(lin) < 1e-3, "скорость вращающегося корабля " + ship.get().velocity() + ", у Sable " + lin);
+            check(ship.get().angularVelocity().distanceTo(omega) < 1e-3, "угловая скорость " + ship.get().angularVelocity() + ", у Sable " + omega);
+            Vec3 arm = new Vec3(2, 0, 1);
+            Vec3 expected = lin.add(omega.cross(arm));
+            check(ship.get().velocityAt(ship.get().pos().add(arm)).distanceTo(expected) < 1e-3,
+                    "скорость точки сбоку " + ship.get().velocityAt(ship.get().pos().add(arm)) + ", ждали " + expected);
         }).thenExecute(() -> {
             for (SubLevel s : new ArrayList<>(container.getAllSubLevels())) {
                 if (!before.contains(s)) container.removeSubLevel(s, SubLevelRemovalReason.REMOVED);
             }
         }).thenSucceed();
+    }
+
+    private static double yaw(Ship ship) {
+        return ship.orientation().getEulerAnglesYXZ(new Vector3d()).y;
+    }
+
+    private static Vec3 vec(Vector3dc v) {
+        return new Vec3(v.x(), v.y(), v.z());
     }
 
     /** Аренда на чанк {@code c}, сдвинутый на {@code dx} блоков по x. */

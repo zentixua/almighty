@@ -276,7 +276,10 @@ public final class Rules {
         int windowEmits;
         boolean running, warm;
         volatile boolean wrongThread;
-        /** Боты, которых скрипт правила вёл ({@code act}, {@code send}): выключилось правило — они останавливаются. */
+        /**
+         * Боты, которых скрипт правила вёл ({@code act}, {@code send}): выключилось правило — они останавливаются.
+         * Исчерпанный {@code limit} — плановый конец: начатая программа идёт дальше, клавиши на срок отпустятся сами.
+         */
         final Set<Bot> driven = Collections.newSetFromMap(new IdentityHashMap<>());
 
         Rule(long id, Spec spec) {
@@ -324,12 +327,16 @@ public final class Rules {
                 if (spec.script() == null) {
                     emit(Json.fields(event));
                 } else {
+                    // ушедший бот (его новый вход — другой объект) не держится правилом до его конца
+                    driven.removeIf(b -> !b.online());
                     Set<Bot> outer = Bot.driving(driven);
                     Scripts.Result r;
                     try {
                         r = Scripts.run(spec.script(), Map.of("event", event, "server", server, "gm", api, "state", state, "rule", id));
                     } finally {
                         Bot.driving(outer);
+                        // выключилось посреди запуска (лента переполнена): ботов, которых скрипт повёл после, — тоже
+                        if (off != null) stopDriven(off);
                     }
                     if (r.ok()) errorsInRow = 0;
                     else error(r, tick);
@@ -399,16 +406,21 @@ public final class Rules {
             LOG.warn("Правило ведущего №{} выключено: {}", id, reason);
             JsonObject d = who();
             d.addProperty("reason", reason);
+            JsonArray stopped = stopDriven(reason);
+            if (!stopped.isEmpty()) d.add("bots_stopped", stopped);
+            feed.add("rule.off", d);
+        }
+
+        /** «Мёртвая рука»: бот автопилота не держит последний ввод (самолёт с рулём вниз ушёл в море). */
+        private JsonArray stopDriven(String reason) {
             JsonArray stopped = new JsonArray();
-            // «мёртвая рука»: бот автопилота не держит последний ввод (самолёт с рулём вниз ушёл в море)
             for (Bot bot : driven) {
                 if (!bot.online()) continue;
                 bot.stop("правило " + (spec.name() != null ? "«" + spec.name() + "»" : "№" + id) + " выключено: " + reason);
                 stopped.add(bot.name());
             }
             driven.clear();
-            if (!stopped.isEmpty()) d.add("bots_stopped", stopped);
-            feed.add("rule.off", d);
+            return stopped;
         }
 
         JsonObject who() {

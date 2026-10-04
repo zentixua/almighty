@@ -349,11 +349,6 @@ public final class GmGameTests {
         return image.getRGB(i * k + k / 2, j * k + k / 2) & 0xFFFFFF;
     }
 
-    /**
-     * Карта сверху: пол — цвет камня, верх золотой колонны — золото (светлее: выше соседа с севера), за ней к югу — тень;
-     * незагруженные чанки — шахматка. Вид с юга на север: колонна — золото темнее по глубине, пустой луч — небо, небо
-     * за стеклом — с налётом. Картинка выдаётся один раз: работа после этого её не держит.
-     */
     /** Памятки из данных сервера: файл ресурсов проверки есть, пустой файл памятку убирает. */
     @GameTest(template = "floor", batch = "gm_notes", skyAccess = true)
     public static void notesFromServerData(GameTestHelper h) {
@@ -370,6 +365,11 @@ public final class GmGameTests {
         h.succeed();
     }
 
+    /**
+     * Карта сверху: пол — цвет камня, верх золотой колонны — золото (светлее: выше соседа с севера), за ней к югу — тень;
+     * незагруженные чанки — шахматка. Вид с юга на север: колонна — золото темнее по глубине, пустой луч — небо, небо
+     * за стеклом — с налётом. Картинка выдаётся один раз: работа после этого её не держит.
+     */
     @GameTest(template = "floor", batch = "gm_view", timeoutTicks = 200, skyAccess = true)
     public static void mapAndLookViews(GameTestHelper h) {
         for (int y = 2; y <= 4; y++) h.setBlock(new BlockPos(32, y, 32), Blocks.GOLD_BLOCK);

@@ -10,9 +10,8 @@ After=network-online.target
 ExecStart=%h/.local/bin/uv run --quiet --script %h/airstrike-server/almighty/mcp/gm/gmd.py --config %h/airstrike-server/gm/config.toml
 Restart=on-failure
 RestartSec=10
-# голос, два исполнителя, наставник с воротами — до 5 процессов claude; рядом — сервер игры
-MemoryMax=4G
-CPUQuota=200%
+# голос, два исполнителя, наставник с воротами — до 5 процессов claude; без искусственных пределов памяти и
+# процессора: прожорливое чинится в коде
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 
 [Install]

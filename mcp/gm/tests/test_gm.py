@@ -306,6 +306,14 @@ class DispatcherPartsTest(Tmp):
         self.assertFalse(gmd.addressed("Гм, ну не знаю", names))  # междометие, не имя
         self.assertFalse(gmd.addressed("gm everyone", names))
 
+    def test_bots_heard_only_when_listed(self):
+        d = gmd.Dispatcher(self.cfg)
+        d.on_event({"type": "gm", "player": "Tester", "text": "привет", "bot": True})
+        self.assertEqual(d.pending, [])  # свои боты ведущего — не игроки
+        d.cfg["gm"]["bot_players"] = ["Tester"]
+        d.on_event({"type": "gm", "player": "Tester", "text": "привет", "bot": True})
+        self.assertEqual([it.player for it in d.pending], ["Tester"])
+
     def test_pick_and_runnable(self):
         items = [gmd.Item("A", "1"), gmd.Item("B", "2"), gmd.Item("A", "3")]
         player, mine, rest = gmd.pick(items)
@@ -420,6 +428,7 @@ class RolesTest(Tmp):
         self.assertIn("Правила ведущего", prompt)
         self.assertIn("Роль: голос", prompt)
         self.assertIn("ZentixUA", prompt)
+        self.assertIn("clear_weather [instant]", prompt)  # рецепты — в промпте, искать их не нужно
         self.assertIn("--strict-mcp-config", argv)
         self.assertEqual(env["GM_ROLE"], "voice")
         self.assertEqual(env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"], "1")

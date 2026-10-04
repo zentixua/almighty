@@ -19,6 +19,8 @@ DEFAULTS = {
         "owners": [],
         "languages": {},
         "default_language": "ru",
+        # боты (bot.spawn), которых ведущий слушает как игроков: репетиция ботами; прочих ботов он не слышит
+        "bot_players": [],
         "claude": "claude",
         "uv": "uv",
     },

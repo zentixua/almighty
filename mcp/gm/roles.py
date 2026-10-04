@@ -16,6 +16,8 @@ import os
 import shlex
 import sys
 
+import recipes as recipesmod
+
 ROLES = {
     "voice": {"tools": "Read,Glob,Grep", "mode": "dontAsk", "bridge": "bridge",
               "deny": ["mcp__almighty__say", "mcp__almighty__build", "mcp__almighty__bot", "mcp__almighty__area",
@@ -60,6 +62,11 @@ def system_prompt(cfg, role, skill_dir):
     learned = _read(os.path.join(skill_dir, "CORE.md"))
     if learned and role != "reviewer":
         parts.append("# Выучено на этом сервере\n\n" + learned)
+    if role != "reviewer":  # рецепты — в промпте: голос не ищет их по каталогам, а сразу знает, что есть
+        found, _ = recipesmod.load_all([os.path.join(kit_skill, "recipes"), os.path.join(skill_dir, "recipes")])
+        if found:
+            parts.append("# Рецепты (recipe_run; instant — делай сам, остальные — task с recipe и params)\n\n"
+                         + "\n".join(f"- {r.summary()}" for r in sorted(found.values(), key=lambda r: r.name)))
     g = cfg["gm"]
     langs = ", ".join(f"{p} — {lang}" for p, lang in sorted(g["languages"].items()))
     parts.append(

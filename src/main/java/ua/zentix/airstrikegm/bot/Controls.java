@@ -12,8 +12,10 @@ import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
 import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.effect.MobEffects;
@@ -25,7 +27,6 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.GameType;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -346,13 +347,11 @@ final class Controls {
             shiftSent = sneak;
         }
         sprint(p, forward);
-        // клиент не двигает игрока, пока чанк под ним не готов (LocalPlayer.tick): без этого бот падал бы сквозь
-        // землю незагруженного места; остальное в тике игрока (еда, эффекты) идёт, место возвращается, как у ванили
-        boolean frozen = !p.isPassenger() && p.serverLevel().getChunkSource().getChunkNow(p.getBlockX() >> 4, p.getBlockZ() >> 4) == null;
-        if (frozen) {
-            forward = 0;
-            strafe = 0;
-            jump = false;
+        // клиент не тикает игрока, пока чанк под ним не пришёл (LocalPlayer.tick); бот — пока не готовы чанки, которых
+        // коснётся его тик: физика игрока читает блоки и жидкость под ногами, и неготовый чанк грузился бы в тике сразу
+        if (!p.isPassenger() && !ready(p)) {
+            p.serverLevel().getChunkSource().move(p);
+            return;
         }
         if (p.isPassenger()) {
             bot.send(new ServerboundPlayerInputPacket(strafe, forward, jump, sneak));
@@ -366,20 +365,27 @@ final class Controls {
             }
         }
         Vec3 before = p.position();
-        Level level = p.level();
         boolean riding = p.isPassenger();
         p.doTick();
         if (p.isRemoved()) return;
-        if (frozen && p.level() == level) {
-            p.absMoveTo(before.x, before.y, before.z, p.getYRot(), p.getXRot());
-            p.setDeltaMovement(Vec3.ZERO);
-        }
         Vec3 d = p.position().subtract(before);
         p.serverLevel().getChunkSource().move(p);
         if (!riding && !p.isPassenger()) {
             p.doCheckFallDamage(d.x, d.y, d.z, p.onGround());
             p.checkMovementStatistics(d.x, d.y, d.z);
         }
+    }
+
+    /** Готовы все чанки вокруг рамки бота с запасом в блок и его скоростью за тик ({@code getChunkNow}). */
+    private static boolean ready(ServerPlayer p) {
+        AABB box = p.getBoundingBox().expandTowards(p.getDeltaMovement()).inflate(1.0);
+        ServerChunkCache chunks = p.serverLevel().getChunkSource();
+        for (int cx = Mth.floor(box.minX) >> 4; cx <= Mth.floor(box.maxX) >> 4; cx++) {
+            for (int cz = Mth.floor(box.minZ) >> 4; cz <= Mth.floor(box.maxZ) >> 4; cz++) {
+                if (chunks.getChunkNow(cx, cz) == null) return false;
+            }
+        }
+        return true;
     }
 
     private float impulse(Key plus, Key minus) {

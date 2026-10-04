@@ -3,9 +3,11 @@ package ua.zentix.airstrikegm.bot;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
 import com.mojang.logging.LogUtils;
+import com.mojang.util.UndashedUuid;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -14,6 +16,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.players.GameProfileCache;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.player.ChatVisiblity;
 import net.minecraft.world.level.GameType;
@@ -29,12 +32,15 @@ import ua.zentix.airstrikegm.GmConfig;
 import ua.zentix.airstrikegm.GmServer;
 import ua.zentix.airstrikegm.bridge.Args;
 import ua.zentix.airstrikegm.bridge.RpcException;
+import ua.zentix.airstrikegm.world.Areas;
 import ua.zentix.airstrikegm.world.Dims;
 
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -59,6 +65,13 @@ public final class Bots {
     private final GmServer gm;
     private final Map<String, Bot> byName = new LinkedHashMap<>();
     private final Map<UUID, Bot> byUuid = new HashMap<>();
+    /** Входы, которые ждут загрузки места. */
+    private final List<Waiting> waiting = new ArrayList<>();
+
+    /** Срок загрузки места входа, тиков. */
+    static final int PLACE_WAIT = 20 * 30;
+
+    private record Waiting(Areas.Lease lease, long deadline, CompletableFuture<Areas.Lease> ready) {}
 
     public Bots(GmServer gm) {
         this.gm = gm;
@@ -82,6 +95,7 @@ public final class Bots {
                 if (a.raw().get("skin").isJsonObject()) {
                     Args s = new Args(a.object("skin"));
                     textures = new Property("textures", s.string("value"), s.string("signature", null));
+                    texturesOwner(textures);
                 } else {
                     skinOf = a.string("skin");
                     if (!NAME.matcher(skinOf).matches()) throw RpcException.badRequest("skin: имя аккаунта Minecraft или {value, signature}");
@@ -104,11 +118,37 @@ public final class Bots {
                                 : profile.flatMap(p -> p.getProperties().get("textures").stream().findFirst())))
                 .thenCompose(textures -> gm.onMain(() -> {
                     check(spec);
-                    Bot bot = place(spec, textures.orElse(null));
-                    JsonObject out = bot.describe(0);
-                    if (spec.skinOf() != null && textures.isEmpty()) out.addProperty("skin", "скин «" + spec.skinOf() + "» не найден: обычный");
-                    return out;
-                }));
+                    return prepare(spec);
+                }).thenCompose(ready -> ready).thenCompose(lease -> gm.onMain(() -> {
+                    try {
+                        check(spec);
+                        Bot bot = place(spec, textures.orElse(null));
+                        JsonObject out = bot.describe(0);
+                        if (spec.skinOf() != null && textures.isEmpty()) out.addProperty("skin", "скин «" + spec.skinOf() + "» не найден: обычный");
+                        return out;
+                    } finally {
+                        // дальше чанки держит тикет самого игрока
+                        if (lease != null) lease.release();
+                    }
+                })));
+    }
+
+    /**
+     * Место входа — загрузить до входа: перенос игрока в NeoForge грузит чанк назначения сразу ({@code Entity.setPosRaw}),
+     * в тике это пауза сервера. Чанк с кольцом соседей — тикетом ведущего в фоне ({@link Areas}); null — переноса не будет
+     * (бот остаётся там, где вошёл, у точки появления). Поток сервера.
+     */
+    private CompletableFuture<Areas.Lease> prepare(Spec spec) throws RpcException {
+        MinecraftServer server = gm.server();
+        ServerLevel level = spec.dimension() != null ? Dims.level(server, spec.dimension()) : server.overworld();
+        if (spec.pos() == null && level == server.overworld()) return CompletableFuture.completedFuture(null);
+        int x = spec.pos() != null ? Mth.floor(spec.pos()[0]) : level.getSharedSpawnPos().getX();
+        int z = spec.pos() != null ? Mth.floor(spec.pos()[2]) : level.getSharedSpawnPos().getZ();
+        Areas.Lease lease = gm.areas().acquire(level, "бот " + spec.name(), x, z, x, z, PLACE_WAIT + 200);
+        if (lease.isReady()) return CompletableFuture.completedFuture(lease);
+        CompletableFuture<Areas.Lease> ready = new CompletableFuture<>();
+        waiting.add(new Waiting(lease, tickNow() + PLACE_WAIT, ready));
+        return ready;
     }
 
     private void check(Spec spec) throws RpcException {
@@ -120,6 +160,10 @@ public final class Bots {
         if (!disguise && !spec.marker()) throw RpcException.badRequest("Бот без пометки — только с bots.allow_disguise = true (решает владелец сервера)");
         if (!disguise && known(spec.name())) throw RpcException.badRequest("Имя " + spec.name() + " — игрока этого сервера: только с bots.allow_disguise = true (решает владелец сервера)");
         if (!disguise && spec.skinOf() != null && known(spec.skinOf())) throw RpcException.badRequest("Скин игрока этого сервера — только с bots.allow_disguise = true (решает владелец сервера)");
+        if (!disguise && spec.textures() != null) {
+            GameProfile owner = texturesOwner(spec.textures());
+            if (known(owner.getName()) || knownId(owner.getId())) throw RpcException.badRequest("Скин игрока этого сервера — только с bots.allow_disguise = true (решает владелец сервера)");
+        }
         if (spec.dimension() != null) Dims.level(server, spec.dimension());
     }
 
@@ -135,6 +179,31 @@ public final class Bots {
         return cached != null && !cached.getId().equals(uuid(name));
     }
 
+    /** UUID знаком серверу: игрок в игре (не бот), белый список, операторы, кэш профилей. */
+    private boolean knownId(UUID id) {
+        if (id == null || byUuid.containsKey(id)) return false;
+        MinecraftServer server = gm.server();
+        if (server.getPlayerList().getPlayer(id) != null) return true;
+        GameProfile probe = new GameProfile(id, "");
+        if (server.getPlayerList().getWhiteList().get(probe) != null || server.getPlayerList().getOps().get(probe) != null) return true;
+        return server.getProfileCache() != null && server.getProfileCache().get(id).isPresent();
+    }
+
+    /**
+     * Чей скин в свойстве {@code textures}: его {@code value} — base64 JSON с {@code profileId} и {@code profileName}
+     * владельца (так его подписывают службы Mojang). Не читается — ошибка запроса.
+     */
+    static GameProfile texturesOwner(Property textures) throws RpcException {
+        try {
+            JsonObject o = JsonParser.parseString(new String(Base64.getDecoder().decode(textures.value()), StandardCharsets.UTF_8)).getAsJsonObject();
+            String name = o.has("profileName") ? o.get("profileName").getAsString() : "";
+            UUID id = o.has("profileId") ? UndashedUuid.fromStringLenient(o.get("profileId").getAsString()) : null;
+            return new GameProfile(id, name);
+        } catch (RuntimeException e) {
+            throw RpcException.badRequest("skin.value: не base64 JSON текстур Mojang (" + e.getMessage() + ")");
+        }
+    }
+
     private Bot place(Spec spec, Property textures) throws RpcException {
         MinecraftServer server = gm.server();
         GameProfile profile = new GameProfile(uuid(spec.name()), spec.name());
@@ -143,7 +212,9 @@ public final class Bots {
         ClientInformation info = new ClientInformation("en_us", 8, ChatVisiblity.FULL, true, 0x7F, HumanoidArm.RIGHT, false, true);
         CommonListenerCookie cookie = new CommonListenerCookie(profile, 0, info, false, ConnectionType.NEOFORGE);
         ServerLevel level = spec.dimension() != null ? Dims.level(server, spec.dimension()) : server.overworld();
-        ServerPlayer player = new ServerPlayer(server, level, profile, info);
+        // как вход игрока (getPlayerForLogin): в верхнем мире — конструктор ищет место у точки появления, а в чужом
+        // измерении с небом искал бы его, загружая чанки в тике сразу
+        ServerPlayer player = new ServerPlayer(server, server.overworld(), profile, info);
         Bot bot = new Bot(this, profile, spec.marker(), spec.autoRespawn());
         // до входа: имя в табе считается при входе, событие должно уже знать бота
         byName.put(key(spec.name()), bot);
@@ -168,6 +239,8 @@ public final class Bots {
         }
         // голова — туда же, куда тело: взгляд (getViewYRot) берёт поворот головы, а его тик выставит только потом
         p.setYHeadRot(p.getYRot());
+        // тикет игрока — сразу на новое место: чанки там начнут грузиться в фоне, пока бот ждёт их (Controls.move)
+        p.serverLevel().getChunkSource().move(p);
         bot.settle();
         LOG.info("Ведущий: бот {} вошёл{}", spec.name(), spec.marker() ? "" : " без пометки");
         return bot;
@@ -253,6 +326,7 @@ public final class Bots {
 
     /** Конец тика сервера: тики ботов; ушедшие (выгнали, ошибка) — из списка, событием в ленту. */
     public void tick() {
+        if (!waiting.isEmpty()) places();
         if (byName.isEmpty()) return;
         for (Bot bot : all()) {
             if (!bot.tick()) {
@@ -262,8 +336,30 @@ public final class Bots {
         }
     }
 
+    /** Места входа, которые загрузились или не дождались; продолжения (вход) — после обхода. */
+    private void places() {
+        List<Runnable> after = new ArrayList<>();
+        for (Iterator<Waiting> it = waiting.iterator(); it.hasNext(); ) {
+            Waiting w = it.next();
+            if (w.lease().isReady()) {
+                it.remove();
+                after.add(() -> w.ready().complete(w.lease()));
+            } else if (tickNow() >= w.deadline() || w.lease().released()) {
+                it.remove();
+                w.lease().release();
+                after.add(() -> w.ready().completeExceptionally(RpcException.unavailable("Место входа бота не загрузилось за " + PLACE_WAIT / 20 + " с")));
+            }
+        }
+        after.forEach(Runnable::run);
+    }
+
     /** Остановка сервера: боты выходят как игроки (сохранение, выход в чат) до того, как сервер сохранит остальных. */
     public void stop() {
+        for (Waiting w : waiting) {
+            w.lease().release();
+            w.ready().completeExceptionally(RpcException.unavailable("Сервер останавливается"));
+        }
+        waiting.clear();
         for (Bot bot : all()) {
             bot.disconnect(Component.translatable("multiplayer.disconnect.server_shutdown"));
             forget(bot);

@@ -3,6 +3,7 @@ package ua.zentix.airstrikegm.gametest;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
+import com.mojang.util.UndashedUuid;
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
@@ -16,6 +17,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.players.UserWhiteListEntry;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.monster.Zombie;
@@ -42,6 +44,7 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.UUID;
@@ -230,12 +233,17 @@ public final class GmBotGameTests {
                 .thenSucceed();
     }
 
-    /** Чат от имени бота (в ленте как чат игрока), команда {@code /gm}, шёпот боту — в его почте и событием ведущему. */
-    @GameTest(template = "floor", batch = "gm_bot_chat", timeoutTicks = 200, skyAccess = true)
+    /**
+     * Чат от имени бота (в ленте как чат игрока), команда {@code /gm}, шёпот боту — в его почте и событием ведущему.
+     * Сообщение раз в секунду не копит счётчик спама: 14 сообщений — бот в игре (ваниль отключает на 11-м подряд).
+     */
+    @GameTest(template = "floor", batch = "gm_bot_chat", timeoutTicks = 500, skyAccess = true)
     public static void botChatsAndHearsWhispers(GameTestHelper h) {
         long after = feedEnd(h);
         Bot bot = spawn(h, "GmTestTalker", 10.5, 10.5, "");
-        CompletableFuture<JsonElement> talk = act(h, "GmTestTalker", "[{\"chat\":\"привет всем\"},{\"chat\":\"/gm вижу пещеру\"}]");
+        StringBuilder steps = new StringBuilder("[{\"chat\":\"привет всем\"},{\"chat\":\"/gm вижу пещеру\"}");
+        for (int i = 1; i <= 12; i++) steps.append(",{\"wait\":20},{\"chat\":\"раз ").append(i).append("\"}");
+        CompletableFuture<JsonElement> talk = act(h, "GmTestTalker", steps.append("]").toString());
         h.startSequence()
                 .thenWaitUntil(() -> finished(talk))
                 .thenExecute(() -> new ScriptApi(h.getLevel().getServer(), true, d -> {}).command("msg GmTestTalker тайное слово"))
@@ -250,6 +258,7 @@ public final class GmBotGameTests {
                         whisper |= o.get("kind").getAsString().equals("whisper") && o.get("text").getAsString().equals("тайное слово");
                     }
                     check(whisper, "почта бота: " + bot.describe(0).get("inbox"));
+                    check(bot.online() && hasEvent(h, after, "chat", "text", "раз 12"), "бота отключили за спам: " + bot.describe(0).get("inbox"));
                     leave(h, "GmTestTalker");
                 })
                 .thenSucceed();
@@ -382,6 +391,37 @@ public final class GmBotGameTests {
     }
 
     /**
+     * Вход вдали от всех: место загружается в фоне до входа (перенос игрока в NeoForge грузил бы чанк назначения
+     * сразу), ответ — когда бот уже там.
+     */
+    @GameTest(template = "floor", batch = "gm_bot_far", timeoutTicks = 6000, skyAccess = true)
+    public static void botWaitsForFarChunks(GameTestHelper h) {
+        ServerLevel level = h.getLevel();
+        Vec3 base = h.absoluteVec(new Vec3(10.5, GROUND + 20, 10.5));
+        double x = base.x + 4000.5, y = base.y, z = base.z;
+        int cx = Mth.floor(x) >> 4, cz = Mth.floor(z) >> 4;
+        check(level.getChunkSource().getChunkNow(cx, cz) == null, "чанк уже загружен до проверки");
+        CompletableFuture<JsonElement> spawn = call(h, "bot.spawn", params("{\"name\":\"GmTestFar\",\"pos\":[%.1f,%.1f,%.1f],\"gamemode\":\"creative\"}", x, y, z));
+        check(!spawn.isDone() && level.getChunkSource().getChunkNow(cx, cz) == null, "вход бота загрузил чанк сразу");
+        // фоновая загрузка не успевает к тикам GameTest (сотни тиков в секунду): чанки с кольцом — тестом сразу
+        h.startSequence()
+                .thenIdle(5)
+                .thenExecute(() -> {
+                    check(!spawn.isDone(), "бот вошёл до загрузки места: " + (spawn.isDone() ? spawn.getNow(null) : ""));
+                    for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) level.getChunk(cx + i, cz + j);
+                })
+                .thenWaitUntil(() -> check(spawn.isDone(), "место входа грузится"))
+                .thenExecute(() -> {
+                    JsonObject r = settled(spawn);
+                    check(r.get("bot").getAsBoolean(), "вход: " + r);
+                    Bot bot = gm(h).bots().find("GmTestFar");
+                    check(bot != null && bot.player().position().distanceTo(new Vec3(x, y, z)) < 0.01, "бот не на месте входа: " + (bot == null ? null : bot.player().position()));
+                    leave(h, "GmTestFar");
+                })
+                .thenSucceed();
+    }
+
+    /**
      * Защита игроков: без {@code bots.allow_disguise} бот не берёт имя игрока из белого списка и не входит без пометки;
      * с ним — входит без пометки. Настоящий игрок с именем бота заходит — бот уступает имя.
      */
@@ -395,6 +435,11 @@ public final class GmBotGameTests {
         try {
             check(refused(h, "{\"name\":\"GmTestFriend\"}"), "бот взял имя игрока из белого списка");
             check(refused(h, "{\"name\":\"GmTestGhost\",\"marker\":false}"), "бот вошёл без пометки");
+            // свойство textures скина игрока сервера (так его отдают службы Mojang): владелец — в profileName/profileId
+            String skin = Base64.getEncoder().encodeToString(("{\"profileId\":\"" + UndashedUuid.toString(friend.getId())
+                    + "\",\"profileName\":\"Someone\",\"textures\":{}}").getBytes(StandardCharsets.UTF_8));
+            check(refused(h, "{\"name\":\"GmTestGhost\",\"skin\":{\"value\":\"" + skin + "\"}}"), "бот надел скин игрока из белого списка");
+            check(refused(h, "{\"name\":\"GmTestGhost\",\"skin\":{\"value\":\"не base64\"}}"), "непонятное свойство скина принято");
             GmConfig.BOTS_ALLOW_DISGUISE.set(true);
             Bot bot = spawn(h, "GmTestFriend", 10.5, 10.5, ",\"marker\":false");
             check(bot.player().getTabListDisplayName() == null, "пометка у переодетого бота: " + bot.player().getTabListDisplayName());

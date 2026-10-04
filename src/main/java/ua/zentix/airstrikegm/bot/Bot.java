@@ -37,12 +37,14 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.fml.util.ObfuscationReflectionHelper;
 import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import org.slf4j.Logger;
 import ua.zentix.airstrikegm.bridge.RpcException;
 import ua.zentix.airstrikegm.script.Json;
 import ua.zentix.airstrikegm.world.Observe;
 
+import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -172,6 +174,7 @@ public final class Bot {
             } else {
                 deadTicks = 0;
             }
+            Spam.decay((ServerGamePacketListenerImpl) connection.getPacketListener());
             controls.begin(player());
             runPrograms();
             if (channel.isOpen()) controls.end(player());
@@ -182,6 +185,32 @@ public final class Bot {
             disconnect(Component.literal("Internal server error"));
         }
         return channel.isOpen();
+    }
+
+    /**
+     * Счётчики спама обработчика (чат и команды, выброс в творческом): ваниль снимает их по единице в тике
+     * обработчика, которого у бота нет, — иначе 11-е сообщение за всё время отключало бы бота за спам. Открытого API нет —
+     * рефлексия; не вышло — предупреждение в лог, бот живёт как есть.
+     */
+    private static final class Spam {
+        private static Field chat, drop;
+        private static boolean broken;
+
+        static void decay(ServerGamePacketListenerImpl listener) {
+            if (broken) return;
+            try {
+                if (chat == null) {
+                    chat = ObfuscationReflectionHelper.findField(ServerGamePacketListenerImpl.class, "chatSpamTickCount");
+                    drop = ObfuscationReflectionHelper.findField(ServerGamePacketListenerImpl.class, "dropSpamTickCount");
+                }
+                int c = chat.getInt(listener), d = drop.getInt(listener);
+                if (c > 0) chat.setInt(listener, c - 1);
+                if (d > 0) drop.setInt(listener, d - 1);
+            } catch (RuntimeException | IllegalAccessException e) {
+                broken = true;
+                LOG.warn("Боты: счётчики спама обработчика недоступны ({}): частый чат бота отключит его за спам", e.toString());
+            }
+        }
     }
 
     private void runPrograms() {

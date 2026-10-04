@@ -32,6 +32,7 @@ import store as storemod  # noqa: E402
 
 ACTIONS = ["answer", "look", "instant", "task", "refuse", "ask"]
 BATCH = 15
+REVIEW_LIMIT = 60000  # знаков диффа, которые рецензент видит целиком
 APPEND_ONLY = ("evals/learned.jsonl", "skill/rules.local.md")
 
 EVAL_SCHEMA = {
@@ -196,10 +197,14 @@ def case_text(cfg, case):
     return "\n".join(lines)
 
 
+class GateError(Exception):
+    pass
+
+
 def ask_voice(cfg, skill_dir, cases):
-    """Ответы голоса (без инструментов) на случаи: id → ответ."""
+    """Ответы голоса (без инструментов) на случаи: (id → ответ, ошибка claude последней пачки без ответа)."""
     run_dir = os.path.join(cfg["paths"]["runs"], "eval")
-    answers = {}
+    answers, error = {}, None
     for i in range(0, len(cases), BATCH):
         batch = cases[i:i + BATCH]
         argv, env = roles.prepare(cfg, "eval", run_dir, skill_dir)
@@ -207,9 +212,11 @@ def ask_voice(cfg, skill_dir, cases):
         prompt = EVAL_PROMPT + "\n\n" + "\n\n".join(case_text(cfg, c) for c in batch)
         r = subprocess.run(argv, cwd=run_dir, env=env, input=prompt, capture_output=True, text=True, timeout=600)
         out = _structured(r.stdout)
+        if not out:
+            error = f"код {r.returncode}: {(r.stderr or r.stdout)[-300:]}"
         for a in (out or {}).get("cases", []):
             answers[a.get("id")] = a
-    return answers
+    return answers, error
 
 
 def _structured(stdout):
@@ -225,21 +232,35 @@ def _structured(stdout):
         return None
 
 
-def evaluate(cfg, store, skill_dir, overlay=None, cases=None, cache=True):
-    """Итоги случаев на навыке: id → (прошёл, подробности); готовые итоги того же навыка — из памяти."""
+def evaluate(cfg, store, skill_dir, overlay=None, cases=None, cache=True, strict=False):
+    """Итоги случаев на навыке: id → (прошёл, подробности); готовые итоги того же навыка и голоса — из памяти.
+    Случай без ответа (сбой claude, предел подписки) — не итог: в память не идёт, strict — GateError."""
     cases = cases if cases is not None else load_cases(cfg, skill_dir, overlay)
-    key = roles.skill_hash(cfg, skill_dir) + _evals_hash(cfg, skill_dir, overlay)
+    key = _cache_key(cfg, skill_dir, overlay)
     done = store.eval_results(key) if cache else {}
     todo = [c for c in cases if c["id"] not in done]
     if todo:
-        answers = ask_voice(cfg, skill_dir, todo)
+        answers, error = ask_voice(cfg, skill_dir, todo)
+        missing = [c["id"] for c in todo if c["id"] not in answers]
+        if missing and strict:
+            raise GateError(f"голос не ответил на {len(missing)} из {len(todo)} случаев ({error or 'без ошибки'})")
         fresh = {}
         for c in todo:
-            problems = grade(c, answers.get(c["id"]))
-            fresh[c["id"]] = (not problems, "; ".join(problems) or json.dumps(answers.get(c["id"]), ensure_ascii=False))
+            if c["id"] in answers:
+                problems = grade(c, answers[c["id"]])
+                fresh[c["id"]] = (not problems, "; ".join(problems) or json.dumps(answers[c["id"]], ensure_ascii=False))
         store.eval_save(key, fresh)
         done.update(fresh)
+        done.update({cid: (False, f"нет ответа ({error or 'без ошибки'})") for cid in missing})
     return {c["id"]: done[c["id"]] for c in cases}
+
+
+def _cache_key(cfg, skill_dir, overlay):
+    """Навык, набор, модель голоса и сам опрос: сменилось что-то — итоги новые."""
+    m = cfg["models"]
+    h = hashlib.sha256(json.dumps([m["voice"], m.get("voice_effort"), EVAL_PROMPT, EVAL_SCHEMA],
+                                  ensure_ascii=False).encode())
+    return roles.skill_hash(cfg, skill_dir) + _evals_hash(cfg, skill_dir, overlay) + h.hexdigest()[:8]
 
 
 def _evals_hash(cfg, skill_dir, overlay):
@@ -252,11 +273,15 @@ def _evals_hash(cfg, skill_dir, overlay):
 # ---------------------------------------------------------------- рецензент
 
 def review(cfg, wt, base):
-    run_dir = os.path.join(cfg["paths"]["runs"], "review")
-    argv, env = roles.prepare(cfg, "reviewer", run_dir, os.path.join(wt, "skill"), add_dirs=(wt,))
-    argv += ["--output-format", "json", "--json-schema", json.dumps(REVIEW_SCHEMA)]
     diff = git(wt, "diff", "--cached", base)
-    prompt = (f"Правка наставника в навыке ведущего (копия — {wt}). Дифф:\n\n```diff\n{diff[:60000]}\n```\n\n"
+    if len(diff) > REVIEW_LIMIT:
+        return False, [f"правка {len(diff)} знаков — больше {REVIEW_LIMIT}: рецензент не увидит её целиком, разбить"]
+    run_dir = os.path.join(cfg["paths"]["runs"], "review")
+    # промпт рецензента — из принятого навыка, не из правки: наставник не пишет правила своему рецензенту
+    argv, env = roles.prepare(cfg, "reviewer", run_dir, os.path.join(cfg["paths"]["overlay"], "skill"),
+                              add_dirs=(wt,))
+    argv += ["--output-format", "json", "--json-schema", json.dumps(REVIEW_SCHEMA)]
+    prompt = (f"Правка наставника в навыке ведущего (копия — {wt}). Дифф:\n\n```diff\n{diff}\n```\n\n"
               "Проверь по своей роли и ответь JSON: verdict clean или block, reasons — причины "
               "(для block — что не так).")
     r = subprocess.run(argv, cwd=run_dir, env=env, input=prompt, capture_output=True, text=True, timeout=900)
@@ -277,12 +302,19 @@ def run(cfg, store, wt, base):
     cand_skill = os.path.join(wt, "skill")
     main_skill = os.path.join(cfg["paths"]["overlay"], "skill")
     cases = load_cases(cfg, cand_skill, wt)
-    old = evaluate(cfg, store, main_skill, cfg["paths"]["overlay"],
-                   [c for c in cases if c["id"] in {x["id"] for x in load_cases(cfg, main_skill)}])
-    new = evaluate(cfg, store, cand_skill, wt, cases)
+    try:
+        old = evaluate(cfg, store, main_skill, cfg["paths"]["overlay"],
+                       [c for c in cases if c["id"] in {x["id"] for x in load_cases(cfg, main_skill)}], strict=True)
+        new = evaluate(cfg, store, cand_skill, wt, cases, strict=True)
+    except GateError as e:  # без ответов сравнивать нечего: правка ждёт следующего урока
+        return False, f"набор не проверен: {e}"
     worse = [cid for cid, (ok, _) in new.items() if not ok and old.get(cid, (False, ""))[0]]
     if worse:  # ещё одна попытка: модель отвечает не всегда одинаково
-        again = evaluate(cfg, store, cand_skill, wt, [c for c in cases if c["id"] in worse], cache=False)
+        try:
+            again = evaluate(cfg, store, cand_skill, wt, [c for c in cases if c["id"] in worse], cache=False,
+                             strict=True)
+        except GateError as e:
+            return False, f"набор не проверен: {e}"
         worse = [cid for cid in worse if not again[cid][0]]
     fresh = [cid for cid in new if cid not in old and not new[cid][0]]
     passed = sum(ok for ok, _ in new.values())
@@ -301,11 +333,12 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     e = sub.add_parser("evals", help="проверочный набор на навыке")
     e.add_argument("--skill", help="каталог навыка сервера (по умолчанию — skill/ оверлея)")
+    e.add_argument("--fresh", action="store_true", help="спросить голос заново, без готовых итогов")
     a = p.parse_args()
     cfg = conf.load(a.config)
     store = storemod.Store(cfg["paths"]["db"])
     skill = a.skill or os.path.join(cfg["paths"]["overlay"], "skill")
-    results = evaluate(cfg, store, skill, os.path.dirname(os.path.abspath(skill)))
+    results = evaluate(cfg, store, skill, os.path.dirname(os.path.abspath(skill)), cache=not a.fresh)
     for cid, (ok, detail) in results.items():
         print(f"{'✓' if ok else '✗'} {cid}: {detail if not ok else ''}".rstrip())
     print(f"{sum(ok for ok, _ in results.values())}/{len(results)}")

@@ -24,6 +24,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -36,6 +37,7 @@ import bridge as bridgemod  # noqa: E402
 import conf  # noqa: E402
 import guard  # noqa: E402
 import roles  # noqa: E402
+import zones as zonesmod  # noqa: E402
 import store as storemod  # noqa: E402
 
 CONVERSATION_SECONDS = 90
@@ -47,6 +49,8 @@ SIGNALS = ("lesson", "task_failed", "no_reply", "guard_deny", "tool_error", "rec
            "voice_crash", "slow_reply", "rule_removed")
 TEACH_AFTER = 8
 RULES_RECHECK = 60  # правила с ударом сверяются с зонами при каждой их правке и не реже раза в минуту
+STALE_SECONDS = 20  # голос не поднялся — сообщения старше этого получают запасную фразу и не копятся
+EXPERIENCE_ROWS = 300  # записей журнала на один урок (столько отдаёт experience)
 
 
 def log(text):
@@ -231,9 +235,9 @@ class Dispatcher:
             try:
                 page = self.bridge.call("events", {"after": after, "wait": 0 if first else 25,
                                                    "limit": 1000 if first else 500}, timeout=40)
-            except bridgemod.BridgeError as e:
+            except Exception as e:  # noqa: BLE001 — нить ленты не умирает: мост лёг, токен пропал — ждём
                 if not down:
-                    self.events.put({"type": "bridge_down", "error": str(e)})
+                    self.events.put({"type": "bridge_down", "error": f"{type(e).__name__}: {e}"})
                     down = True
                 time.sleep(pause)
                 pause = min(pause * 2, 30)
@@ -291,8 +295,14 @@ class Dispatcher:
                 self.store.log("voice", "voice_crash", None, when="между ходами")
                 self.voice_retry = time.time() + 30
             if time.time() < self.voice_retry:
+                self.drop_stale()
                 return
-            self.voice.start()
+            try:
+                self.voice.start()
+            except OSError as e:  # claude не запускается: не каждый круг, а через 30 с
+                self.store.log("voice", "voice_crash", None, when="запуск", error=str(e))
+                self.voice_retry = time.time() + 30
+                return
         elif self.voice.turns >= limits["voice_turns"] or self.skill_changed():
             log("голос: перезапуск в паузе (ходы или навык)")
             self.voice.stop()
@@ -339,10 +349,13 @@ class Dispatcher:
         self.store.log("voice", "turn", turn["player"], ms=ms, first_reply_ms=first, replies=len(replies),
                        cost=result.get("total_cost_usd"), usage=result.get("usage"),
                        error=result.get("subtype") if result.get("is_error") else None)
+        text = result.get("result") or ""
         if replies:
             self.talked[turn["player"]] = time.time()
-        elif turn["asked"]:
-            self.store.log("voice", "no_reply", turn["player"], result=(result.get("result") or "")[:500])
+        elif result.get("is_error"):  # перегрузка, предел подписки: игрок не должен ждать впустую
+            self.fallback(turn)
+        elif turn["asked"] and "не мне" not in text.lower():
+            self.store.log("voice", "no_reply", turn["player"], result=text[:500])
         if first and first > 15000:
             self.store.log("voice", "slow_reply", turn["player"], ms=first)
 
@@ -354,6 +367,21 @@ class Dispatcher:
                                      "to": [turn["player"]] if turn["channel"] == "gm" else None})
         except bridgemod.BridgeError as e:
             log(f"запасная фраза не ушла: {e}")
+
+    def drop_stale(self):
+        """Голос лежит: сообщения игроков старше STALE_SECONDS — запасная фраза (раз на игрока) и из очереди вон;
+        итоги задач и вести ждут голоса."""
+        now = time.time()
+        stale = [it for it in self.pending if it.task is None and not it.note and now - it.time > STALE_SECONDS]
+        if not stale:
+            return
+        told = set()
+        for it in stale:
+            if it.direct and it.player not in told:
+                self.fallback({"player": it.player, "channel": it.channel})
+                told.add(it.player)
+        self.pending = [it for it in self.pending if it not in stale]
+        self.store.log("gmd", "voice_down", None, dropped=len(stale), players=sorted(told))
 
     # ---------------------------------------------------------------- исполнители
 
@@ -372,6 +400,7 @@ class Dispatcher:
                 else:
                     continue
                 code = proc.poll()
+                self.clean_up(task_id)
             del self.workers[task_id]
             self.worker_ended(task_id, code)
         running = [self.store.task(i) for i in self.workers]
@@ -389,7 +418,8 @@ class Dispatcher:
         argv += ["--output-format", "json", "--max-budget-usd", str(self.cfg["limits"]["task_usd"])]
         lang = conf.language(self.cfg, task["player"])
         owner = " (владелец)" if conf.is_owner(self.cfg, task["player"]) else ""
-        prompt = f"Задача #{task['id']} от {task['player']}{owner}, язык игрока: {lang}.\nЧто просит: «{task['text']}»\n"
+        prompt = (f"Задача #{task['id']} от {task['player']}{owner}, язык игрока: {lang}.\n"
+                  f"Что просит: «{task['text']}»\n")
         if task["recipe"]:
             prompt += (f"Рецепт: {task['recipe']} {json.dumps(task['params'], ensure_ascii=False)} — сначала он "
                        "(recipe_run); не вышел — разберись по его тексту и доделай.\n")
@@ -419,6 +449,18 @@ class Dispatcher:
         log(f"задача #{task_id}: {task['status']}")
         if task["status"] in ("done", "failed"):
             self.pending.append(Item(task["player"], notice(task), task=task_id))
+
+    def clean_up(self, task_id):
+        """Оборванная задача: её боты и правила (по журналу made) — из мира. Районы держат срок сами."""
+        for e in self.store.logs(0, ["made"], 100_000):
+            if e["task"] != task_id:
+                continue
+            what, name = e["data"].get("what"), e["data"].get("name")
+            try:
+                self.bridge.call("bot.remove" if what == "bot" else "rule.remove", {"name": name})
+                self.store.log("gmd", "cleaned", e["player"], task_id, what=what, name=name)
+            except bridgemod.BridgeError as err:  # уже ушёл сам — не беда
+                self.store.log("gmd", "cleaned", e["player"], task_id, what=what, name=name, error=str(err))
 
     @staticmethod
     def kill(proc):
@@ -455,7 +497,8 @@ class Dispatcher:
         if time.time() - self.last_teach < limits["teacher_gap_minutes"] * 60:
             return
         seen = self.store.get("teacher.seen", 0)
-        signal = self.store.logs(seen, SIGNALS, limit=1)
+        # свои ошибки наставника (отказ охраны, сбой инструмента) — не повод звать его снова
+        signal = [e for e in self.store.logs(seen, SIGNALS, limit=500) if e["role"] != "teacher"]
         if not signal and len(self.store.logs(seen, ["message"], TEACH_AFTER)) < TEACH_AFTER:
             return
         self.start_teacher(seen)
@@ -473,12 +516,21 @@ class Dispatcher:
             log("наставник: worktree не создан: " + r.stderr.strip())
             self.last_teach = time.time()
             return
-        until = self.store.last_log_id()
+        rows = self.store.logs(seen, limit=EXPERIENCE_ROWS)  # больше — следующим уроком, не мимо
+        until = rows[-1]["id"] if len(rows) == EXPERIENCE_ROWS else self.store.last_log_id()
         run_dir = os.path.join(self.cfg["paths"]["runs"], "teacher")
-        argv, env = roles.prepare(self.cfg, "teacher", run_dir, os.path.join(wt, "skill"), writable=wt, add_dirs=(wt,))
+        os.makedirs(run_dir, exist_ok=True)
+        zones = os.path.join(run_dir, "zones.json")  # копия: пробы наставника не меняют охрану игры
+        with zonesmod.Locked(self.cfg["paths"]["zones"]):
+            if os.path.exists(self.cfg["paths"]["zones"]):
+                shutil.copyfile(self.cfg["paths"]["zones"], zones)
+            elif os.path.exists(zones):
+                os.remove(zones)
+        argv, env = roles.prepare(self.cfg, "teacher", run_dir, os.path.join(wt, "skill"), writable=wt, add_dirs=(wt,),
+                                  zones=zones)
         argv += ["--output-format", "json", "--max-budget-usd", str(self.cfg["limits"]["teacher_usd"])]
-        prompt = (f"Новый опыт — записи журнала после {seen} (experience). Твоя копия знаний сервера — {wt}: "
-                  "правь там skill/ и evals/learned.jsonl по своей роли; рецепты — с удачной пробой recipe_test. "
+        prompt = (f"Новый опыт — записи журнала после {seen} до {until} (experience). "
+                  f"Твоя копия знаний сервера — {wt}: правь там skill/ и evals/learned.jsonl по своей роли; рецепты — с удачной пробой recipe_test. "
                   "В конце — одна строка: что изменил и почему (или «без изменений» и почему).")
         proc = spawn(argv, run_dir, wt, env, prompt)
         self.teacher = (proc, wt, base, until, time.time())

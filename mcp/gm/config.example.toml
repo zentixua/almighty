@@ -10,14 +10,13 @@ url = "http://127.0.0.1:25651"
 token_file = "~/airstrike-work/gm-test/token"
 
 [gm]
-names = ["ведущий", "ведущая", "ведущему", "ведущего", "ведущим", "ведучий", "ведучому", "гм", "gm"]
+names = ["ведущий", "ведущая", "ведущему", "ведущего", "ведущим", "ведучий", "ведучому"]   # и всегда — /gm
 owners = ["ZentixUA"]
 default_language = "ru"
 languages = { WallyFillmark = "uk" }
 
 [models]                      # голос — быстрый и дешёвый (выбор — по проверочному набору: gate.py evals)
-voice = "haiku"
-voice_effort = "low"
+voice = "haiku"               # у Haiku уровня усилий нет; для sonnet — voice_effort = "low"
 worker = "sonnet"
 worker_effort = "medium"
 teacher = "sonnet"

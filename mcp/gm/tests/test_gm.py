@@ -15,6 +15,7 @@ sys.path.insert(0, KIT)
 
 import conf  # noqa: E402
 import gate  # noqa: E402
+import gm as gmmod  # noqa: E402
 import gmd  # noqa: E402
 import guard  # noqa: E402
 import recipes  # noqa: E402
@@ -113,7 +114,7 @@ class GuardTest(Tmp):
         check = guard.checker(store)
         self.assertIsNone(check("rule.add", {"event": "tick", "name": "залп", "script": volley}, c))
         self.assertEqual(store.items(guard.RULE_KEY)["залп"]["requester"], "ZentixUA")
-        guard.remember_rule(store, "rule.add", {"name": "залп", "script": 'gm.command("time set day")'}, c)
+        guard.note_call(store, "rule.add", {"name": "залп", "script": 'gm.command("time set day")'}, c)
         self.assertEqual(store.items(guard.RULE_KEY), {})  # то же имя без удара
         check("rule.add", {"event": "tick", "name": "залп", "script": volley}, c)
         check("rule.remove", {"name": "залп"}, c)
@@ -137,9 +138,19 @@ class GuardTest(Tmp):
         self.zone("порт", 0, 0, 100)
         self.assertIn("зоны", guard.check_script("gm.command('airstrike salvo grad 4 10 at 20 64 20')",
                                                  self.ctx(requester="ZentixUA")))
-        self.assertIn("числами", guard.check_script('gm.command("airstrike salvo grad 4 10 at ${x} 64 ${z}")', c))
+        self.assertIn("строкой", guard.check_script('gm.command("airstrike salvo grad 4 10 at ${x} 64 ${z}")', c))
         self.assertIn("числами", guard.check_call("rule.add", {"event": "tick", "script":
                                                   "gm.command('airstrike drone @p')"}, c))
+        # команда, собранная в скрипте, охране не видна — только литералы в gm.command / gm.commandAs
+        for code in ("gm.command(args.c)", "gm.command('air' + 'strike nuke at 0 64 0')", "def g = gm; g.command('x')",
+                     "gm.command 'op Steve'", "gm.&command", "gm.commandAs(p, cmd)",
+                     "server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), 'op Steve')",
+                     "gm.command(['time set day', 'op Steve'])", "gm.command('setblock 0 64 0 command_block')"):
+            self.assertIsNotNone(guard.check_script(code, c), code)
+        for code in ("gm.command('time set day')", "gm.command(['time set day', 'weather clear'])",
+                     "gm.commandAs(gm.player('Steve'), 'tp @s 0 64 0')", "return event.command",
+                     "def x = 'stop'; def y = 'me and you'; return 'ban.count'"):  # строки-данные — не команды
+            self.assertIsNone(guard.check_script(code, c), code)
 
     def test_roles_and_tools(self):
         self.assertIn("задач", guard.check_call("build", {"ops": []}, self.ctx("voice")))
@@ -151,7 +162,26 @@ class GuardTest(Tmp):
         self.assertIsNone(guard.check_tool("mcp__almighty__bot", {"action": "act", "name": "b",
                                                                    "actions": [{"chat": "/spawn"}]}, self.ctx()))
         self.assertIsNone(guard.check_tool("mcp__almighty__view", {"kind": "map", "center": [0, 0]}, self.ctx()))
-        self.assertIn("голос", guard.check_tool("mcp__almighty__command", {"lines": ["# x", "$say $(t)"]}, self.ctx()))
+        self.assertIn("голос", guard.check_tool("mcp__almighty__command", {"lines": ["# x", "$say $(t)"],
+                                                                          "args": {"t": "hi"}}, self.ctx()))
+        self.assertIn("args", guard.check_tool("mcp__almighty__command", {"lines": ["$say $(t)"]}, self.ctx()))
+        # макрос проверяется таким, каким станет; строка вместо списка — тоже команда
+        self.assertIn("владельца", guard.check_tool("mcp__almighty__command", {"lines": ["$$(c)"],
+                                                                                "args": {"c": "op Steve"}}, self.ctx()))
+        self.assertIsNone(guard.check_tool("mcp__almighty__command", {"lines": ["$time set $(t)"],
+                                                                       "args": {"t": "day"}}, self.ctx()))
+        self.assertIn("владельца", guard.check_tool("mcp__almighty__call", {"method": "command",
+                                                                             "params": {"commands": "op Steve"}},
+                                                    self.ctx()))
+        self.assertIn("голос", guard.check_call("command", {"commands": "say hi all"}, self.ctx()))
+        self.assertIn("строк", guard.check_call("command", {"commands": [["op Steve"]]}, self.ctx()))
+        self.assertIn("Sable", guard.check_tool("mcp__almighty__command", {"commands": ["setblock ~ ~ ~ stone"],
+                                                                            "pos": [20480100, 64, 0]}, self.ctx()))
+        self.assertIn("командные", guard.check_call("build", {"ops": [{"op": "set", "pos": [0, 64, 0],
+                                                                       "block": "command_block"}]}, self.ctx()))
+        # числа не мест — не участки кораблей
+        self.assertIsNone(guard.check_command("scoreboard players set @s x 30000000", self.ctx()))
+        self.assertIsNone(guard.check_command("data merge entity @e[limit=1] {UUID:[I;21000000,1,2,3]}", self.ctx()))
 
     def test_teacher_edits(self):
         wt = os.path.join(self.tmp, "wt")
@@ -170,23 +200,33 @@ class GuardTest(Tmp):
     def test_hook_protocol(self):
         env = dict(os.environ, GM_CONFIG=self.cfg["paths"]["config"], GM_ROLE="worker")
         event = {"tool_name": "mcp__almighty__command", "tool_input": {"commands": ["say hi"]}}
-        out = subprocess.run([sys.executable, os.path.join(KIT, "guard.py")], input=json.dumps(event), env=env,
-                             capture_output=True, text=True)
+        hook = [sys.executable, os.path.join(KIT, "hook.py")]
+        out = subprocess.run(hook, input=json.dumps(event), env=env, capture_output=True, text=True)
         decision = json.loads(out.stdout)["hookSpecificOutput"]
         self.assertEqual(decision["permissionDecision"], "deny")
         ok = {"tool_name": "mcp__almighty__status", "tool_input": {}}
-        out = subprocess.run([sys.executable, os.path.join(KIT, "guard.py")], input=json.dumps(ok), env=env,
-                             capture_output=True, text=True)
-        self.assertEqual(out.stdout.strip(), "")
+        out = subprocess.run(hook, input=json.dumps(ok), env=env, capture_output=True, text=True)
+        self.assertEqual((out.returncode, out.stdout.strip()), (0, ""))
         denials = storemod.Store(self.cfg["paths"]["db"]).logs(0, ["guard_deny"])
         self.assertEqual(len(denials), 1)
         rule = {"tool_name": "mcp__almighty__rule", "tool_input": {
             "action": "add", "event": "tick", "every": 200, "name": "залп",
             "script": 'gm.command("airstrike salvo grad 5 20 at 300 64 0")'}}
-        out = subprocess.run([sys.executable, os.path.join(KIT, "guard.py")], input=json.dumps(rule), env=env,
-                             capture_output=True, text=True)
+        out = subprocess.run(hook, input=json.dumps(rule), env=env, capture_output=True, text=True)
         self.assertEqual(out.stdout.strip(), "")
         self.assertIn("залп", storemod.Store(self.cfg["paths"]["db"]).items(guard.RULE_KEY))
+        # охрана сломалась (нет настроек) — отказ кодом 2, а не пропуск
+        broken = dict(env, GM_CONFIG=os.path.join(self.tmp, "нет.toml"))
+        out = subprocess.run(hook, input=json.dumps(ok), env=broken, capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0)
+        self.assertIn("deny", out.stdout)
+        out = subprocess.run(hook, input="не json", env=env, capture_output=True, text=True)
+        self.assertIn("deny", out.stdout)
+        no_guard = ("import runpy, sys; sys.modules['guard'] = None; "
+                    f"runpy.run_path({os.path.join(KIT, 'hook.py')!r}, run_name='__main__')")
+        out = subprocess.run([sys.executable, "-c", no_guard], input="{}", env=env, capture_output=True, text=True)
+        self.assertEqual(out.returncode, 2)  # не импортировалась сама охрана
+        self.assertIn("охрана не смогла", out.stderr)
 
 
 class FakeBridge:
@@ -263,6 +303,8 @@ class DispatcherPartsTest(Tmp):
         self.assertTrue(gmd.addressed("эй ведучий", names))
         self.assertFalse(gmd.addressed("ведущийся спор", names))
         self.assertFalse(gmd.addressed("всем привет", names))
+        self.assertFalse(gmd.addressed("Гм, ну не знаю", names))  # междометие, не имя
+        self.assertFalse(gmd.addressed("gm everyone", names))
 
     def test_pick_and_runnable(self):
         items = [gmd.Item("A", "1"), gmd.Item("B", "2"), gmd.Item("A", "3")]
@@ -286,7 +328,7 @@ class DispatcherPartsTest(Tmp):
     def test_zones_recheck_strike_rules(self):
         store = storemod.Store(self.cfg["paths"]["db"])
         volley = {"name": "залп", "script": 'gm.command("airstrike salvo grad 5 20 at 300 64 0")'}
-        guard.remember_rule(store, "rule.add", volley, self.ctx(requester="Steve"))
+        guard.note_call(store, "rule.add", volley, self.ctx(requester="Steve"))
         d = gmd.Dispatcher(self.cfg)
         d.bridge = FakeBridge({"rules": [{"name": "залп", "state": "on"}, {"name": "салют", "state": "on"}]})
         d.zones_tick()
@@ -299,6 +341,75 @@ class DispatcherPartsTest(Tmp):
         self.assertEqual(store.logs(0, ["rule_removed"])[0]["player"], "Steve")
         self.assertTrue(d.pending[0].note)
         self.assertIn("служба ведущего", gmd.compose(self.cfg, "Steve", d.pending, [], []))
+
+
+    def test_voice_errors_and_cleanup(self):
+        d = gmd.Dispatcher(self.cfg)
+        d.bridge = FakeBridge()
+        turn = {"player": "Steve", "channel": "gm", "started": time.time(), "log_id": d.store.last_log_id(),
+                "asked": True}
+        d.turn = dict(turn)
+        d.end_turn({"type": "result", "is_error": True, "subtype": "error_during_execution"})
+        self.assertEqual(d.bridge.calls[-1][0], "say")  # перегрузка — игрок слышит запасную фразу
+        d.turn = dict(turn)
+        d.end_turn({"type": "result", "result": "не мне: игроки говорят между собой"})
+        self.assertEqual(d.store.logs(0, ["no_reply"]), [])
+        # голос лежит: старые сообщения — запасная фраза раз на игрока, итоги задач ждут
+        old = time.time() - 60
+        d.pending = [gmd.Item("Steve", "эй", "gm", direct=True), gmd.Item("Steve", "ау", "gm", direct=True),
+                     gmd.Item("Steve", "итог", task=3)]
+        for it in d.pending:
+            it.time = old
+        calls = len(d.bridge.calls)
+        d.drop_stale()
+        self.assertEqual(len(d.bridge.calls), calls + 1)
+        self.assertEqual([it.text for it in d.pending], ["итог"])
+        # оборванная задача: её боты и правила — из мира
+        d.store.log("worker", "made", "Steve", 7, what="bot", name="Строитель")
+        d.store.log("worker", "made", "Steve", 8, what="rule", name="чужое")
+        d.clean_up(7)
+        self.assertEqual(d.bridge.calls[-1], ("bot.remove", {"name": "Строитель"}))
+
+    def test_teacher_ignores_own_errors(self):
+        d = gmd.Dispatcher(self.cfg)
+        started = []
+        d.start_teacher = started.append
+        d.store.log("teacher", "guard_deny", None, reason="x")
+        d.teacher_tick()
+        self.assertEqual(started, [])
+        d.store.log("voice", "no_reply", "Steve")
+        d.teacher_tick()
+        self.assertEqual(started, [0])
+
+
+class GmToolsTest(Tmp):
+    def gm(self, role, requester):
+        os.environ["GM_CONFIG"] = self.cfg["paths"]["config"]
+        try:
+            g = gmmod.Gm(self.cfg, role)
+        finally:
+            os.environ.pop("GM_CONFIG", None)
+        g.store.put("voice.requester", requester)
+        return g
+
+    def test_zones_need_owner_to_weaken(self):
+        steve = self.gm("voice", "Steve")
+        self.assertIn("зона", steve.zones("add", "зрители", 10, 10, 30, ttl_minutes=30))
+        self.assertIn("зона", steve.zones("add", "зрители", 12, 10, 40))  # свою — можно
+        self.zone("аэропорт", 0, 0, 200)
+        for call in (lambda: steve.zones("remove", "аэропорт"), lambda: steve.zones("add", "аэропорт", 0, 0, 1),
+                     lambda: steve.zones("add", "дыра", 0, 0, -1000)):
+            with self.assertRaises(gmmod.GmError):
+                call()
+        self.assertIn("убрана", self.gm("voice", "ZentixUA").zones("remove", "аэропорт"))
+
+    def test_cancel_only_own(self):
+        g = self.gm("voice", "Alex")
+        task = g.store.task_add("Steve", "домик")
+        with self.assertRaises(gmmod.GmError):
+            g.task_cancel(task)
+        g.store.put("voice.requester", "Steve")
+        self.assertIn("отменяется", g.task_cancel(task))
 
 
 class RolesTest(Tmp):
@@ -316,7 +427,7 @@ class RolesTest(Tmp):
             s = json.load(f)
         self.assertIn("mcp__almighty__build", s["permissions"]["deny"])
         self.assertTrue(any(d.startswith("Read(//") for d in s["permissions"]["deny"]))
-        self.assertIn("guard.py", s["hooks"]["PreToolUse"][0]["hooks"][0]["command"])
+        self.assertIn("hook.py", s["hooks"]["PreToolUse"][0]["hooks"][0]["command"])
         argv, _ = roles.prepare(self.cfg, "teacher", os.path.join(self.tmp, "runs", "t"),
                                 os.path.join(self.tmp, "skill"), writable=self.tmp)
         with open(os.path.join(self.tmp, "runs", "t", "mcp.json"), encoding="utf-8") as f:
@@ -324,6 +435,23 @@ class RolesTest(Tmp):
 
 
 class GateTest(Tmp):
+    def test_missing_answers_are_not_results(self):
+        store = storemod.Store(self.cfg["paths"]["db"])
+        cases = [{"id": "a", "text": "привет", "expect": {"action": ["answer"]}}]
+        real = gate.ask_voice
+        gate.ask_voice = lambda cfg, skill, todo: ({}, "код 1: rate limit")
+        try:
+            with self.assertRaises(gate.GateError):
+                gate.evaluate(self.cfg, store, os.path.join(self.tmp, "skill"), self.tmp, cases, strict=True)
+            r = gate.evaluate(self.cfg, store, os.path.join(self.tmp, "skill"), self.tmp, cases)
+            self.assertIn("нет ответа", r["a"][1])
+            gate.ask_voice = lambda cfg, skill, todo: ({"a": {"id": "a", "action": "answer", "reply": "ок"}}, None)
+            r = gate.evaluate(self.cfg, store, os.path.join(self.tmp, "skill"), self.tmp, cases)
+            self.assertTrue(r["a"][0])  # сбой не остался в памяти итогов
+        finally:
+            gate.ask_voice = real
+
+
     def test_grade(self):
         case = {"expect": {"action": ["refuse"], "lang": "uk", "must_not": ["готово"], "max_chars": 50}}
         self.assertEqual(gate.grade(case, {"action": "refuse", "reply": "Ні, так не можна."}), [])

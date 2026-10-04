@@ -56,8 +56,8 @@ class Store:
         return json.loads(row[0]) if row else default
 
     def put(self, key, value):
-        self.db.execute("insert into state(key, value) values (?, ?) "
-                        "on conflict(key) do update set value = excluded.value", (key, json.dumps(value, ensure_ascii=False)))
+        self.db.execute("insert into state(key, value) values (?, ?) on conflict(key) do update set value = excluded.value",
+                        (key, json.dumps(value, ensure_ascii=False)))
 
     def drop(self, key):
         self.db.execute("delete from state where key = ?", (key,))

@@ -80,10 +80,11 @@ def settings(cfg, role):
     for section in ("bridge", "test_bridge"):  # токены мостов сессия не читает
         if cfg[section].get("token_file"):
             deny.append("Read(/" + cfg[section]["token_file"] + ")")
-    if role == "teacher":  # набор (базовый навык, охрана, проверки) наставник не правит
-        kit = cfg["paths"]["kit"]
-        deny += [f"Edit(/{kit}/**)", f"Write(/{kit}/**)"]
-    guard = f"{shlex.quote(sys.executable)} {shlex.quote(os.path.join(cfg['paths']['kit'], 'guard.py'))}"
+    if role == "teacher":  # набор (базовый навык, охрана, проверки) наставник не правит; Edit покрывает и Write
+        deny.append(f"Edit(/{cfg['paths']['kit']}/**)")
+    if "WebSearch" in r["tools"]:
+        allow += ["WebSearch", "WebFetch"]
+    guard = f"{shlex.quote(sys.executable)} {shlex.quote(os.path.join(cfg['paths']['kit'], 'hook.py'))}"
     return {
         "permissions": {"allow": allow, "deny": deny, "blockReadsOutsideWorkingDirectories": True},
         "hooks": {"PreToolUse": [{"matcher": "mcp__almighty__.*|Edit|Write|MultiEdit|NotebookEdit",
@@ -105,9 +106,9 @@ def mcp_config(cfg, role, env):
     return {"mcpServers": servers}
 
 
-def env(cfg, role, skill_dir, task=None, writable=None):
+def env(cfg, role, skill_dir, task=None, writable=None, zones=None):
     e = dict(os.environ)
-    e.update({"GM_CONFIG": cfg["paths"]["config"], "GM_ROLE": role, "GM_ZONES": cfg["paths"]["zones"],
+    e.update({"GM_CONFIG": cfg["paths"]["config"], "GM_ROLE": role, "GM_ZONES": zones or cfg["paths"]["zones"],
               "GM_SKILL": skill_dir,
               # чистая сессия: без памяти и CLAUDE.md Claude Code
               "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1"})
@@ -120,10 +121,11 @@ def env(cfg, role, skill_dir, task=None, writable=None):
     return e
 
 
-def prepare(cfg, role, run_dir, skill_dir, task=None, writable=None, add_dirs=()):
-    """Каталог запуска (рабочий каталог сессии) с настройками и MCP; ответ — (argv без вывода, env)."""
+def prepare(cfg, role, run_dir, skill_dir, task=None, writable=None, add_dirs=(), zones=None):
+    """Каталог запуска (рабочий каталог сессии) с настройками и MCP; ответ — (argv без вывода, env).
+    zones — свой файл зон (у наставника — копия: его пробы не меняют охрану игры)."""
     os.makedirs(run_dir, exist_ok=True)
-    e = env(cfg, role, skill_dir, task, writable)
+    e = env(cfg, role, skill_dir, task, writable, zones)
     with open(os.path.join(run_dir, "settings.json"), "w", encoding="utf-8") as f:
         json.dump(settings(cfg, role), f, ensure_ascii=False, indent=1)
     with open(os.path.join(run_dir, "mcp.json"), "w", encoding="utf-8") as f:
@@ -131,7 +133,7 @@ def prepare(cfg, role, run_dir, skill_dir, task=None, writable=None, add_dirs=()
     m = cfg["models"]
     model_key = "voice" if role == "eval" else role
     argv = [cfg["gm"]["claude"], "-p", "--model", m[model_key]]
-    if m.get(model_key + "_effort"):
+    if m.get(model_key + "_effort") and "haiku" not in m[model_key]:  # у Haiku уровня усилий нет
         argv += ["--effort", m[model_key + "_effort"]]
     argv += ["--system-prompt", system_prompt(cfg, role, skill_dir),
              "--settings", os.path.join(run_dir, "settings.json"),

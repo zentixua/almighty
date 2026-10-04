@@ -15,7 +15,7 @@ DEFAULTS = {
     "test_bridge": {"url": "", "token_file": ""},
     "gm": {
         # слова в общем чате, на которые ведущий отвечает (личное /gm — всегда)
-        "names": ["ведущий", "ведущая", "ведущему", "ведущего", "гм", "gm"],
+        "names": ["ведущий", "ведущая", "ведущему", "ведущего"],  # «гм» — междометие, «gm» — «good morning»
         "owners": [],
         "languages": {},
         "default_language": "ru",
@@ -78,7 +78,7 @@ def load(path=None):
         "kit": KIT,
         "adapter": os.path.join(os.path.dirname(KIT), "almighty.py"),
         "db": os.path.join(overlay, "gm.db"),
-        "zones": os.path.join(overlay, "zones.json"),
+        "zones": os.environ.get("GM_ZONES") or os.path.join(overlay, "zones.json"),  # у наставника — копия
         "runs": os.path.join(overlay, "runs"),
     }
     for section in ("bridge", "test_bridge"):

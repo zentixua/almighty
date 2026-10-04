@@ -109,6 +109,9 @@ class Gm:
             raise GmError(f"задачи #{task_id} нет")
         if t["status"] not in storemod.OPEN:
             return f"задача #{task_id} уже {t['status']}"
+        ctx = self.ctx()
+        if ctx.requester != t["player"] and not ctx.owner():
+            raise GmError(f"задача #{task_id} — {t['player']}: отменить её может он сам или владелец")
         self.store.task_update(task_id, cancel=1)
         self.store.log(self.role, "task_cancel", t["player"], task_id)
         return f"задача #{task_id} отменяется"
@@ -189,6 +192,8 @@ class Gm:
         if self.role == "voice" and r.kind != "instant":
             raise GmError(f"{name} — {r.kind}: это задача исполнителю (task с recipe={name!r})")
         bridge = self.test if self.role == "teacher" else self.live
+        if bridge is None:
+            raise GmError("моста для этой роли нет в config.toml (наставнику — test_bridge)")
         ctx = self.ctx()
         check = guard.check_call if self.role == "teacher" else guard.checker(self.store)
         try:
@@ -236,7 +241,11 @@ class Gm:
             if action == "add":
                 if None in (name, x, z, r):
                     raise GmError("zones add: name, x, z, r")
-                zone = {"x": x, "z": z, "r": r, "note": note, "set": time.strftime("%H:%M")}
+                if not 0 < r <= 10000:
+                    raise GmError("zones add: радиус r — от 1 до 10000 блоков")
+                if name in zones:
+                    self._may_change(zones[name], name)
+                zone = {"x": x, "z": z, "r": r, "note": note, "set": time.strftime("%H:%M"), "by": self.requester()}
                 if ttl_minutes:
                     zone["expires"] = time.time() + ttl_minutes * 60
                 zones[name] = zone
@@ -244,12 +253,21 @@ class Gm:
                 self.store.log(self.role, "zone_add", self.requester(), self.task_id, name=name, zone=zone)
                 return f"зона «{name}»: ({x}, {z}), r={r}"
             if action == "remove":
-                if zones.pop(name, None) is None:
+                if name not in zones:
                     return f"зоны «{name}» нет"
+                self._may_change(zones[name], name)
+                del zones[name]
                 zonesmod.save(zones, path)
                 self.store.log(self.role, "zone_remove", self.requester(), self.task_id, name=name)
                 return f"зона «{name}» убрана"
         raise GmError("zones: action — list, check, add или remove")
+
+    def _may_change(self, zone, name):
+        """Ослабить охрану (убрать или переставить зону) может владелец или тот, по чьей просьбе она стоит."""
+        ctx = self.ctx()
+        if not ctx.owner() and not (zone.get("by") and zone.get("by") == ctx.requester):
+            raise GmError(f"зона «{name}» охраняет игроков: убрать или передвинуть её может только владелец "
+                          f"({', '.join(self.cfg['gm']['owners']) or 'не задан'})")
 
     def lesson(self, text):
         self.store.log(self.role, "lesson", self.requester(), self.task_id, text=text)
@@ -362,7 +380,8 @@ def serve(cfg, role):
         """Охраняемые зоны — места, куда удары и полёты не должны попадать (стоянки кораблей игроков, базы,
         зрители). action: list; check — путь start [x, z] → via → target [x, z] с разбросом spread (удары охрана
         проверяет и сама); add — name, x, z, r, note, ttl_minutes; remove — name. Кто сажает игроков, ставит
-        корабль или собирает зрителей — сам ставит зону."""
+        корабль или собирает зрителей — сам ставит зону. Убрать или передвинуть чужую зону — только по слову
+        владельца."""
         return gm.zones(action, name, x, z, r, note, ttl_minutes, start, via, target, spread)
 
     @safe

@@ -37,6 +37,7 @@ import net.minecraft.world.entity.vehicle.Boat;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
@@ -484,6 +485,65 @@ public final class GmBotGameTests {
                     leave(h, "GmTestJumper");
                 })
                 .thenSucceed();
+    }
+
+    /**
+     * Долгий полёт: бот ведёт дирижабль IA 500 блоков на запад, к площадке. Мир тикает сущности только в чанке бота (в
+     * GameTest дальность симуляции — 0) и в чанках площадок, которые GameTest держит сам; дирижабль стоит в 600 блоках к
+     * востоку от площадки, и бот садится в него пилотом издалека, как командой {@code ride}. Каждый тик бот — седок на
+     * своём месте, его чанки — у дирижабля, и мир тикает дирижабль больше половины тиков. Без посадки после шага пилота
+     * место седоку давал только тик дирижабля в мире, а он сажал бота туда, где дирижабль был до шага, — в прежний чанк:
+     * на первом же переходе в соседний мир переставал тикать дирижабль, бот падал с места, дирижабль улетал без него.
+     * Полёт — на запад: на восток место седока, которое IA считает во float, при больших координатах GameTest
+     * округляется за границу чанка раньше дирижабля, и старый код проходил бы по случайности.
+     */
+    @GameTest(template = "floor", batch = "gm_bot_flight", timeoutTicks = 12000, skyAccess = true)
+    public static void botStaysOnFlyingVehicle(GameTestHelper h) {
+        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(ResourceLocation.fromNamespaceAndPath("immersive_aircraft", "airship")).orElse(null);
+        check(type != null, "в запуске GameTest нет Immersive Aircraft");
+        ServerLevel level = h.getLevel();
+        Bot bot = spawn(h, "GmTestCaptain", 8.5, 10.5, ",\"gamemode\":\"creative\"");
+        // путь дирижабля тест генерирует сам: фоновая генерация не успевает к тикам GameTest. Площадка — x от 0 до 63,
+        // её чанки кончаются не дальше 79, восточнее площадок ещё нет (их ставят по порядку на восток и на юг)
+        ChunkPos path = new ChunkPos(h.absolutePos(new BlockPos(80, GROUND, 10)));
+        for (int x = path.x; x <= path.x + 40; x++) for (int z = path.z - 1; z <= path.z + 1; z++) level.getChunk(x, z);
+        // сперва набор высоты, потом прямо на запад
+        Entity ship = h.spawn(type, new Vec3(680.5, GROUND + 14, 10.5));
+        ship.setYRot(90);
+        check(bot.player().startRiding(ship, true) && ship.getControllingPassenger() == bot.player(), "не сел в дирижабль пилотом");
+        Vec3 start = ship.position();
+        act(h, "GmTestCaptain", "[{\"hold\":\"jump\"},{\"hold\":\"forward\"},{\"wait\":300},{\"release\":\"jump\"},{\"wait\":6000}]");
+        AtomicReference<String> broken = new AtomicReference<>();
+        int[] outside = {0}, ticked = {0}, lastTick = {ship.tickCount};
+        h.startSequence()
+                // бот садится на место в конце тика (шаг пилота)
+                .thenIdle(1)
+                .thenWaitUntil(() -> {
+                    if (broken.get() == null) broken.set(offSeat(bot.player(), ship));
+                    if (!level.getForcedChunks().contains(ship.chunkPosition().toLong())) {
+                        outside[0]++;
+                        if (ship.tickCount != lastTick[0]) ticked[0]++;
+                    }
+                    lastTick[0] = ship.tickCount;
+                    if (broken.get() == null) check(start.x - ship.getX() > 500, "дирижабль пролетел " + Math.round(start.x - ship.getX()) + " блоков");
+                })
+                .thenExecute(() -> {
+                    check(broken.get() == null, broken.get());
+                    check(ticked[0] * 2 > outside[0], "мир тикал дирижабль " + ticked[0] + " тиков из " + outside[0]);
+                    leave(h, "GmTestCaptain");
+                    ship.discard();
+                })
+                .thenSucceed();
+    }
+
+    /** Почему седок не на месте: не в транспорте, дальше 2 блоков от него, его чанки (тикет игрока) не рядом; null — на месте. */
+    private static String offSeat(ServerPlayer p, Entity vehicle) {
+        if (p.getVehicle() != vehicle) return "бот не в транспорте";
+        double d = p.position().distanceTo(vehicle.position());
+        if (d > 2.0) return String.format(Locale.ROOT, "бот в %.1f блока от транспорта: %s, транспорт %s", d, p.position(), vehicle.position());
+        ChunkPos tickets = p.getLastSectionPos().chunk(), at = vehicle.chunkPosition();
+        if (tickets.getChessboardDistance(at) > 1) return "чанки бота " + tickets + " отстали от транспорта " + at;
+        return null;
     }
 
     /**

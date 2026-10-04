@@ -329,7 +329,8 @@ final class Controls {
      * Ходьба — как {@code LocalPlayer.aiStep}: толчки от клавиш (присед и использование предмета замедляют), бег,
      * присед, полёт вверх-вниз; верхом — пакет ввода транспорту и то, что клиент делает с ним сам ({@link Vehicles}).
      * Потом физика игрока сервером ({@code doTick}) и то,
-     * что сервер делает после пакета движения: чанки вокруг, урон от падения, статистика и голод от ходьбы.
+     * что сервер делает после пакета движения: чанки вокруг, урон от падения, статистика и голод от ходьбы. Седока
+     * физика не сдвигает: его место — в транспорте.
      */
     private void move(ServerPlayer p) {
         float forward = impulse(Key.FORWARD, Key.BACK), strafe = impulse(Key.LEFT, Key.RIGHT);
@@ -365,10 +366,15 @@ final class Controls {
                 if (dir != 0) p.setDeltaMovement(p.getDeltaMovement().add(0, dir * p.getAbilities().getFlyingSpeed() * 3.0F, 0));
             }
         }
-        Vec3 before = p.position();
         boolean riding = p.isPassenger();
+        // седок: клиент начинает его тик с нулевой скоростью и сажает на место (rideTick), сервер после физики игрока
+        // возвращает его туда, где тик начался (absMoveTo к firstGood…). Иначе бот, чей транспорт мир не тикнул (чанк
+        // вне дальности симуляции), падал бы с места, оставаясь седоком
+        if (riding) p.setDeltaMovement(Vec3.ZERO);
+        Vec3 before = p.position();
         p.doTick();
         if (p.isRemoved()) return;
+        if (riding && p.isPassenger()) p.absMoveTo(before.x, before.y, before.z, p.getYRot(), p.getXRot());
         Vec3 d = p.position().subtract(before);
         p.serverLevel().getChunkSource().move(p);
         if (!riding && !p.isPassenger()) {

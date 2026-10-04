@@ -3,6 +3,8 @@ package ua.zentix.almighty.compat;
 import net.neoforged.fml.ModList;
 import ua.zentix.almighty.bot.VehicleDriver;
 import ua.zentix.almighty.compat.immersiveaircraft.ImmersiveAircraftDriver;
+import ua.zentix.almighty.compat.sable.SableShips;
+import ua.zentix.almighty.world.Ships;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,5 +21,10 @@ public final class Compat {
         List<VehicleDriver> drivers = new ArrayList<>(1);
         if (ModList.get().isLoaded(ImmersiveAircraftDriver.MOD_ID)) drivers.add(new ImmersiveAircraftDriver());
         return drivers;
+    }
+
+    /** Корабли модов физики: Sable (Create Aeronautics); мода нет — null. */
+    public static Ships.Source ships() {
+        return ModList.get().isLoaded(SableShips.MOD_ID) ? new SableShips() : null;
     }
 }

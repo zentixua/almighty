@@ -46,7 +46,9 @@ import re
 
 ALLOWED = {"command", "function", "script", "rule.add", "rule.remove", "build", "undo", "bot.spawn", "bot.remove",
            "bot.act", "area.prepare", "area.release", "status", "player", "entities", "map", "look", "blocks", "see",
-           "jobs", "job", "rules", "bots", "bot", "events"}
+           "jobs", "job", "rules", "bots", "bot", "events", "ships"}
+# значения шагов с кодом Groovy: параметры в них — как в блоке groovy
+GROOVY_KEYS = ("code", "script")
 KINDS = ("instant", "task", "show")
 TYPES = {
     "int": lambda v: isinstance(v, int) and not isinstance(v, bool),
@@ -230,7 +232,8 @@ def substitute(obj, values, code=None):
     if isinstance(obj, list):
         return [substitute(v, values, code) for v in obj]
     if isinstance(obj, dict):
-        return {k: substitute(v, values, code) for k, v in obj.items()}
+        return {k: groovy(v, values) if k in GROOVY_KEYS and isinstance(v, str) and not CODE.fullmatch(v)
+                else substitute(v, values, code) for k, v in obj.items()}
     return obj
 
 

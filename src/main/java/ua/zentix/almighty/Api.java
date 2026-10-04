@@ -41,6 +41,7 @@ import ua.zentix.almighty.world.Areas;
 import ua.zentix.almighty.world.Dims;
 import ua.zentix.almighty.world.Observe;
 import ua.zentix.almighty.world.PrepareJob;
+import ua.zentix.almighty.world.Ships;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -150,6 +151,7 @@ public final class Api {
         });
         m.put("bot.act", a -> gm.bots().act(a.string("name"), a.array("actions"), a.bool("replace", false), waitSeconds(a)));
         m.put("see", a -> see(gm, a));
+        m.put("ships", a -> gm.onMain(() -> Ships.describe(server, a)));
         m.put("script", a -> script(gm, a));
         m.put("rule.add", a -> {
             Rules.Spec spec = Rules.parse(a);

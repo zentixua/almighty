@@ -99,7 +99,7 @@ final class Steps {
 
     private static Step step(Args a) throws RpcException {
         if (a.has("wait")) return new Wait(a.integer("wait", 0, MAX_WAIT));
-        if (a.has("hold")) return new Hold(keys(a, "hold"));
+        if (a.has("hold")) return new Hold(keys(a, "hold"), a.integer("ticks", 0, 1, MAX_WAIT));
         if (a.has("release")) {
             boolean all = a.raw().get("release").isJsonPrimitive() && a.string("release").equals("all");
             return new Release(all ? EnumSet.allOf(Controls.Key.class) : keys(a, "release"));
@@ -272,11 +272,13 @@ final class Steps {
         }
     }
 
-    private record Hold(Set<Controls.Key> keys) implements Step {
+    /** Держать клавиши: без срока — пока не отпустят, с {@code ticks} — столько тиков (каждый новый шаг продлевает). */
+    private record Hold(Set<Controls.Key> keys, int ticks) implements Step {
         @Override
         public boolean tick(Bot bot, ServerPlayer p, JsonObject out) {
             out.addProperty("do", "hold");
-            for (Controls.Key key : keys) bot.controls.press(p, key, out);
+            if (ticks > 0) out.addProperty("ticks", ticks);
+            for (Controls.Key key : keys) bot.controls.hold(p, key, ticks, out);
             return true;
         }
     }

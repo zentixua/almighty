@@ -148,7 +148,9 @@ def serve_mcp():
                  end: list[int] | None = None, type: str | None = None, limit: int = 50,
                  dimension: str | None = None) -> str:
         """Сущности: вокруг center [x, y, z] в радиусе radius или в рамке start..end; type — фильтр
-        (minecraft:zombie или zombie). Ближние первыми, счёт по типам — по всем. Только загруженные места."""
+        (minecraft:zombie или zombie). Ближние первыми, счёт по типам — по всем. Только загруженные места.
+        Корабли Sable (Create Aeronautics) — не сущности: call ships {name | center+radius} — место, поворот,
+        скорость (блоков в секунду), рамки в мире и на участке; в скрипте — gm.ship(имя)."""
         return _out(rpc("entities", {"center": center, "radius": radius, "from": start, "to": end, "type": type,
                                      "limit": limit, "dimension": dimension}))
 
@@ -363,9 +365,11 @@ def serve_mcp():
         remove — name. list — все боты. state — бот подробно: тело, инвентарь, транспорт (vehicle: тип, ведёт ли,
         клавиши мода keys), открытое меню (ячейки по номерам), клавиши, программа, почта (чат, шёпот, экраны, титры,
         смерть) после номера after.
-        act — программа actions по шагам; мгновенные идут подряд в одном тике, ждут только wait, walk_to и hold
-        до release. Шаги: {"hold": "forward"|["forward","sprint"]} (forward back left right jump sneak sprint attack
-        use), {"release": "all"|клавиши}, {"wait": тиков}, {"look": [yaw, pitch]}, {"turn": [dyaw, dpitch]},
+        act — программа actions по шагам; мгновенные идут подряд в одном тике, ждут только wait и walk_to.
+        Шаги: {"hold": "forward"|["forward","sprint"], "ticks": n} (forward back left right jump sneak sprint attack
+        use; без ticks — держать до release, с ticks — клавиша отпустится сама через n тиков, новый hold продлевает:
+        так автопилот правилом держит рули, и рули встают в ноль, когда правило упало), {"release": "all"|клавиши},
+        {"wait": тиков}, {"look": [yaw, pitch]}, {"turn": [dyaw, dpitch]},
         {"look_at": [x, y, z] | UUID | имя} (целые — центр блока), {"click": "attack"|"use", "at": …},
         {"slot": 0–8}, {"drop": "one"|"stack"}, {"swap_hands": true}, {"menu": ячейка, "button": 0, "mode":
         "pickup"|"quick_move"|"swap"|"throw"|"pickup_all"|"clone"|"quick_craft"} (−999 — вне окна),
@@ -377,6 +381,8 @@ def serve_mcp():
         которых клиент шлёт свои пакеты). Ошибка шага останавливает программу. replace —
         снять идущую программу, иначе новая ждёт в очереди. wait — ждать конца до стольких секунд (до 50); не
         дождались — описание, конец программы — событие bot_done в ленте, итог — в state.
+        Правило, что вело бота (bot.act или bot.send в скрипте правила), выключилось — бот останавливается: программы
+        сняты, клавиши отпущены (событие bot_stopped, в rule.off — bots_stopped).
         Транспорт: сесть — click use по нему, слезть — sneak. Лошадь, лодку, свинью, верблюда бот ведёт клавишами,
         как клиент (прыжок верхом — удержать и отпустить jump); транспорт мода, который ведёт ввод игрока, — после
         метки сущностей almighty:driven_by_rider (датапак). Транспорт Immersive Aircraft: left/right, jump/sneak,

@@ -50,6 +50,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -94,6 +95,14 @@ public final class Bot {
     private boolean teleportPending;
     private Instant lastChat = Instant.EPOCH;
     private String leftReason;
+    /** Остановка, которую просили вне тика бота (выключилось правило, что его вело): в начале следующего тика. */
+    private String stopReason;
+
+    /**
+     * Боты, которых ведёт идущий скрипт правила ({@link #act}, {@link #send}): правило выключилось — они
+     * останавливаются ({@link #stop}), а не держат последний ввод. Ставит и снимает {@code Rules} вокруг запуска.
+     */
+    private static final ThreadLocal<Set<Bot>> DRIVEN = new ThreadLocal<>();
 
     /** Звук, который пришёл боту пакетом. */
     record Heard(long tick, String sound, String source, Vec3 pos, String entity, float volume) {}
@@ -135,16 +144,49 @@ public final class Bot {
     public void send(Packet<?> packet) {
         if (packet.type().flow() != PacketFlow.SERVERBOUND) throw new IllegalArgumentException("боту — только пакеты клиента к серверу (Serverbound…), не " + packet.type());
         if (!channel.isOpen()) return;
+        driven();
         channel.writeInbound(packet);
     }
 
     /** Программа шагов из значения скрипта (список карт, как {@code actions} у {@code bot.act}); номер программы. */
     public long act(Object steps) throws RpcException {
-        if (!(Json.from(steps) instanceof com.google.gson.JsonArray array)) throw RpcException.badRequest("act: список шагов");
-        return act(Steps.parse(array), false).id;
+        return act(steps, false);
     }
 
-    Program act(List<Steps.Step> steps, boolean replace) {
+    /** То же; {@code replace} — снять идущую и ждущие программы (как {@code replace} у {@code bot.act}). */
+    public long act(Object steps, boolean replace) throws RpcException {
+        if (!(Json.from(steps) instanceof com.google.gson.JsonArray array)) throw RpcException.badRequest("act: список шагов");
+        List<Steps.Step> parsed = Steps.parse(array);
+        driven();
+        return start(parsed, replace).id;
+    }
+
+    private void driven() {
+        Set<Bot> set = DRIVEN.get();
+        if (set != null) set.add(this);
+    }
+
+    /** Кто ведёт ботов в этом потоке (правило на время запуска): прежнее значение — чтобы вернуть его после. */
+    public static Set<Bot> driving(Set<Bot> set) {
+        Set<Bot> previous = DRIVEN.get();
+        if (set == null) DRIVEN.remove();
+        else DRIVEN.set(set);
+        return previous;
+    }
+
+    /**
+     * Остановить: программы снять, клавиши отпустить — в начале следующего тика бота (просят из правила посреди тика,
+     * может быть, посреди шага этого же бота), в ленту — {@code bot_stopped}.
+     */
+    public void stop(String reason) {
+        if (stopReason == null) stopReason = reason;
+    }
+
+    /**
+     * Поставить программу (разобранные шаги). Имя — не {@code act}: Groovy не смотрит на доступ и из
+     * {@code act(список, true)} скрипта выбрал бы этот метод со списком карт вместо шагов.
+     */
+    Program start(List<Steps.Step> steps, boolean replace) {
         if (replace) cancelAll("заменена новой программой");
         Program program = new Program(++programIds, steps);
         programs.add(program);
@@ -180,6 +222,15 @@ public final class Bot {
                 deadTicks = 0;
             }
             Spam.decay((ServerGamePacketListenerImpl) connection.getPacketListener());
+            if (stopReason != null) {
+                String why = stopReason;
+                stopReason = null;
+                cancelAll(why);
+                JsonObject d = new JsonObject();
+                d.addProperty("bot", name);
+                d.addProperty("reason", why);
+                bots.feed("bot_stopped", d);
+            }
             controls.begin(player());
             runPrograms();
             if (channel.isOpen()) controls.end(player());
@@ -224,8 +275,11 @@ public final class Bot {
                 current = programs.poll();
                 if (current == null) return;
             }
-            if (!current.tick(this)) return;
-            finished(current);
+            Program program = current;
+            if (!program.tick(this)) return;
+            // шаг мог вызвать правило, а оно — act(…, true) этого же бота: снятая программа уже кончилась
+            if (current != program) continue;
+            finished(program);
             current = null;
         }
     }
@@ -256,6 +310,10 @@ public final class Bot {
         if (connection.getPacketListener() instanceof ServerGamePacketListenerImpl listener && !listener.player.hasDisconnected()) {
             connection.handleDisconnection();
         }
+    }
+
+    long tickNow() {
+        return bots.tickNow();
     }
 
     String leftReason() {
@@ -415,6 +473,9 @@ public final class Bot {
         JsonArray keys = new JsonArray();
         controls.held().forEach(k -> keys.add(k.id()));
         o.add("keys", keys);
+        JsonObject leases = new JsonObject();
+        controls.leases().forEach((k, left) -> leases.addProperty(k.id(), left));
+        if (!leases.isEmpty()) o.add("keys_ticks_left", leases);
         if (teleportPending) o.addProperty("loading", "ждёт загрузки чанков места: стоит, пока они не готовы");
         JsonObject vehicle = vehicles.describe(player());
         if (vehicle != null) o.add("vehicle", vehicle);

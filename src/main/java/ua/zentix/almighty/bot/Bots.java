@@ -302,7 +302,7 @@ public final class Bots {
      */
     public CompletableFuture<JsonElement> act(String name, JsonArray actions, boolean replace, int waitSeconds) throws RpcException {
         List<Steps.Step> steps = Steps.parse(actions);
-        return gm.onMain(() -> get(name).act(steps, replace)).thenCompose(program -> {
+        return gm.onMain(() -> get(name).start(steps, replace)).thenCompose(program -> {
             CompletableFuture<JsonElement> out = new CompletableFuture<>();
             program.done().thenAccept(out::complete);
             if (!program.done().isDone()) {

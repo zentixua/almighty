@@ -35,6 +35,7 @@ final class Program {
 
     /** Тик программы; true — кончилась (вся, с ошибкой). */
     boolean tick(Bot bot) {
+        if (state.equals("cancelled")) return true;
         state = "running";
         int instant = 0;
         while (index < steps.size()) {
@@ -50,6 +51,8 @@ final class Program {
                 state = "failed";
                 return true;
             }
+            // сняли посреди шага (правило по событию этого шага заменило программы)
+            if (state.equals("cancelled")) return true;
             if (!finished) return false;
             out.addProperty("step", index);
             results.add(out);
@@ -63,7 +66,16 @@ final class Program {
 
     /** Снять программу (новая с {@code replace}, бот ушёл): шаг отпускает то, что держит сам. */
     void cancel(Bot bot, String why) {
-        if (index < steps.size() && state.equals("running")) steps.get(index).cancel(bot, bot.player());
+        if (index < steps.size() && state.equals("running")) {
+            try {
+                steps.get(index).cancel(bot, bot.player());
+            } catch (RuntimeException e) {
+                // снимают и при отключении бота, где ошибка уронила бы тик сервера; клавиши отпустит cancelAll
+                error = why + " (шаг не отпустил своё: " + e + ")";
+                state = "cancelled";
+                return;
+            }
+        }
         state = "cancelled";
         error = why;
     }

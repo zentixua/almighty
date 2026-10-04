@@ -20,8 +20,9 @@
     ```
 
 name — как имя файла; kind: instant — делает голос сразу, task — исполнитель, show — долгое, правилом в игре;
-resources — что занимает (две задачи с общим ресурсом не идут одновременно). Шапка — строки «ключ: значение»,
-значение — JSON или строка. Шаги — вызовы моста (методы ALLOWED, слов игрокам среди них нет), ${имя} — параметр:
+resources — что занимает (две задачи с общим ресурсом не идут одновременно; ${имя} — текстом: "ship:${ship}").
+Шапка — строки «ключ: значение», значение — JSON или строка. Шаги — вызовы моста (методы ALLOWED, слов игрокам
+среди них нет), ${имя} — параметр:
 строка целиком — значение своего типа, внутри строки — текстом. Каждый шаг перед вызовом проходит охрану
 (guard.check_call). check — Groovy, который после шагов говорит, вышло ли (true или {ok: true, …}); у task и show
 он обязателен: «готово» — по миру.
@@ -138,8 +139,8 @@ def validate(recipe):
             t = p.get("type") if isinstance(p, dict) else p
             if t not in TYPES:
                 errors.append(f"параметр {k}: тип {t!r} — один из {', '.join(TYPES)}")
-    if not isinstance(recipe.resources, list):
-        errors.append("resources — список")
+    if not isinstance(recipe.resources, list) or not all(isinstance(x, str) for x in recipe.resources):
+        errors.append("resources — список строк")
     if not isinstance(recipe.steps, list) or not recipe.steps:
         errors.append("нет шагов (```steps со списком JSON)")
     else:
@@ -148,7 +149,7 @@ def validate(recipe):
                 errors.append(f"шаг {i}: {{\"method\", \"params\"}}")
             elif s.get("method") not in ALLOWED:
                 errors.append(f"шаг {i}: метод {s.get('method')!r} нельзя (можно: {', '.join(sorted(ALLOWED))})")
-    steps_text = json.dumps(recipe.steps, ensure_ascii=False)
+    steps_text = json.dumps([recipe.steps, recipe.resources], ensure_ascii=False)
     for k in sorted(set(PARAM.findall(steps_text)) - set(recipe.params if isinstance(recipe.params, dict) else {})):
         errors.append(f"${{{k}}} не объявлен в params")
     refs = set(CODE.findall(steps_text))
@@ -217,6 +218,11 @@ def _text(v):
     if isinstance(v, float):
         return repr(round(v, 6)).removesuffix(".0") if v == int(v) else repr(round(v, 6))
     return str(v)
+
+
+def resources(recipe, values):
+    """Ресурсы задачи по рецепту: ${имя} — текстом ("ship:${ship}" → "ship:Grand")."""
+    return [PARAM.sub(lambda m: _text(values[m.group(1)]), r) for r in recipe.resources]
 
 
 def substitute(obj, values, code=None):

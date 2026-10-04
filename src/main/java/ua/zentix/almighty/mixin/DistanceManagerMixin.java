@@ -1,8 +1,12 @@
 package ua.zentix.almighty.mixin;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.minecraft.server.level.DistanceManager;
 import net.minecraft.server.level.Ticket;
+import net.minecraft.util.SortedArraySet;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -17,8 +21,12 @@ import ua.zentix.almighty.world.Border;
  */
 @Mixin(DistanceManager.class)
 abstract class DistanceManagerMixin {
+    @Shadow
+    @Final
+    Long2ObjectOpenHashMap<SortedArraySet<Ticket<?>>> tickets;
+
     @Inject(method = "addTicket(JLnet/minecraft/server/level/Ticket;)V", at = @At("HEAD"))
     private void almighty$insideBorder(long chunk, Ticket<?> ticket, CallbackInfo ci) {
-        Border.ticket((DistanceManager) (Object) this, chunk, ticket.getTicketLevel());
+        Border.ticket((DistanceManager) (Object) this, chunk, ticket, tickets.get(chunk));
     }
 }

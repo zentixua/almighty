@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.border.WorldBorder;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import ua.zentix.almighty.Almighty;
@@ -25,8 +26,8 @@ import static ua.zentix.almighty.gametest.GmGameTests.now;
 import static ua.zentix.almighty.gametest.GmGameTests.params;
 
 /**
- * Ведущий не грузит чанки за границей мира: аренда (район, вход бота) и тикеты скриптов — отказ с ошибкой, команды —
- * как в игре, код не ведущего — как в ванили. Граница на время проверки — пять чанков вокруг площадки, потом прежняя
+ * Ведущий не грузит чанки за границей мира: аренда (район, вход бота) и тикеты скриптов — отказ с ошибкой, команды и
+ * задачи сервера, выполненные ожиданием скрипта, — как в игре, код не ведущего — как в ванили. Граница на время проверки — пять чанков вокруг площадки, потом прежняя
  * (в {@code finally}: оставленная, она отказала бы следующим партиям); вся проверка — в одном тике.
  */
 @GameTestHolder(Almighty.ID)
@@ -58,16 +59,15 @@ public final class GmBorderGameTests {
     private static void inside(GameTestHelper h, ServerLevel level, int cx, int cz) {
         GmServer gm = gm(h);
         int x0 = cx * 16, z0 = cz * 16;
-        int tickets = GmTickets.count(level);
 
         // район у самого края: его кольцо за границей, но в пределе
         JsonObject edge = now(call(h, "area.prepare", params("{\"from\":[%d,%d],\"to\":[%d,%d]}", x0 + 32, z0, x0 + 47, z0 + 15))).getAsJsonObject();
         check(edge.get("chunks").getAsInt() == 9, "район у края: " + edge);
         now(call(h, "area.release", params("{\"id\":%d}", edge.get("id").getAsLong())));
-        int held = gm.areas().held();
+        int held = gm.areas().held(), ticketed = gm.areas().ticketed(), tickets = GmTickets.count(level);
         String area = failure(call(h, "area.prepare", params("{\"from\":[%d,%d],\"to\":[%d,%d]}", x0 + 48, z0, x0 + 63, z0 + 15)));
         check(area.contains("за границей мира"), "район за краем: " + area);
-        check(gm.areas().held() == held && GmTickets.count(level) == tickets + 9, "отказ оставил аренды или тикеты");
+        check(gm.areas().held() == held && gm.areas().ticketed() == ticketed && GmTickets.count(level) == tickets, "отказ оставил аренды или тикеты");
         String bot = failure(call(h, "bot.spawn", params("{\"name\":\"GmTestBorder\",\"pos\":[%d,3,%d]}", x0 + 200, z0)));
         check(bot.contains("за границей мира") && gm.bots().find("GmTestBorder") == null, "бот за границей: " + bot);
 
@@ -75,19 +75,32 @@ public final class GmBorderGameTests {
         int fx = cx - 40;
         check(level.getChunkSource().getChunkNow(fx, cz) == null, "чанк за границей загружен до проверки");
         String ticket = "server.overworld().chunkSource.addRegionTicket(net.minecraft.server.level.TicketType.PORTAL, "
-                + "new net.minecraft.world.level.ChunkPos(args.x, args.z), 1, BlockPos.ZERO)";
+                + "new net.minecraft.world.level.ChunkPos(args.x, args.z), args.r, BlockPos.ZERO)";
         JsonObject far = script(h, ticket, fx, cz);
         check(!far.get("ok").getAsBoolean() && far.get("error").getAsString().contains("за границей мира"), "тикет скрипта за границей: " + far);
         check(GmTickets.at(level, TicketType.PORTAL, fx, cz) == 0, "тикет за границей записан");
         // чанк падения 04.10.2026: 37 млн блоков от центра
         JsonObject crash = script(h, ticket, 2_322_806, -9);
-        check(!crash.get("ok").getAsBoolean() && GmTickets.at(level, TicketType.PORTAL, 2_322_806, -9) == 0, "тикет в 37 млн блоков: " + crash);
+        check(!crash.get("ok").getAsBoolean() && crash.get("error").getAsString().contains("за границей мира")
+                && GmTickets.at(level, TicketType.PORTAL, 2_322_806, -9) == 0, "тикет в 37 млн блоков: " + crash);
         JsonObject load = script(h, "server.overworld().getChunk(args.x, args.z)", fx, cz);
         check(!load.get("ok").getAsBoolean() && load.get("error").getAsString().contains("за границей мира"), "загрузка скриптом за границей: " + load);
         check(level.getChunkSource().getChunkNow(fx, cz) == null, "чанк за границей загружен");
-        JsonObject near = script(h, ticket, cx + 3, cz);
-        check(near.get("ok").getAsBoolean() && GmTickets.at(level, TicketType.PORTAL, cx + 3, cz) == 1, "тикет скрипта в кольце: " + near);
-        level.getChunkSource().removeRegionTicket(TicketType.PORTAL, new ChunkPos(cx + 3, cz), 1, BlockPos.ZERO);
+        // тикет с радиусом 3 грузит полными и соседей в 3 чанка: от cx — до кольца, от cx+1 — за него (сильнее
+        // тикетов, которые GameTest ставит на чанки площадок, — уровень 31)
+        JsonObject near = script(h, ticket, cx, cz, 3);
+        check(near.get("ok").getAsBoolean() && GmTickets.at(level, TicketType.PORTAL, cx, cz) == 1, "тикет скрипта до кольца: " + near);
+        level.getChunkSource().removeRegionTicket(TicketType.PORTAL, new ChunkPos(cx, cz), 3, BlockPos.ZERO);
+        JsonObject wide = script(h, ticket, cx + 1, cz, 3);
+        check(!wide.get("ok").getAsBoolean() && wide.get("error").getAsString().contains("за границей мира")
+                && GmTickets.at(level, TicketType.PORTAL, cx + 1, cz) == 0, "тикет скрипта с соседями за кольцом: " + wide);
+
+        // setChunkForced пишет чанк в сохраняемый список до загрузки: отказ убирает его оттуда (иначе — при запуске)
+        int gz = cz - 40;
+        check(level.getChunkSource().getChunkNow(fx, gz) == null, "чанк за границей загружен до проверки");
+        JsonObject forced = script(h, "server.overworld().setChunkForced(args.x, args.z, true)", fx, gz);
+        check(!forced.get("ok").getAsBoolean() && forced.get("error").getAsString().contains("за границей мира")
+                && !level.getForcedChunks().contains(ChunkPos.asLong(fx, gz)), "setChunkForced скрипта за границей: " + forced);
 
         // команда из скрипта — как в игре (/forceload сам не идёт за предел мира); после неё проверка снова действует
         JsonObject command = script(h, """
@@ -107,6 +120,14 @@ public final class GmBorderGameTests {
         String after = command.getAsJsonArray("value").get(1).getAsString();
         check(after.contains("за границей мира") && GmTickets.at(level, TicketType.PORTAL, fx, cz) == 0, "после команды тикет скрипта: " + after);
 
+        // задача сервера, которую выполнило ожидание скрипта (здесь — запрос чанка из другого потока), — не его тикет
+        int qz = cz + 40;
+        check(level.getChunkSource().getChunkNow(fx, qz) == null, "чанк за границей загружен до проверки");
+        CompletableFuture<?> queued = CompletableFuture.supplyAsync(() -> level.getChunkSource().getChunkFuture(fx, qz, ChunkStatus.EMPTY, true)).join();
+        JsonObject wait = script(h, "def cs = server.overworld().chunkSource; int n = 0; while (n < 10000 && cs.pollTask()) n++; n", fx, qz);
+        check(wait.get("ok").getAsBoolean() && !queued.isCompletedExceptionally() && GmTickets.at(level, TicketType.UNKNOWN, fx, qz) == 1,
+                "задача сервера в ожидании скрипта: " + wait + ", запрос " + queued);
+
         // не ведущий (игра, другие моды) — как в ванили
         level.getChunkSource().addRegionTicket(TicketType.PORTAL, new ChunkPos(fx, cz), 1, BlockPos.ZERO);
         check(GmTickets.at(level, TicketType.PORTAL, fx, cz) == 1, "тикет игры за границей не записан");
@@ -114,11 +135,17 @@ public final class GmBorderGameTests {
     }
 
     private static JsonObject script(GameTestHelper h, String code, int x, int z) {
+        return script(h, code, x, z, 1);
+    }
+
+    /** Скрипт с {@code args.x}, {@code args.z} и {@code args.r} — радиусом тикета. */
+    private static JsonObject script(GameTestHelper h, String code, int x, int z, int r) {
         JsonObject p = new JsonObject();
         p.addProperty("code", code);
         JsonObject args = new JsonObject();
         args.addProperty("x", x);
         args.addProperty("z", z);
+        args.addProperty("r", r);
         p.add("args", args);
         return now(call(h, "script", p)).getAsJsonObject();
     }

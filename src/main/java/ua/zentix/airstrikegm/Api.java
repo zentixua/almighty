@@ -10,10 +10,16 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import ua.zentix.airstrikegm.act.Chat;
 import ua.zentix.airstrikegm.act.CommandRunner;
+import ua.zentix.airstrikegm.bot.Bot;
+import ua.zentix.airstrikegm.bot.Bots;
+import ua.zentix.airstrikegm.bot.Eye;
 import ua.zentix.airstrikegm.bridge.Args;
 import ua.zentix.airstrikegm.bridge.Method;
 import ua.zentix.airstrikegm.bridge.RpcException;
@@ -25,6 +31,7 @@ import ua.zentix.airstrikegm.script.Json;
 import ua.zentix.airstrikegm.script.ScriptApi;
 import ua.zentix.airstrikegm.script.Scripts;
 import ua.zentix.airstrikegm.view.BlockText;
+import ua.zentix.airstrikegm.view.EyeView;
 import ua.zentix.airstrikegm.view.LookView;
 import ua.zentix.airstrikegm.view.MapView;
 import ua.zentix.airstrikegm.view.View;
@@ -38,6 +45,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -121,6 +129,25 @@ public final class Api {
             });
         });
         m.put("areas", a -> gm.onMain(() -> gm.areas().describe()));
+        m.put("bots", a -> gm.onMain(() -> gm.bots().describe()));
+        m.put("bot", a -> {
+            String name = a.string("name");
+            long after = a.longValue("after", 0, 0, Long.MAX_VALUE);
+            return gm.onMain(() -> gm.bots().get(name).describe(after));
+        });
+        m.put("bot.spawn", a -> gm.bots().spawn(Bots.Spec.parse(a)).thenApply(o -> o));
+        m.put("bot.remove", a -> {
+            String name = a.string("name");
+            return gm.onMain(() -> {
+                Bot bot = gm.bots().get(name);
+                gm.bots().remove(bot, "убран ведущим");
+                JsonObject out = new JsonObject();
+                out.addProperty("removed", bot.name());
+                return out;
+            });
+        });
+        m.put("bot.act", a -> gm.bots().act(a.string("name"), a.array("actions"), a.bool("replace", false), waitSeconds(a)));
+        m.put("see", a -> see(gm, a));
         m.put("script", a -> script(gm, a));
         m.put("rule.add", a -> {
             Rules.Spec spec = Rules.parse(a);
@@ -188,6 +215,72 @@ public final class Api {
                 compiled.close();
             }
         });
+    }
+
+    /**
+     * Зрение: глаз бота или игрока ({@code name}), любой сущности ({@code uuid}) или свободная камера ({@code at} +
+     * {@code yaw}/{@code pitch}). Без картинки ({@code image: false}) — сразу; с картинкой — снимок работой.
+     */
+    private static CompletableFuture<JsonElement> see(GmServer gm, Args a) throws RpcException {
+        MinecraftServer server = gm.server();
+        boolean image = a.bool("image", true);
+        int width = a.integer("width", 224, 16, EyeView.MAX_WIDTH), height = a.integer("height", 126, 16, EyeView.MAX_HEIGHT);
+        double fov = a.number("fov", 70, 10, 150);
+        double distance = a.number("distance", 96, 4, EyeView.MAX_DISTANCE);
+        int radius = a.integer("radius", 48, 1, 128);
+        int sounds = a.integer("sounds_ticks", 100, 0, 20 * 60);
+        String name = a.string("name", null), uuid = a.string("uuid", null);
+        double[] at = a.has("at") ? numbers(a, "at") : null;
+        float yaw = (float) a.number("yaw", 0, -360, 360), pitch = (float) a.number("pitch", 0, -90, 90);
+        if ((name != null ? 1 : 0) + (uuid != null ? 1 : 0) + (at != null ? 1 : 0) != 1) throw RpcException.badRequest("see: name, uuid или at (одно)");
+        GmServer.MainCall<Object[]> look = () -> {
+            Entity viewer = null;
+            ServerLevel level;
+            Vec3 eye;
+            float y = yaw, p = pitch;
+            if (at != null) {
+                level = Dims.level(server, a);
+                eye = new Vec3(at[0], at[1], at[2]);
+            } else {
+                if (name != null) {
+                    viewer = server.getPlayerList().getPlayerByName(name);
+                    if (viewer == null) throw RpcException.notFound("Нет в игре: " + name);
+                } else {
+                    UUID id;
+                    try {
+                        id = UUID.fromString(uuid);
+                    } catch (IllegalArgumentException e) {
+                        throw RpcException.badRequest("uuid: " + e.getMessage());
+                    }
+                    for (ServerLevel l : server.getAllLevels()) if (viewer == null) viewer = l.getEntity(id);
+                    if (viewer == null) throw RpcException.notFound("Нет загруженной сущности " + uuid);
+                }
+                level = (ServerLevel) viewer.level();
+                eye = viewer.getEyePosition();
+                y = viewer.getViewYRot(1.0F);
+                p = viewer.getViewXRot(1.0F);
+            }
+            Eye.Camera cam = Eye.Camera.of(eye, y, p, fov, (double) width / height);
+            Bot bot = viewer instanceof ServerPlayer sp ? gm.bots().of(sp) : null;
+            return new Object[] {level, cam, viewer, Eye.observe(level, cam, viewer, bot, radius, distance, sounds)};
+        };
+        if (!image) return gm.onMain(() -> (JsonObject) look.run()[3]);
+        return view(gm, a, () -> {
+            Object[] l = look.run();
+            return new EyeView((ServerLevel) l[0], (Eye.Camera) l[1], width, height, distance, (Entity) l[2], (JsonObject) l[3]);
+        });
+    }
+
+    private static double[] numbers(Args a, String name) throws RpcException {
+        JsonElement e = a.raw().get(name);
+        if (!e.isJsonArray() || e.getAsJsonArray().size() != 3) throw RpcException.badRequest(name + ": [x, y, z]");
+        double[] out = new double[3];
+        for (int i = 0; i < 3; i++) {
+            JsonElement v = e.getAsJsonArray().get(i);
+            if (!v.isJsonPrimitive() || !v.getAsJsonPrimitive().isNumber()) throw RpcException.badRequest(name + ": [x, y, z] числами");
+            out[i] = v.getAsDouble();
+        }
+        return out;
     }
 
     private static int waitSeconds(Args a) throws RpcException {

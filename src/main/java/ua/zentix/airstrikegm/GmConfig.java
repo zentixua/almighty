@@ -18,6 +18,9 @@ public final class GmConfig {
     public static final ModConfigSpec.IntValue LAG_MS;
     public static final ModConfigSpec.BooleanValue SCRIPTS_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> NAME;
+    public static final ModConfigSpec.IntValue BOTS_MAX;
+    public static final ModConfigSpec.ConfigValue<String> BOTS_MARKER;
+    public static final ModConfigSpec.BooleanValue BOTS_ALLOW_DISGUISE;
 
     static {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
@@ -46,6 +49,16 @@ public final class GmConfig {
         SCRIPTS_ENABLED = b.comment("Скрипты ведущего (Groovy): метод script и правила со скриптом. Выключить, если правило мешает",
                         "серверу: сохранённые с миром правила со скриптом тогда не встанут, но останутся в файле (правила без скрипта — встанут).")
                 .define("enabled", true);
+        b.pop();
+        b.push("bots");
+        BOTS_MAX = b.comment("Сколько ботов — игроков, которыми управляет ведущий, — может быть на сервере сразу. Бот нагружает сервер",
+                        "как игрок: держит чанки вокруг себя.")
+                .defineInRange("max", 8, 0, 100);
+        BOTS_MARKER = b.comment("Пометка ботов в табе и в чате перед именем. Пустая — без пометки.").define("marker", "[бот]");
+        BOTS_ALLOW_DISGUISE = b.comment("Разрешить боту выглядеть как игрок этого сервера: без пометки, с именем или скином игрока, которого сервер",
+                        "знает (в игре, в белом списке, оператор, заходил раньше). UUID у бота всё равно свой: настоящий игрок зайдёт, и",
+                        "бот уступит ему имя. Решает владелец сервера.")
+                .define("allow_disguise", false);
         b.pop();
         NAME = b.comment("Имя, под которым ведущий пишет в чат и выполняет команды.").define("name", "Claude");
         SPEC = b.build();

@@ -14,9 +14,9 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import ua.zentix.airstrikegm.GmServer;
 import ua.zentix.airstrikegm.bridge.Args;
@@ -93,6 +93,11 @@ public final class Observe {
         String name = args.string("name");
         ServerPlayer p = server.getPlayerList().getPlayerByName(name);
         if (p == null) throw RpcException.notFound("Нет в игре: " + name);
+        return details(server, p);
+    }
+
+    /** Игрок подробно: кратко, опыт, хотбар, инвентарь, эффекты, точка возрождения, блок под взглядом. */
+    public static JsonObject details(MinecraftServer server, ServerPlayer p) {
         JsonObject out = brief(server, p);
         out.addProperty("xp_level", p.experienceLevel);
         out.addProperty("selected_slot", p.getInventory().selected);
@@ -127,9 +132,11 @@ public final class Observe {
             r.add("pos", pos(respawn));
             out.add("respawn", r);
         }
-        // луч в 20 блоков не выходит из квадрата чанков, которые держит сам игрок
-        HitResult hit = p.pick(20, 1, false);
-        if (hit instanceof BlockHitResult block && hit.getType() == HitResult.Type.BLOCK) {
+        // по готовым чанкам: только что перенесённый игрок (бот, /tp) ещё не держит чанки вокруг себя
+        Vec3 eye = p.getEyePosition();
+        Rays.Hit ray = Rays.clip(p.serverLevel(), eye, eye.add(p.getViewVector(1.0F).scale(20)), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, p);
+        if (ray.hit()) {
+            BlockHitResult block = ray.block();
             JsonObject look = new JsonObject();
             look.add("pos", pos(block.getBlockPos()));
             look.addProperty("block", BuiltInRegistries.BLOCK.getKey(p.level().getBlockState(block.getBlockPos()).getBlock()).toString());
@@ -217,7 +224,7 @@ public final class Observe {
         return out;
     }
 
-    static JsonArray pos(BlockPos p) {
+    public static JsonArray pos(BlockPos p) {
         JsonArray out = new JsonArray();
         out.add(p.getX());
         out.add(p.getY());
@@ -225,7 +232,7 @@ public final class Observe {
         return out;
     }
 
-    private static JsonArray vec(Vec3 v) {
+    public static JsonArray vec(Vec3 v) {
         JsonArray out = new JsonArray();
         out.add(round(v.x, 1));
         out.add(round(v.y, 1));
@@ -233,7 +240,7 @@ public final class Observe {
         return out;
     }
 
-    private static double round(double v, int digits) {
+    public static double round(double v, int digits) {
         double k = Math.pow(10, digits);
         return Math.round(v * k) / k;
     }

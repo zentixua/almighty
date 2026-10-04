@@ -7,6 +7,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
+import ua.zentix.airstrikegm.bot.Bots;
 import ua.zentix.airstrikegm.bridge.Bridge;
 import ua.zentix.airstrikegm.bridge.RpcException;
 import ua.zentix.airstrikegm.bridge.Token;
@@ -44,6 +45,7 @@ public final class GmServer {
     /** Общее для всех скриптов и правил до остановки сервера (переменная {@code state}); только поток сервера. */
     private final Map<String, Object> state = new LinkedHashMap<>();
     private final Rules rules;
+    private final Bots bots;
     private Bridge bridge;
     private long lastTick;
 
@@ -53,6 +55,7 @@ public final class GmServer {
         this.areas = new Areas(GmConfig.MAX_CHUNKS.get());
         this.rules = new Rules(server, NeoForge.EVENT_BUS, feed, state,
                 server.getWorldPath(LevelResource.ROOT).resolve("airstrike_gm").resolve("rules.json"));
+        this.bots = new Bots(this);
     }
 
     /** Ведущий этого сервера; null — сервер ещё не запустился или уже остановлен. */
@@ -93,16 +96,21 @@ public final class GmServer {
         lastTick = now;
     }
 
-    /** Конец тика: работы под бюджетом, затем сроки и отпуск чанков. */
+    /** Конец тика: боты (там, где сервер тикает соединения игроков), работы под бюджетом, затем сроки и отпуск чанков. */
     void tickEnd() {
+        bots.tick();
         jobs.tick(GmConfig.workNanosPerTick());
         areas.tick(server.getTickCount());
     }
 
-    /** Остановка: мост закрыт, правила сняты с шины, работы отменены, тикеты сняты сразу (до {@code StopDrain} Airstrike). */
+    /**
+     * Остановка: мост закрыт, боты вышли (сохранились как игроки), правила сняты с шины, работы отменены, тикеты сняты
+     * сразу (до {@code StopDrain} Airstrike).
+     */
     void stop() {
         if (bridge != null) bridge.stop();
         bridge = null;
+        bots.stop();
         rules.stop();
         jobs.cancelAll();
         areas.releaseAll();
@@ -130,6 +138,10 @@ public final class GmServer {
 
     public Rules rules() {
         return rules;
+    }
+
+    public Bots bots() {
+        return bots;
     }
 
     /** Переменная {@code state} скриптов и правил. */

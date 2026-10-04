@@ -10,7 +10,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
+import ua.zentix.airstrikegm.GmServer;
 import ua.zentix.airstrikegm.act.CommandRunner;
+import ua.zentix.airstrikegm.bot.Bot;
 
 import java.util.Arrays;
 import java.util.List;
@@ -65,6 +67,22 @@ public final class ScriptApi {
     /** Игрок в игре по имени; нет — null. */
     public ServerPlayer player(String name) {
         return server.getPlayerList().getPlayerByName(name);
+    }
+
+    /**
+     * Бот ведущего по имени; нет — null. У бота: {@code player()} — его сущность сейчас, {@code send(пакет)} — любой
+     * пакет клиента серверу ({@code new ServerboundRenameItemPacket("имя")}), {@code act([[hold: "forward"], [wait: 20]])}
+     * — программа шагов, как у {@code bot.act}.
+     */
+    public Bot bot(String name) {
+        GmServer gm = GmServer.of(server);
+        return gm == null ? null : gm.bots().find(name);
+    }
+
+    /** Все боты ведущего. */
+    public List<Bot> bots() {
+        GmServer gm = GmServer.of(server);
+        return gm == null ? List.of() : gm.bots().all();
     }
 
     /** Измерение: {@code minecraft:the_nether} или без пространства имён ({@code the_nether}); нет — null. */

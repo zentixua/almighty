@@ -42,6 +42,7 @@ resources — что занимает (две задачи с общим рес�
 трогаем.
 """
 import json
+import math
 import os
 import re
 
@@ -53,7 +54,7 @@ GROOVY_KEYS = ("code", "script")
 KINDS = ("instant", "task", "show")
 TYPES = {
     "int": lambda v: isinstance(v, int) and not isinstance(v, bool),
-    "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+    "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v),
     "bool": lambda v: isinstance(v, bool),
     "name": lambda v: isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9_]{1,16}", v) is not None,
     "block": lambda v: isinstance(v, str) and re.fullmatch(r"[a-z0-9_.:/-]+(\[[a-z0-9_=,]*\])?", v) is not None,
@@ -139,8 +140,10 @@ def validate(recipe):
             t = p.get("type") if isinstance(p, dict) else p
             if t not in TYPES:
                 errors.append(f"параметр {k}: тип {t!r} — один из {', '.join(TYPES)}")
-    if not isinstance(recipe.resources, list) or not all(isinstance(x, str) for x in recipe.resources):
-        errors.append("resources — список строк")
+    if not isinstance(recipe.resources, list) or not all(isinstance(x, str) and x.strip() for x in recipe.resources):
+        errors.append("resources — список непустых строк")
+    elif any(CODE.search(x) for x in recipe.resources):
+        errors.append("${code:…} в resources нельзя: ресурс — имя места или корабля")
     if not isinstance(recipe.steps, list) or not recipe.steps:
         errors.append("нет шагов (```steps со списком JSON)")
     else:
@@ -152,7 +155,7 @@ def validate(recipe):
     steps_text = json.dumps([recipe.steps, recipe.resources], ensure_ascii=False)
     for k in sorted(set(PARAM.findall(steps_text)) - set(recipe.params if isinstance(recipe.params, dict) else {})):
         errors.append(f"${{{k}}} не объявлен в params")
-    refs = set(CODE.findall(steps_text))
+    refs = set(CODE.findall(json.dumps(recipe.steps, ensure_ascii=False)))
     for k in sorted(refs - set(recipe.code)):
         errors.append(f"${{code:{k}}}: нет блока ```groovy {k}")
     for k in sorted(set(recipe.code) - refs):

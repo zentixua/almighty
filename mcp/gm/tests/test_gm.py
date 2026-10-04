@@ -294,6 +294,7 @@ class RecipesTest(Tmp):
         self.assertEqual(params["script"], 'def s = gm.ship("Grand")\nif (s.pos().y < 120) gm.emit("low ${s.name()}")')
         self.assertEqual(b.calls[1][1]["code"], 'return "Grand" == "Grand"')
         self.assertEqual(recipes.resources(r, {"ship": "Grand", "alt": 120}), ["ship:Grand", "sky"])
+        self.assertFalse(recipes.TYPES["number"](float("nan")) or recipes.TYPES["number"](float("inf")))
         self.assertFalse(recipes.TYPES["text"]('${"x".execute()}'))
         with self.assertRaises(recipes.RecipeError):
             recipes.groovy("gm.emit('${t}')", {"t": "п'ять"})
@@ -311,10 +312,11 @@ class RecipesTest(Tmp):
     def test_validate(self):
         path = os.path.join(self.tmp, "skill", "recipes", "x.md")
         with open(path, "w", encoding="utf-8") as f:
-            f.write('---\nname: y\nkind: task\nparams: {"a": "float"}\nresources: ["ship:${s}"]\n---\n```steps\n'
+            f.write('---\nname: y\nkind: task\nparams: {"a": "float"}\nresources: ["ship:${s}", "", "${code:z}"]\n'
+                    '---\n```groovy z\n1\n```\n```steps\n'
                     '[{"method": "say", "params": {"text": "${b}"}}]\n```\n')
         problems = " | ".join(recipes.validate(recipes.parse(path)))
-        for part in ("name", "description", "float", "say", "${b}", "${s}", "check"):
+        for part in ("name", "description", "float", "say", "${b}", "${s}", "непустых", "блок groovy z", "check"):
             self.assertIn(part, problems)
 
 

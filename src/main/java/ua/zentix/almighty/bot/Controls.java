@@ -36,6 +36,7 @@ import net.minecraft.world.phys.Vec3;
 import ua.zentix.almighty.world.Observe;
 import ua.zentix.almighty.world.Rays;
 
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Set;
@@ -69,6 +70,12 @@ final class Controls {
 
     private final Bot bot;
     private final Set<Key> held = EnumSet.noneOf(Key.class);
+    /**
+     * Клавиши «на срок»: тик, с которого клавиша отпускается сама. Автопилот правилом держит клавиши так и продлевает
+     * их каждым запуском: правило упало или выключилось — рули сами встают в ноль, а не держат последний ввод. Шаг
+     * правила идёт в следующем тике бота, после {@link #begin}: продлевать каждый тик — срок не меньше 2.
+     */
+    private final EnumMap<Key, Long> until = new EnumMap<>(Key.class);
     private int missTime, rightClickDelay;
     private boolean destroying;
     private BlockPos destroyPos = BlockPos.ZERO;
@@ -88,6 +95,14 @@ final class Controls {
         return held;
     }
 
+    /** Сколько тиков ещё держится клавиша на срок; клавиши без срока — нет в списке. */
+    EnumMap<Key, Long> leases() {
+        EnumMap<Key, Long> left = new EnumMap<>(Key.class);
+        long now = bot.tickNow();
+        until.forEach((k, t) -> left.put(k, Math.max(0, t - now)));
+        return left;
+    }
+
     int takeBroken() {
         int b = broken;
         broken = 0;
@@ -96,10 +111,25 @@ final class Controls {
 
     /** Начало тика клиента: счётчики, отпущенная кнопка использования прекращает использование (натянутый лук — выстрел). */
     void begin(ServerPlayer p) {
+        long now = bot.tickNow();
+        for (Key key : Key.values()) {
+            Long t = until.get(key);
+            if (t != null && now >= t) release(p, key);
+        }
         attackedThisTick = false;
         if (missTime > 0) missTime--;
         if (rightClickDelay > 0) rightClickDelay--;
         if (p.isUsingItem() && !held.contains(Key.USE)) bot.send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM, BlockPos.ZERO, Direction.DOWN));
+    }
+
+    /**
+     * Держать клавишу {@code ticks} тиков (0 — пока не отпустят): клавиша на срок отпускается сама в начале тика
+     * {@code ticks} после этого. Уже нажатая — продлевается (или держится без срока), без нового щелчка.
+     */
+    void hold(ServerPlayer p, Key key, int ticks, JsonObject out) {
+        press(p, key, out);
+        if (ticks > 0) until.put(key, bot.tickNow() + ticks);
+        else until.remove(key);
     }
 
     /** Нажать клавишу. Нажатие кнопки мыши — сразу щелчок, как у клиента; итог щелчка — в {@code out}. */
@@ -110,6 +140,7 @@ final class Controls {
     }
 
     void release(ServerPlayer p, Key key) {
+        until.remove(key);
         if (!held.remove(key)) return;
         if (key == Key.ATTACK) stopDestroyBlock();
     }

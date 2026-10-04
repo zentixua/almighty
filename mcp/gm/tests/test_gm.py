@@ -295,6 +295,9 @@ class RecipesTest(Tmp):
         self.assertFalse(recipes.TYPES["text"]('${"x".execute()}'))
         with self.assertRaises(recipes.RecipeError):
             recipes.groovy("gm.emit('${t}')", {"t": "п'ять"})
+        with self.assertRaises(recipes.RecipeError):  # и код прямо в шаге
+            recipes.substitute([{"method": "script", "params": {"code": "gm.emit('${t}')"}}], {"t": "п'ять"})
+        self.assertEqual(recipes.substitute({"commands": ["say ${t}"]}, {"t": "п'ять"}), {"commands": ["say п'ять"]})
         with open(path, "w", encoding="utf-8") as f:
             f.write('---\nname: ap\ndescription: x\nkind: instant\nparams: {}\n---\n```groovy a\n1\n```\n'
                     '```groovy b\n2\n```\n```steps\n[{"method": "script", "params": {"code": "x ${code:a}"}},'

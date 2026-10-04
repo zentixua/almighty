@@ -188,6 +188,65 @@ public final class GmBotGameTests {
     }
 
     /**
+     * «Мёртвая рука»: клавиша на срок ({@code ticks}) отпускается сама; правило, которое вело бота ({@code act} из
+     * скрипта), выключилось — бот стоит: идущая программа снята, клавиши отпущены, в ленте {@code bot_stopped}, в
+     * {@code rule.off} — {@code bots_stopped}. 04.10.2026 правило автопилота самолёта IA выключилось по бюджету, а
+     * удержанный руль вниз остался — самолёт ушёл в море.
+     */
+    @GameTest(template = "floor", batch = "gm_bot_deadman", timeoutTicks = 200, skyAccess = true)
+    public static void botKeysDieWithTheirRule(GameTestHelper h) {
+        long after = feedEnd(h);
+        Bot bot = spawn(h, "GmTestPilot", 3.5, 10.5, "");
+        CompletableFuture<JsonElement> lease = act(h, "GmTestPilot", "[{\"hold\":[\"forward\",\"sneak\"],\"ticks\":5}]");
+        AtomicReference<Vec3> start = new AtomicReference<>();
+        h.startSequence()
+                .thenWaitUntil(() -> finished(lease))
+                .thenExecute(() -> {
+                    JsonObject d = bot.describe(0);
+                    check(d.getAsJsonArray("keys").size() == 2 && d.getAsJsonObject("keys_ticks_left").get("forward").getAsInt() > 0,
+                            "клавиши на срок: " + d.get("keys") + " " + d.get("keys_ticks_left"));
+                    start.set(bot.player().position());
+                })
+                .thenExecuteAfter(6, () -> {
+                    JsonObject d = bot.describe(0);
+                    check(d.getAsJsonArray("keys").isEmpty() && !d.has("keys_ticks_left"), "клавиши на срок не отпустились: " + d.get("keys"));
+                    check(bot.player().position().x - start.get().x > 0.1, "с клавишей на срок бот не шёл: " + start.get() + " → " + bot.player().position());
+                    // правило держит руль без срока и долгую программу; со второго запуска — дольше бюджета: выключится
+                    now(call(h, "rule.add", params("{\"event\":\"tick\",\"name\":\"gm-test-autopilot\",\"budget_ms\":0.5,\"script\":"
+                            + "\"gm.bot('GmTestPilot').act([[hold: 'forward'], [wait: 100]], true); long t = System.nanoTime(); "
+                            + "while (System.nanoTime() - t < 15_000_000L) {}\"}")));
+                })
+                .thenWaitUntil(() -> check(rule(h, "gm-test-autopilot").get("state").getAsString().equals("off"), "правило ещё работает"))
+                .thenExecuteAfter(2, () -> {
+                    try {
+                        JsonObject d = bot.describe(0);
+                        check(d.getAsJsonArray("keys").isEmpty(), "правило выключилось, а бот держит " + d.get("keys"));
+                        check(!d.has("program") && d.get("programs_queued").getAsInt() == 0, "программы правила не сняты: " + d.get("program"));
+                        check(d.getAsJsonObject("last_program").get("state").getAsString().equals("cancelled"), "последняя программа: " + d.get("last_program"));
+                        check(hasEvent(h, after, "bot_stopped", "bot", "GmTestPilot"), "нет bot_stopped в ленте");
+                        boolean listed = false;
+                        for (JsonElement e : events(h, after).getAsJsonArray("events")) {
+                            JsonObject o = e.getAsJsonObject();
+                            if (o.get("type").getAsString().equals("rule.off") && o.has("bots_stopped")) listed |= o.get("bots_stopped").toString().contains("GmTestPilot");
+                        }
+                        check(listed, "в rule.off нет bots_stopped");
+                    } finally {
+                        now(call(h, "rule.remove", params("{\"name\":\"gm-test-autopilot\"}")));
+                        leave(h, "GmTestPilot");
+                    }
+                })
+                .thenSucceed();
+    }
+
+    private static JsonObject rule(GameTestHelper h, String name) {
+        for (JsonElement e : gm(h).rules().describe()) {
+            JsonObject o = e.getAsJsonObject();
+            if (o.has("name") && o.get("name").getAsString().equals(name)) return o;
+        }
+        throw new GameTestAssertException("нет правила " + name);
+    }
+
+    /**
      * Копание камня на уровне глаз алмазной киркой удержанием атаки (за камнем в досягаемости рук пусто — ломается
      * один блок) и постройка земли щелчком использования по полу.
      */

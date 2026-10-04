@@ -30,7 +30,7 @@ repositories {
         forRepository { maven { url = 'https://api.modrinth.com/maven' } }
         filter { includeGroup 'maven.modrinth' }
     }
-    // Sable companion (MIT) — типы API Sable для компиляции GameTest
+    // Sable companion (MIT) — открытая библиотека Sable: корабли (compat/sable) и GameTest
     exclusiveContent {
         forRepository { maven { url = 'https://maven.ryanhcode.dev/releases' } }
         filter { includeGroupAndSubgroups 'dev.ryanhcode' }
@@ -90,9 +90,10 @@ dependencies {
     // Immersive Aircraft 1.5.2 (Modrinth, версия ZZTlNkV9): привод самолётов ботом вызывается, только когда мод стоит
     compileOnly 'maven.modrinth:immersive-aircraft:ZZTlNkV9'
     devtestRuntimeOnly 'maven.modrinth:immersive-aircraft:ZZTlNkV9'
-    // Sable 2.0.5 (Modrinth, версия U678xqle; корабли Create Aeronautics): только GameTest — аренда на участках кораблей
+    // Sable 2.0.5 (Modrinth, версия U678xqle; корабли Create Aeronautics): корабли (compat/sable) — через его открытую
+    // библиотеку sable-companion (MIT, её несёт сам Sable: в jar и mods.toml её нет); сам Sable — только GameTest
+    compileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
     devtestCompileOnly 'maven.modrinth:sable:U678xqle'
-    devtestCompileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
     devtestRuntimeOnly 'maven.modrinth:sable:U678xqle'
 
     testImplementation platform('org.junit:junit-bom:5.10.2')

@@ -13,6 +13,8 @@ import net.minecraft.world.phys.Vec3;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.act.CommandRunner;
 import ua.zentix.almighty.bot.Bot;
+import ua.zentix.almighty.world.Ship;
+import ua.zentix.almighty.world.Ships;
 
 import java.util.Arrays;
 import java.util.List;
@@ -72,7 +74,8 @@ public final class ScriptApi {
     /**
      * Бот ведущего по имени; нет — null. У бота: {@code player()} — его сущность сейчас, {@code send(пакет)} — любой
      * пакет клиента серверу ({@code new ServerboundRenameItemPacket("имя")}), {@code act([[hold: "forward"], [wait: 20]])}
-     * — программа шагов, как у {@code bot.act}.
+     * — программа шагов, как у {@code bot.act}, {@code act(шаги, true)} — сняв идущие программы. Правило, которое вело
+     * бота так, выключилось — бот останавливается; рули автопилота — {@code [hold: "forward", ticks: 10]} каждым запуском.
      */
     public Bot bot(String name) {
         GmServer gm = GmServer.of(server);
@@ -83,6 +86,21 @@ public final class ScriptApi {
     public List<Bot> bots() {
         GmServer gm = GmServer.of(server);
         return gm == null ? List.of() : gm.bots().all();
+    }
+
+    /**
+     * Корабль (Sable, Create Aeronautics) по имени, что дал ему игрок; нет — null. У корабля: {@code pos()},
+     * {@code orientation()}, {@code velocity()} (блоков в секунду), {@code angularVelocity()}, {@code box()},
+     * {@code plotBox()}, {@code toWorld(точка участка)}, {@code toPlot(точка мира)}, {@code toWorldDir(направление)},
+     * {@code blockEntities("create:…")} — блок-сущности корабля в готовых чанках его участка, {@code describe()}.
+     */
+    public Ship ship(String name) {
+        return Ships.find(server, name);
+    }
+
+    /** Все корабли всех измерений (без мода кораблей — пусто). */
+    public List<Ship> ships() {
+        return Ships.all(server);
     }
 
     /** Измерение: {@code minecraft:the_nether} или без пространства имён ({@code the_nether}); нет — null. */

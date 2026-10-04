@@ -12,6 +12,7 @@ import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import org.slf4j.Logger;
 import ua.zentix.almighty.GmConfig;
+import ua.zentix.almighty.bot.Bot;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.feed.Feed;
@@ -25,10 +26,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -37,7 +41,8 @@ import java.util.function.Consumer;
  * {@code event.canceled = true} отменяет отменяемое. Правило выключается само и пишет {@code rule.off}: в среднем
  * дольше {@code budget_ms} за тик по последним 20 тикам, один запуск дольше {@link #runLimitMs} (его обрывает срок
  * скрипта; первый такой обрыв — только ошибка), {@value #ERRORS_OFF} ошибок подряд, больше {@value #EMITS_PER_SECOND} записей в ленту за 20 тиков, событие
- * не из потока сервера. Первый запуск в счёт времени не идёт: в нём Groovy связывает вызовы (до десятков мс). Время —
+ * не из потока сервера. Ботов, которых его скрипт вёл ({@code bot.act}, {@code bot.send}), выключение останавливает:
+ * программы сняты, клавиши отпущены. Первый запуск в счёт времени не идёт: в нём Groovy связывает вызовы (до десятков мс). Время —
  * настенное: пауза сборщика мусора внутри запуска в него попадает, поэтому счёт средний, а не по одному тику. Всё — в
  * потоке сервера: разбор и компиляция — в потоке моста ({@link #parse}), остальное — {@code GmServer.onMain}.
  */
@@ -228,6 +233,7 @@ public final class Rules {
 
     private void drop(Rule rule) {
         rule.unlisten();
+        rule.driven.clear();
         rules.remove(rule.id);
     }
 
@@ -270,6 +276,11 @@ public final class Rules {
         int windowEmits;
         boolean running, warm;
         volatile boolean wrongThread;
+        /**
+         * Боты, которых скрипт правила вёл ({@code act}, {@code send}): выключилось правило — они останавливаются.
+         * Исчерпанный {@code limit} — плановый конец: начатая программа идёт дальше, клавиши на срок отпустятся сами.
+         */
+        final Set<Bot> driven = Collections.newSetFromMap(new IdentityHashMap<>());
 
         Rule(long id, Spec spec) {
             this.id = id;
@@ -316,7 +327,17 @@ public final class Rules {
                 if (spec.script() == null) {
                     emit(Json.fields(event));
                 } else {
-                    Scripts.Result r = Scripts.run(spec.script(), Map.of("event", event, "server", server, "gm", api, "state", state, "rule", id));
+                    // ушедший бот (его новый вход — другой объект) не держится правилом до его конца
+                    driven.removeIf(b -> !b.online());
+                    Set<Bot> outer = Bot.driving(driven);
+                    Scripts.Result r;
+                    try {
+                        r = Scripts.run(spec.script(), Map.of("event", event, "server", server, "gm", api, "state", state, "rule", id));
+                    } finally {
+                        Bot.driving(outer);
+                        // выключилось посреди запуска (лента переполнена): ботов, которых скрипт повёл после, — тоже
+                        if (off != null) stopDriven(off);
+                    }
                     if (r.ok()) errorsInRow = 0;
                     else error(r, tick);
                 }
@@ -385,7 +406,21 @@ public final class Rules {
             LOG.warn("Правило ведущего №{} выключено: {}", id, reason);
             JsonObject d = who();
             d.addProperty("reason", reason);
+            JsonArray stopped = stopDriven(reason);
+            if (!stopped.isEmpty()) d.add("bots_stopped", stopped);
             feed.add("rule.off", d);
+        }
+
+        /** «Мёртвая рука»: бот автопилота не держит последний ввод (самолёт с рулём вниз ушёл в море). */
+        private JsonArray stopDriven(String reason) {
+            JsonArray stopped = new JsonArray();
+            for (Bot bot : driven) {
+                if (!bot.online()) continue;
+                bot.stop("правило " + (spec.name() != null ? "«" + spec.name() + "»" : "№" + id) + " выключено: " + reason);
+                stopped.add(bot.name());
+            }
+            driven.clear();
+            return stopped;
         }
 
         JsonObject who() {

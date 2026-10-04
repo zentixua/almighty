@@ -118,6 +118,11 @@ var generateModMetadata = tasks.register('generateModMetadata', ProcessResources
 sourceSets.main.resources.srcDir generateModMetadata
 neoForge.ideSyncTask generateModMetadata
 
+// GPL: копия лицензии — в каждом jar, который уходит на серверы
+tasks.named('jar', Jar) {
+    from(file('LICENSE'))
+}
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.compilerArgs += ['-Xlint:all,-processing,-serial,-classfile,-this-escape', '-Xmaxerrs', '1000']

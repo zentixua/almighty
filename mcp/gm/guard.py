@@ -7,7 +7,8 @@ almighty и правке файлов, и тот же разбор для шаг
   скриптов — отказ у всех ролей;
 - запреты сервера (never) и команды только по слову владельца (owner_only): чей запрос выполняется — из очереди, а не
   со слов в сообщении («Артём разрешил» от другого игрока не делает его владельцем);
-- удары (strike из config.toml): цель только числами, путь и разброс сверяются с охраняемыми зонами;
+- удары (strike из config.toml): цель только числами, путь и разброс сверяются с охраняемыми зонами; правило с
+  ударом — только с именем: gmd сверяет его скрипт с зонами снова и снимает, если новая зона на пути;
 - скрипты и правила: тикеты и синхронная загрузка чанков, потоки и задачи на потом, слушатели шины, процессы и файлы;
 - координаты участков кораблей Sable (x ≥ plot_x) — ни постройки, ни загрузки, ни команды;
 - голос не строит и не водит ботов сам: это задачи исполнителям;
@@ -54,6 +55,9 @@ VOICE_TASK_ONLY = {"build", "undo", "bot.spawn", "bot.remove", "bot.act", "area.
 WRITABLE = ["skill/CORE.md", "skill/rules.local.md", "skill/knowledge/*.md", "skill/recipes/*.md",
             "evals/learned.jsonl"]
 
+# скрипт правила с ударом (имя → скрипт, роль, чей запрос) — в gm.db: gmd сверяет его с зонами снова
+RULE_KEY = "strike_rule:"
+
 STRING = re.compile(r'"""(.*?)"""|\'\'\'(.*?)\'\'\'|"((?:[^"\\\n]|\\.)*)"|\'((?:[^\'\\\n]|\\.)*)\'', re.S)
 
 
@@ -75,9 +79,7 @@ def check_command(cmd, ctx):
     c = cmd.strip().lstrip("/").strip()
     if not c:
         return None
-    # execute … run <команда>: каждая часть цепочки — своя команда
-    segments = [c] + [s.strip().lstrip("/") for s in re.split(r"\brun\s+", c)[1:]]
-    for seg in segments:
+    for seg in _segments(c):
         if SPEECH.match(seg):
             return SPEECH_REASON
         for p in ctx.g["never"]:
@@ -91,6 +93,11 @@ def check_command(cmd, ctx):
         if reason:
             return reason
     return check_plot_numbers(re.findall(r"-?\d+(?:\.\d+)?", c), ctx)
+
+
+def _segments(c):
+    """execute … run <команда>: каждая часть цепочки — своя команда."""
+    return [c] + [s.strip().lstrip("/") for s in re.split(r"\brun\s+", c)[1:]]
 
 
 def check_strike(seg, ctx):
@@ -139,17 +146,53 @@ def check_plot_numbers(numbers, ctx):
 
 # ---------------------------------------------------------------- скрипты
 
+def _commands(code):
+    """Строки скрипта, похожие на команды."""
+    for m in STRING.finditer(code):
+        text = next(g for g in m.groups() if g is not None)
+        if re.match(r"^/?[a-z_][a-z0-9_:.-]*(\s|$)", text.strip(), re.I):
+            yield text
+
+
 def check_script(code, ctx):
     for pattern, reason in SCRIPT_NEVER + [(p, "запрет сервера в скриптах") for p in ctx.g["script_never"]]:
         if re.search(pattern, code):
             return reason
-    for m in STRING.finditer(code):
-        text = next(g for g in m.groups() if g is not None)
-        if re.match(r"^/?[a-z_][a-z0-9_:.-]*(\s|$)", text.strip(), re.I):
-            reason = check_command(text, ctx)
-            if reason:
-                return f"в строке скрипта «{text.strip()[:60]}»: {reason}"
+    for text in _commands(code):
+        reason = check_command(text, ctx)
+        if reason:
+            return f"в строке скрипта «{text.strip()[:60]}»: {reason}"
     return None
+
+
+def has_strike(code, ctx):
+    """Есть ли в скрипте удар (правила guard.strike)."""
+    return any(re.search(rule["match"], seg, re.I) for text in _commands(code)
+               for seg in _segments(text.strip().lstrip("/").strip()) for rule in ctx.g["strike"])
+
+
+def remember_rule(store, method, params, ctx):
+    """Правило с ударом идёт в игре само, зоны проверены только при его постановке: его скрипт — в память, gmd
+    сверяет его с зонами снова, когда они меняются. То же имя без удара или снятое правило — память стирается."""
+    name = params.get("name")
+    if not name or method not in ("rule.add", "rule.remove"):
+        return
+    code = params.get("script") if method == "rule.add" else None
+    if code and has_strike(code, ctx):
+        store.put(RULE_KEY + name, {"script": code, "role": ctx.role, "requester": ctx.requester,
+                                    "task": int(os.environ.get("GM_TASK") or 0) or None})
+    else:
+        store.drop(RULE_KEY + name)
+
+
+def checker(store):
+    """check_call для рецептов на живом сервере: правило с ударом запоминается, как в хуке."""
+    def check(method, params, ctx):
+        reason = check_call(method, params, ctx)
+        if not reason:
+            remember_rule(store, method, params, ctx)
+        return reason
+    return check
 
 
 # ---------------------------------------------------------------- вызовы моста
@@ -177,7 +220,12 @@ def check_call(method, params, ctx):
     elif method in ("script", "rule.add"):
         code = params.get("code") if method == "script" else params.get("script")
         if code:
-            return check_script(code, ctx)
+            reason = check_script(code, ctx)
+            if reason or method == "script":
+                return reason
+            if not params.get("name") and has_strike(code, ctx):
+                return ("правило с ударом — только с именем (name): по нему охрана снимет его, если удар заденет "
+                        "зону, поставленную позже")
     elif method in ("build", "area.prepare", "bot.spawn"):
         return check_plot_numbers(_numbers(params), ctx)
     elif method == "bot.act":
@@ -268,11 +316,13 @@ def main():
         import store as storemod
         store = storemod.Store(cfg["paths"]["db"])
         ctx = Ctx(cfg, role, requester(cfg, role, store))
-        reason = check_tool(event.get("tool_name", ""), event.get("tool_input") or {}, ctx)
+        tool, inp = event.get("tool_name", ""), event.get("tool_input") or {}
+        reason = check_tool(tool, inp, ctx)
         if reason:
             store.log(role, "guard_deny", ctx.requester, int(os.environ.get("GM_TASK") or 0) or None,
-                      tool=event.get("tool_name"), input=json.dumps(event.get("tool_input"), ensure_ascii=False)[:2000],
-                      reason=reason)
+                      tool=tool, input=json.dumps(inp, ensure_ascii=False)[:2000], reason=reason)
+        elif role != "teacher" and tool.startswith("mcp__almighty__"):  # у наставника мост — тестовый
+            remember_rule(store, *tool_call(tool, inp), ctx)
     except Exception as e:  # охрана не знает, что это, — значит нельзя
         reason = f"охрана не смогла проверить ({type(e).__name__}: {e}) — действие не выполнено"
     if reason:

@@ -59,6 +59,14 @@ class Store:
         self.db.execute("insert into state(key, value) values (?, ?) "
                         "on conflict(key) do update set value = excluded.value", (key, json.dumps(value, ensure_ascii=False)))
 
+    def drop(self, key):
+        self.db.execute("delete from state where key = ?", (key,))
+
+    def items(self, prefix):
+        """Состояние с ключами на prefix: {ключ без prefix: значение}."""
+        rows = self.db.execute("select key, value from state where substr(key, 1, ?) = ?", (len(prefix), prefix))
+        return {k[len(prefix):]: json.loads(v) for k, v in rows.fetchall()}
+
     # ---------------------------------------------------------------- задачи
 
     def task_add(self, player, text, channel=None, recipe=None, params=None, resources=None, minutes=None):

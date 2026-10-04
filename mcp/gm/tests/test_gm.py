@@ -100,6 +100,25 @@ class GuardTest(Tmp):
         self.assertIn("зоны", guard.check_command("airstrike nuke at 600 64 0", c))  # запас ядерки 600
         self.assertIsNone(guard.check_command("airstrike clear", c))
 
+    def test_strike_rules(self):
+        c = self.ctx(requester="ZentixUA")
+        volley = 'gm.command("airstrike salvo grad 5 20 at 300 64 0")'
+        self.assertTrue(guard.has_strike(volley, c))
+        self.assertTrue(guard.has_strike('gm.command("execute as @a run airstrike salvo grad 5 20 at 1 2 3")', c))
+        self.assertFalse(guard.has_strike('gm.command("time set day")', c))
+        self.assertIn("имен", guard.check_call("rule.add", {"event": "tick", "script": volley}, c))
+        self.assertIsNone(guard.check_call("rule.add", {"event": "tick", "name": "залп", "script": volley}, c))
+        self.assertIsNone(guard.check_call("rule.add", {"event": "tick", "script": 'gm.command("time set day")'}, c))
+        store = storemod.Store(self.cfg["paths"]["db"])
+        check = guard.checker(store)
+        self.assertIsNone(check("rule.add", {"event": "tick", "name": "залп", "script": volley}, c))
+        self.assertEqual(store.items(guard.RULE_KEY)["залп"]["requester"], "ZentixUA")
+        guard.remember_rule(store, "rule.add", {"name": "залп", "script": 'gm.command("time set day")'}, c)
+        self.assertEqual(store.items(guard.RULE_KEY), {})  # то же имя без удара
+        check("rule.add", {"event": "tick", "name": "залп", "script": volley}, c)
+        check("rule.remove", {"name": "залп"}, c)
+        self.assertEqual(store.items(guard.RULE_KEY), {})
+
     def test_plot_coordinates(self):
         self.assertIn("Sable", guard.check_command("tp Steve 20480100 100 0", self.ctx()))
         self.assertIn("Sable", guard.check_call("build", {"ops": [{"op": "set", "pos": [20480000, 64, 0],
@@ -161,6 +180,13 @@ class GuardTest(Tmp):
         self.assertEqual(out.stdout.strip(), "")
         denials = storemod.Store(self.cfg["paths"]["db"]).logs(0, ["guard_deny"])
         self.assertEqual(len(denials), 1)
+        rule = {"tool_name": "mcp__almighty__rule", "tool_input": {
+            "action": "add", "event": "tick", "every": 200, "name": "залп",
+            "script": 'gm.command("airstrike salvo grad 5 20 at 300 64 0")'}}
+        out = subprocess.run([sys.executable, os.path.join(KIT, "guard.py")], input=json.dumps(rule), env=env,
+                             capture_output=True, text=True)
+        self.assertEqual(out.stdout.strip(), "")
+        self.assertIn("залп", storemod.Store(self.cfg["paths"]["db"]).items(guard.RULE_KEY))
 
 
 class FakeBridge:
@@ -255,6 +281,24 @@ class DispatcherPartsTest(Tmp):
         self.assertIn("#4", text)
         self.assertIn("ENOTzRPG", text)
         self.assertIn("overworld 1 2 3", text)
+
+
+    def test_zones_recheck_strike_rules(self):
+        store = storemod.Store(self.cfg["paths"]["db"])
+        volley = {"name": "залп", "script": 'gm.command("airstrike salvo grad 5 20 at 300 64 0")'}
+        guard.remember_rule(store, "rule.add", volley, self.ctx(requester="Steve"))
+        d = gmd.Dispatcher(self.cfg)
+        d.bridge = FakeBridge({"rules": [{"name": "залп", "state": "on"}, {"name": "салют", "state": "on"}]})
+        d.zones_tick()
+        d.zones_tick()  # зоны те же, минута не прошла — мост не спрашивается
+        self.assertEqual([m for m, _ in d.bridge.calls], ["rules"])
+        self.zone("лайнер", 320, 0, 40)
+        d.zones_tick()
+        self.assertEqual(d.bridge.calls[-1], ("rule.remove", {"name": "залп"}))
+        self.assertEqual(store.items(guard.RULE_KEY), {})
+        self.assertEqual(store.logs(0, ["rule_removed"])[0]["player"], "Steve")
+        self.assertTrue(d.pending[0].note)
+        self.assertIn("служба ведущего", gmd.compose(self.cfg, "Steve", d.pending, [], []))
 
 
 class RolesTest(Tmp):

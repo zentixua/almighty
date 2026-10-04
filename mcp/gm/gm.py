@@ -190,8 +190,9 @@ class Gm:
             raise GmError(f"{name} — {r.kind}: это задача исполнителю (task с recipe={name!r})")
         bridge = self.test if self.role == "teacher" else self.live
         ctx = self.ctx()
+        check = guard.check_call if self.role == "teacher" else guard.checker(self.store)
         try:
-            result = recipesmod.run(r, params, bridge, ctx, guard.check_call)
+            result = recipesmod.run(r, params, bridge, ctx, check)
         except recipesmod.RecipeError as e:
             self.store.log(self.role, "recipe_error", ctx.requester, self.task_id, recipe=name, error=str(e))
             raise GmError(str(e)) from e
@@ -448,7 +449,8 @@ def main():
         b = gm.test if a.test else gm.live
         # человек у консоли — владелец: охрана всё равно проверяет шаги (зоны, запреты)
         ctx = guard.Ctx(cfg, "owner", cfg["gm"]["owners"][0] if cfg["gm"]["owners"] else None)
-        print(json.dumps(recipesmod.run(found[a.name], json.loads(a.params), b, ctx, guard.check_call),
+        check = guard.check_call if a.test else guard.checker(gm.store)
+        print(json.dumps(recipesmod.run(found[a.name], json.loads(a.params), b, ctx, check),
                          ensure_ascii=False, indent=1))
     return 0
 

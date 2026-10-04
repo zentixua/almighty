@@ -34,6 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bridge as bridgemod  # noqa: E402
 import conf  # noqa: E402
+import guard  # noqa: E402
 import roles  # noqa: E402
 import store as storemod  # noqa: E402
 
@@ -43,8 +44,9 @@ FALLBACK = {"ru": "Ведущий сейчас не смог ответить �
             "en": "The game master couldn't answer just now — please try again in a minute."}
 # что будит наставника сразу; прочие события (сообщения, ответы) — когда их накопилось TEACH_AFTER
 SIGNALS = ("lesson", "task_failed", "no_reply", "guard_deny", "tool_error", "recipe_error", "voice_timeout",
-           "voice_crash", "slow_reply")
+           "voice_crash", "slow_reply", "rule_removed")
 TEACH_AFTER = 8
+RULES_RECHECK = 60  # правила с ударом сверяются с зонами при каждой их правке и не реже раза в минуту
 
 
 def log(text):
@@ -57,10 +59,11 @@ def addressed(text, names):
 
 
 class Item:
-    """Что ждёт голоса: сообщение игрока или итог задачи для него."""
+    """Что ждёт голоса: сообщение игрока, итог задачи для него или весть службы (note)."""
 
-    def __init__(self, player, text, channel=None, task=None, pos=None, direct=False):
+    def __init__(self, player, text, channel=None, task=None, pos=None, direct=False, note=False):
         self.player, self.text, self.channel, self.task, self.pos = player, text, channel, task, pos
+        self.note = note
         self.direct = direct  # личное /gm или ведущего назвали; без ответа — ошибка голоса
         self.time = time.time()
 
@@ -71,7 +74,9 @@ def compose(cfg, player, items, tasks, chat):
     lines = []
     for it in items:
         stamp = time.strftime("%H:%M", time.localtime(it.time))
-        if it.task is None:
+        if it.note:
+            lines.append(f"[{stamp} · служба ведущего] {it.text}")
+        elif it.task is None:
             where = "лично /gm" if it.channel == "gm" else "в общий чат"
             lines.append(f"[{stamp} · {where}] {player}: {it.text}")
         else:
@@ -213,6 +218,8 @@ class Dispatcher:
         self.teacher = None
         self.gate = None
         self.last_teach = 0.0
+        self.zones_seen = None
+        self.rules_checked = 0.0
         self.stopping = False
 
     # ---------------------------------------------------------------- лента
@@ -294,8 +301,8 @@ class Dispatcher:
         if not player:
             return
         channel = next((it.channel for it in reversed(items) if it.channel), None)
-        if channel is None:  # одни итоги задач: канал того, кто просил
-            task = self.store.task(items[0].task)
+        if channel is None:  # одни итоги задач и вести: канал того, кто просил
+            task = self.store.task(items[0].task) if items[0].task else None
             channel = task["channel"] if task else "gm"
         text = compose(self.cfg, player, items, self.store.tasks(player, limit=6), list(self.chat))
         self.turn = {"player": player, "channel": channel, "started": time.time(), "log_id": self.store.last_log_id(),
@@ -518,6 +525,41 @@ class Dispatcher:
 
     # ---------------------------------------------------------------- цикл
 
+    # ---------------------------------------------------------------- удары в правилах
+
+    def zones_tick(self):
+        """Правило с ударом идёт в игре само: зоны сверены при его постановке. Зону поставили позже (голос, человек
+        из zones.py) — скрипт правила сверяется снова, задетое правило снимается, игроку — весть через голос."""
+        try:
+            mtime = os.stat(self.cfg["paths"]["zones"]).st_mtime_ns
+        except FileNotFoundError:
+            mtime = 0
+        if mtime == self.zones_seen and time.time() - self.rules_checked < RULES_RECHECK:
+            return
+        self.zones_seen, self.rules_checked = mtime, time.time()  # мост лёг — снова через минуту, не каждый круг
+        remembered = self.store.items(guard.RULE_KEY)
+        if not remembered:
+            return
+        on = {r.get("name") for r in self.bridge.call("rules") if r.get("state") == "on"}
+        for name, rule in remembered.items():
+            if name not in on:
+                continue
+            reason = guard.check_script(rule["script"], guard.Ctx(self.cfg, rule["role"], rule["requester"]))
+            if not reason:
+                continue
+            try:
+                self.bridge.call("rule.remove", {"name": name})
+            except bridgemod.BridgeError as e:  # память остаётся: снова через минуту
+                self.store.log("gmd", "error", where="zones_tick", error=f"rule.remove {name}: {e}")
+                continue
+            self.store.drop(guard.RULE_KEY + name)
+            self.store.log("gmd", "rule_removed", rule["requester"], rule["task"], name=name, reason=reason)
+            log(f"правило «{name}» снято: {reason}")
+            if rule["requester"]:
+                self.pending.append(Item(rule["requester"], f"Правило «{name}» снято охраной: {reason}. Скажи "
+                                         "игроку коротко, что удары по нему остановлены и почему.",
+                                         task=rule["task"], note=True))
+
     def recover(self):
         """Задачи, оборванные прошлым запуском диспетчера: честно — не доделаны."""
         for task in self.store.tasks(open_only=True, limit=100):
@@ -535,7 +577,7 @@ class Dispatcher:
                     self.on_event(self.events.get_nowait())
             except queue.Empty:
                 pass
-            for step in (self.voice_tick, self.workers_tick, self.teacher_tick):
+            for step in (self.voice_tick, self.workers_tick, self.teacher_tick, self.zones_tick):
                 try:
                     step()
                 except Exception as e:  # служба не падает от одной ошибки: в журнал и дальше

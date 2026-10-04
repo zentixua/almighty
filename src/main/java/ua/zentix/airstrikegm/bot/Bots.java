@@ -73,6 +73,12 @@ public final class Bots {
 
     private record Waiting(Areas.Lease lease, long deadline, CompletableFuture<Areas.Lease> ready) {}
 
+    /** Аренда места входа после входа — до {@code until}. */
+    private final List<Held> held = new ArrayList<>();
+    static final int HOLD_AFTER = 100;
+
+    private record Held(Areas.Lease lease, long until) {}
+
     public Bots(GmServer gm) {
         this.gm = gm;
     }
@@ -120,16 +126,19 @@ public final class Bots {
                     check(spec);
                     return prepare(spec);
                 }).thenCompose(ready -> ready).thenCompose(lease -> gm.onMain(() -> {
+                    Bot bot;
                     try {
                         check(spec);
-                        Bot bot = place(spec, textures.orElse(null));
-                        JsonObject out = bot.describe(0);
-                        if (spec.skinOf() != null && textures.isEmpty()) out.addProperty("skin", "скин «" + spec.skinOf() + "» не найден: обычный");
-                        return out;
-                    } finally {
-                        // дальше чанки держит тикет самого игрока
+                        bot = place(spec, textures.orElse(null));
+                    } catch (RpcException | RuntimeException e) {
                         if (lease != null) lease.release();
+                        throw e;
                     }
+                    // дальше чанки держит тикет самого игрока: он встаёт не сразу (очередь тикетов игроков), аренда — ещё немного
+                    if (lease != null) held.add(new Held(lease, tickNow() + HOLD_AFTER));
+                    JsonObject out = bot.describe(0);
+                    if (spec.skinOf() != null && textures.isEmpty()) out.addProperty("skin", "скин «" + spec.skinOf() + "» не найден: обычный");
+                    return out;
                 })));
     }
 
@@ -327,6 +336,11 @@ public final class Bots {
     /** Конец тика сервера: тики ботов; ушедшие (выгнали, ошибка) — из списка, событием в ленту. */
     public void tick() {
         if (!waiting.isEmpty()) places();
+        if (!held.isEmpty()) held.removeIf(h -> {
+            if (tickNow() < h.until()) return false;
+            h.lease().release();
+            return true;
+        });
         if (byName.isEmpty()) return;
         for (Bot bot : all()) {
             if (!bot.tick()) {
@@ -360,6 +374,8 @@ public final class Bots {
             w.ready().completeExceptionally(RpcException.unavailable("Сервер останавливается"));
         }
         waiting.clear();
+        held.forEach(h -> h.lease().release());
+        held.clear();
         for (Bot bot : all()) {
             bot.disconnect(Component.translatable("multiplayer.disconnect.server_shutdown"));
             forget(bot);

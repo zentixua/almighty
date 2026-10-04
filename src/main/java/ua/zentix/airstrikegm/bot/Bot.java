@@ -88,6 +88,9 @@ public final class Bot {
     private long inboxSeq;
     private final ArrayDeque<Heard> heard = new ArrayDeque<>();
     private int chatAcks, deadTicks;
+    /** Телепорт, который бот ещё не подтвердил: ждёт готового чанка места ({@link #acceptTeleport}). */
+    private int teleportId;
+    private boolean teleportPending;
     private Instant lastChat = Instant.EPOCH;
     private String leftReason;
 
@@ -165,6 +168,7 @@ public final class Bot {
         if (!channel.isOpen()) return false;
         try {
             drain();
+            acceptTeleport();
             ServerPlayer p = player();
             if (p.isDeadOrDying()) {
                 if (++deadTicks >= 20 && autoRespawn) {
@@ -270,7 +274,12 @@ public final class Bot {
     private void receive(Packet<?> packet) {
         switch (packet) {
             case BundlePacket<?> bundle -> bundle.subPackets().forEach(this::receive);
-            case ClientboundPlayerPositionPacket pos -> send(new ServerboundAcceptTeleportationPacket(pos.getId()));
+            case ClientboundPlayerPositionPacket pos -> {
+                // сервер ждёт только последний номер
+                teleportId = pos.getId();
+                teleportPending = true;
+                acceptTeleport();
+            }
             case ClientboundPlayerChatPacket chat -> {
                 if (chat.signature() != null && ++chatAcks > CHAT_ACK_AFTER) {
                     send(new ServerboundChatAckPacket(chatAcks));
@@ -306,6 +315,19 @@ public final class Bot {
             case ClientboundStartConfigurationPacket ignored -> connection.disconnect(Component.literal("бот не проходит перенастройку соединения"));
             default -> {}
         }
+    }
+
+    /**
+     * Подтвердить телепорт, когда чанк места готов: подтверждение переносит игрока ({@code absMoveTo}), а перенос в
+     * NeoForge грузит чанк назначения сразу. Так бывает со входом бота на сохранённое место вдали (телепорт входа
+     * подтверждается после добавления в мир) — клиент на загрузке мира тоже отвечает позже. Чанк грузит тикет игрока.
+     */
+    private void acceptTeleport() {
+        if (!teleportPending) return;
+        ServerPlayer p = player();
+        if (p.serverLevel().getChunkSource().getChunkNow(p.getBlockX() >> 4, p.getBlockZ() >> 4) == null) return;
+        teleportPending = false;
+        send(new ServerboundAcceptTeleportationPacket(teleportId));
     }
 
     private void chat(ChatType.Bound type, String text) {
@@ -392,6 +414,7 @@ public final class Bot {
         JsonArray keys = new JsonArray();
         controls.held().forEach(k -> keys.add(k.id()));
         o.add("keys", keys);
+        if (teleportPending) o.addProperty("loading", "ждёт загрузки чанков места: стоит, пока они не готовы");
         o.add("menu", menu(player().containerMenu));
         if (current != null) o.add("program", current.describe());
         if (last != null) o.add("last_program", last.describe());

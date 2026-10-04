@@ -301,6 +301,8 @@ public final class GmBotGameTests {
         }
         Bot bot = spawn(h, "GmTestTraveler", 10.5, 10.5, ",\"gamemode\":\"creative\"");
         new ScriptApi(server, true, d -> {}).command("execute in minecraft:the_nether run tp GmTestTraveler 0 120 0");
+        // телепорт бот подтверждает, когда чанк места готов; фоновая загрузка не успевает к тикам GameTest
+        for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) nether.getChunk(i, j);
         h.startSequence()
                 .thenWaitUntil(() -> check(bot.player().level() == nether && !bot.player().isChangingDimension(), "ещё в переходе"))
                 .thenExecute(() -> leave(h, "GmTestTraveler"))
@@ -392,7 +394,8 @@ public final class GmBotGameTests {
 
     /**
      * Вход вдали от всех: место загружается в фоне до входа (перенос игрока в NeoForge грузил бы чанк назначения
-     * сразу), ответ — когда бот уже там.
+     * сразу), ответ — когда бот уже там. Вернувшийся без {@code pos} бот входит на сохранённое место: телепорт входа он
+     * подтверждает, только когда чанк там готов (подтверждение переносит игрока и тоже грузило бы его сразу).
      */
     @GameTest(template = "floor", batch = "gm_bot_far", timeoutTicks = 6000, skyAccess = true)
     public static void botWaitsForFarChunks(GameTestHelper h) {
@@ -416,6 +419,20 @@ public final class GmBotGameTests {
                     check(r.get("bot").getAsBoolean(), "вход: " + r);
                     Bot bot = gm(h).bots().find("GmTestFar");
                     check(bot != null && bot.player().position().distanceTo(new Vec3(x, y, z)) < 0.01, "бот не на месте входа: " + (bot == null ? null : bot.player().position()));
+                    leave(h, "GmTestFar");
+                })
+                // аренда места и тикет игрока сняты — чанк выгружается
+                .thenWaitUntil(() -> check(level.getChunkSource().getChunkNow(cx, cz) == null, "чанк ещё загружен"))
+                .thenExecute(() -> {
+                    JsonObject back = now(call(h, "bot.spawn", params("{\"name\":\"GmTestFar\"}"))).getAsJsonObject();
+                    check(level.getChunkSource().getChunkNow(cx, cz) == null, "вход на сохранённое место загрузил чанк сразу");
+                    check(back.has("loading"), "бот не ждёт загрузки места: " + back);
+                    for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) level.getChunk(cx + i, cz + j);
+                })
+                .thenWaitUntil(() -> check(!gm(h).bots().find("GmTestFar").describe(0).has("loading"), "телепорт входа не подтверждён"))
+                .thenExecute(() -> {
+                    Bot bot = gm(h).bots().find("GmTestFar");
+                    check(Math.abs(bot.player().getX() - x) < 0.01 && Math.abs(bot.player().getZ() - z) < 0.01, "вернулся не туда: " + bot.player().position());
                     leave(h, "GmTestFar");
                 })
                 .thenSucceed();

@@ -4,3 +4,4 @@ run/
 logs/
 __pycache__/
 *.pyc
+mcp/gm/zones.json*

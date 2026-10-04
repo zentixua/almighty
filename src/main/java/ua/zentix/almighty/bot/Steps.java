@@ -328,8 +328,9 @@ final class Steps {
                 buf.writeBytes(data);
                 packet = ServerboundCustomPayloadPacket.STREAM_CODEC.decode(buf);
                 left = buf.readableBytes();
-            } catch (RuntimeException e) {
-                throw new Failed("пакет " + id + " не разобран: " + e.getMessage());
+            } catch (Exception | StackOverflowError | LinkageError e) {
+                // у клиента это ловит netty и отключает его; в тике сервера ошибка кодека уронила бы сервер
+                throw new Failed("пакет " + id + " не разобран: " + e);
             } finally {
                 buf.release();
             }

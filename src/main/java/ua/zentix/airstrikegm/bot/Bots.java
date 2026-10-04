@@ -73,11 +73,11 @@ public final class Bots {
 
     private record Waiting(Areas.Lease lease, long deadline, CompletableFuture<Areas.Lease> ready) {}
 
-    /** Аренда места входа после входа — до {@code until}. */
+    /** Аренда места входа после входа — до {@code until} или выхода бота. */
     private final List<Held> held = new ArrayList<>();
     static final int HOLD_AFTER = 100;
 
-    private record Held(Areas.Lease lease, long until) {}
+    private record Held(Bot bot, Areas.Lease lease, long until) {}
 
     public Bots(GmServer gm) {
         this.gm = gm;
@@ -135,7 +135,7 @@ public final class Bots {
                         throw e;
                     }
                     // дальше чанки держит тикет самого игрока: он встаёт не сразу (очередь тикетов игроков), аренда — ещё немного
-                    if (lease != null) held.add(new Held(lease, tickNow() + HOLD_AFTER));
+                    if (lease != null) held.add(new Held(bot, lease, tickNow() + HOLD_AFTER));
                     JsonObject out = bot.describe(0);
                     if (spec.skinOf() != null && textures.isEmpty()) out.addProperty("skin", "скин «" + spec.skinOf() + "» не найден: обычный");
                     return out;
@@ -383,6 +383,12 @@ public final class Bots {
     }
 
     private void gone(Bot bot) {
+        // ушёл — чанки места входа ему больше не нужны
+        if (!held.isEmpty()) held.removeIf(h -> {
+            if (h.bot() != bot) return false;
+            h.lease().release();
+            return true;
+        });
         if (!forget(bot)) return;
         JsonObject d = new JsonObject();
         d.addProperty("bot", bot.name);

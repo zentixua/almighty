@@ -165,6 +165,8 @@ public final class GmBotGameTests {
                         if (o.get("type").getAsString().equals("join")) check(o.has("bot"), "вход без отметки бота: " + o);
                     }
                 })
+                // отпуск аренды снимает тикеты в конце тика
+                .thenExecuteAfter(1, () -> check(GmTickets.count(h.getLevel()) == 0, "аренда места входа после выхода бота: тикетов " + GmTickets.count(h.getLevel())))
                 .thenSucceed();
     }
 

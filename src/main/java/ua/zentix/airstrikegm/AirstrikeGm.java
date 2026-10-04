@@ -11,6 +11,7 @@ import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import ua.zentix.airstrikegm.feed.FeedListeners;
+import ua.zentix.airstrikegm.feed.GmCommand;
 
 /**
  * Мод ведущего: мост, через который Claude видит мир и действует на сервере. Только сервер: своих блоков, предметов и
@@ -24,6 +25,7 @@ public final class AirstrikeGm {
         container.registerConfig(ModConfig.Type.COMMON, GmConfig.SPEC);
         IEventBus bus = NeoForge.EVENT_BUS;
         FeedListeners.register(bus);
+        GmCommand.register(bus);
         bus.addListener(AirstrikeGm::onStarted);
         bus.addListener(AirstrikeGm::onTickStart);
         bus.addListener(AirstrikeGm::onTickEnd);

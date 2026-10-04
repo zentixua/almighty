@@ -221,6 +221,12 @@ public final class GmScriptGameTests {
                         && t.get("mod").getAsString().equals("neoforge");
             }
             check(found, "event.types: " + types);
+            // событие по полному имени — то же, что по короткому
+            JsonObject full = rule(h, "net.neoforged.neoforge.event.ServerChatEvent", "gm-test-full", null);
+            JsonObject brief = rule(h, "ServerChatEvent", "gm-test-full", null);
+            check(full.get("event").getAsString().equals("ServerChatEvent") && brief.get("event").getAsString().equals("ServerChatEvent")
+                    && full.get("mod").getAsString().equals("neoforge"), "полное и короткое имя: " + full + ", " + brief);
+            drop(h, "gm-test-full");
             JsonObject unknown = new JsonObject();
             unknown.addProperty("event", "NoSuchEventAtAll");
             check(rejected(h, "rule.add", unknown).startsWith("Нет события"), "неизвестное событие принято");
@@ -243,7 +249,7 @@ public final class GmScriptGameTests {
             check(Integer.valueOf(1).equals(gm.state().get("gmNested")) && Boolean.TRUE.equals(gm.state().get("gmGold")) && markers == 2,
                     "правило внутри команды: запусков " + gm.state().get("gmNested") + ", золото " + gm.state().get("gmGold") + ", меток " + markers);
         } finally {
-            drop(h, "gm-test-guard", "gm-test-tag", "gm-test-nested");
+            drop(h, "gm-test-guard", "gm-test-tag", "gm-test-nested", "gm-test-full");
             h.getLevel().getEntities(EntityType.MARKER, e -> e.getTags().contains("gm_nested")).forEach(Entity::discard);
         }
         h.succeed();

@@ -23,8 +23,8 @@ import java.util.Set;
  * другим модом, шина сюда не доставляет.
  */
 public final class FeedListeners {
-    /** Личные сообщения игроков ведущему не показываются. */
-    private static final Set<String> PRIVATE = Set.of("msg", "tell", "w", "teammsg", "tm");
+    /** Личные сообщения игроков друг другу ведущему не показываются; {@code /gm} — своим событием ({@link GmCommand}). */
+    private static final Set<String> PRIVATE = Set.of("msg", "tell", "w", "teammsg", "tm", GmCommand.NAME);
 
     private FeedListeners() {}
 
@@ -96,7 +96,7 @@ public final class FeedListeners {
         return d;
     }
 
-    private static JsonObject where(ServerPlayer p) {
+    static JsonObject where(ServerPlayer p) {
         JsonObject d = player(p);
         d.addProperty("dimension", p.level().dimension().location().toString());
         d.addProperty("x", p.getBlockX());

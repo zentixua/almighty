@@ -25,6 +25,20 @@ resources — что занимает (две задачи с общим рес�
 строка целиком — значение своего типа, внутри строки — текстом. Каждый шаг перед вызовом проходит охрану
 (guard.check_call). check — Groovy, который после шагов говорит, вышло ли (true или {ok: true, …}); у task и show
 он обязателен: «готово» — по миру.
+
+Длинный Groovy (скрипт, правило автопилота) — своим блоком с именем, а в шагах — строкой "${code:имя}" целиком:
+
+    ```groovy autopilot
+    def ship = gm.ship("${ship}")
+    ```
+
+    ```steps
+    [{"method": "rule.add", "params": {"event": "ServerTickEvent.Post", "name": "ap_${ship}",
+      "script": "${code:autopilot}"}}]
+    ```
+
+В Groovy (блоки и check) ${имя} объявленного параметра подставляется текстом, прочие ${…} — строки Groovy, их не
+трогаем.
 """
 import json
 import os
@@ -40,9 +54,11 @@ TYPES = {
     "bool": lambda v: isinstance(v, bool),
     "name": lambda v: isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9_]{1,16}", v) is not None,
     "block": lambda v: isinstance(v, str) and re.fullmatch(r"[a-z0-9_.:/-]+(\[[a-z0-9_=,]*\])?", v) is not None,
-    "text": lambda v: isinstance(v, str) and len(v) <= 200 and "\n" not in v and "\"" not in v,
+    # без кавычки, $ и \: текст встаёт и в строку Groovy, где ${…} — код
+    "text": lambda v: isinstance(v, str) and len(v) <= 200 and not set(v) & set("\n\"$\\"),
 }
 PARAM = re.compile(r"\$\{(\w+)\}")
+CODE = re.compile(r"\$\{code:(\w+)\}")
 
 
 class RecipeError(Exception):
@@ -50,8 +66,9 @@ class RecipeError(Exception):
 
 
 class Recipe:
-    def __init__(self, path, meta, body, steps, check):
+    def __init__(self, path, meta, body, steps, check, code=None):
         self.path, self.meta, self.body, self.steps, self.check = path, meta, body, steps, check
+        self.code = code or {}
         self.name = meta.get("name", "")
         self.kind = meta.get("kind", "")
         self.description = meta.get("description", "")
@@ -94,7 +111,12 @@ def parse(path):
         steps = json.loads(steps_m.group(1)) if steps_m else None
     except ValueError as e:
         raise RecipeError(f"{os.path.basename(path)}: шаги — не JSON ({e})") from e
-    return Recipe(path, meta, body, steps, check_m.group(1) if check_m else None)
+    code = {}
+    for name, text in re.findall(r"```groovy[ \t]+(\w+)[ \t]*\n(.*?)\n```", body, re.S):
+        if name in code:
+            raise RecipeError(f"{os.path.basename(path)}: два блока groovy {name}")
+        code[name] = text
+    return Recipe(path, meta, body, steps, check_m.group(1) if check_m else None, code)
 
 
 def validate(recipe):
@@ -124,9 +146,16 @@ def validate(recipe):
                 errors.append(f"шаг {i}: {{\"method\", \"params\"}}")
             elif s.get("method") not in ALLOWED:
                 errors.append(f"шаг {i}: метод {s.get('method')!r} нельзя (можно: {', '.join(sorted(ALLOWED))})")
-    used = set(PARAM.findall(json.dumps(recipe.steps, ensure_ascii=False) + (recipe.check or "")))
-    for k in sorted(used - set(recipe.params if isinstance(recipe.params, dict) else {})):
+    steps_text = json.dumps(recipe.steps, ensure_ascii=False)
+    for k in sorted(set(PARAM.findall(steps_text)) - set(recipe.params if isinstance(recipe.params, dict) else {})):
         errors.append(f"${{{k}}} не объявлен в params")
+    refs = set(CODE.findall(steps_text))
+    for k in sorted(refs - set(recipe.code)):
+        errors.append(f"${{code:{k}}}: нет блока ```groovy {k}")
+    for k in sorted(set(recipe.code) - refs):
+        errors.append(f"блок groovy {k} не взят ни одним шагом")
+    if _code_inside(recipe.steps):
+        errors.append("${code:…} — только целой строкой (значение script или code)")
     if recipe.kind in ("task", "show") and not recipe.check:
         errors.append("у task и show нужна проверка в мире (```check)")
     return errors
@@ -188,17 +217,44 @@ def _text(v):
     return str(v)
 
 
-def substitute(obj, values):
+def substitute(obj, values, code=None):
+    """Параметры в шагах; "${code:имя}" — текст блока groovy с подставленными параметрами."""
     if isinstance(obj, str):
+        ref = CODE.fullmatch(obj)
+        if ref and code is not None:
+            return groovy(code[ref.group(1)], values)
         whole = PARAM.fullmatch(obj)
         if whole:
             return values[whole.group(1)]
         return PARAM.sub(lambda m: _text(values[m.group(1)]), obj)
     if isinstance(obj, list):
-        return [substitute(v, values) for v in obj]
+        return [substitute(v, values, code) for v in obj]
     if isinstance(obj, dict):
-        return {k: substitute(v, values) for k, v in obj.items()}
+        return {k: substitute(v, values, code) for k, v in obj.items()}
     return obj
+
+
+def groovy(text, values):
+    """Groovy рецепта: ${имя} объявленного параметра — текстом, прочие ${…} — строки Groovy, как есть."""
+    def put(m):
+        if m.group(1) not in values:
+            return m.group(0)
+        v = values[m.group(1)]
+        # из строки Groovy в одинарных кавычках текст не выйдет: кавычки в нём — не в код
+        if isinstance(v, str) and "'" in v:
+            raise RecipeError(f"{m.group(1)}: текст с ' не подставляется в Groovy")
+        return _text(v)
+    return PARAM.sub(put, text)
+
+
+def _code_inside(obj):
+    if isinstance(obj, str):
+        return CODE.search(obj) is not None and CODE.fullmatch(obj) is None
+    if isinstance(obj, list):
+        return any(_code_inside(v) for v in obj)
+    if isinstance(obj, dict):
+        return any(_code_inside(v) for v in obj.values())
+    return False
 
 
 def _failed(result):
@@ -219,7 +275,7 @@ def _failed(result):
 def run(recipe, given, bridge, ctx, check_call):
     """Выполнить рецепт: охрана и вызов каждого шага, потом проверка. Ответ — {ok, steps, check}."""
     values = bind(recipe, given)
-    steps = substitute(recipe.steps, values)
+    steps = substitute(recipe.steps, values, recipe.code)
     done = []
     for i, step in enumerate(steps, 1):
         reason = check_call(step["method"], step.get("params") or {}, ctx)
@@ -231,7 +287,7 @@ def run(recipe, given, bridge, ctx, check_call):
         if failed:
             return {"ok": False, "steps": done, "error": f"шаг {i}: {failed}"}
     if recipe.check:
-        code = substitute(recipe.check, {k: _text(v) for k, v in values.items()})
+        code = groovy(recipe.check, values)
         reason = check_call("script", {"code": code}, ctx)
         if reason:
             raise RecipeError(f"{recipe.name}, проверка: охрана — {reason}")

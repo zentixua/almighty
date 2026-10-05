@@ -252,7 +252,7 @@ class RecipesTest(Tmp):
         found = recipes.load_all([os.path.join(KIT, "skill", "recipes")])[0]
         flight = {"bot": "Pilot", "plane": "man_of_many_planes:economy_plane", "x": 100.5, "y": 70, "z": -20,
                   "yaw": 0, "route": "100,600,120;-300,600,140"}
-        for runway, want in (("", "[100.5, -20, 70, 0]"), ("50,10,64,90", "'50,10,64,90'")):
+        for runway, want in (("", "def rwy = '' ?"), ("50,10,64,90", "def rwy = '50,10,64,90' ?")):
             b = FakeBridge({"script": {"ok": True, "value": True}})
             out = recipes.run(found["plane_flight"], dict(flight, runway=runway), b, self.ctx(), guard.check_call)
             self.assertTrue(out["ok"])
@@ -262,13 +262,18 @@ class RecipesTest(Tmp):
             self.assertEqual(b.calls[4][1]["name"], "plane_ap_Pilot")
         with self.assertRaises(recipes.RecipeError):  # места по умолчанию в наборе нет
             recipes.bind(found["plane_flight"], {"bot": "Pilot", "plane": "x:y", "route": "0,0,100"})
-        for name, params in (("plane_land", {"bot": "Pilot"}),
-                             ("ship_autopilot", {"ship": "Grand", "route": "0,0;100,100", "final": 120}),
-                             ("ship_stop", {"ship": "Grand"})):
+        b = FakeBridge({"script": {"ok": True, "value": True}})
+        self.assertTrue(recipes.run(found["plane_land"], {"bot": "Pilot"}, b, self.ctx(), guard.check_call)["ok"])
+        for name, params, want in (
+                ("ship_autopilot", {"ship": "Grand", "route": "0,0;100,100", "final": 120},
+                 ["dim: ship.level().dimension()", "def lvl = gm.level(c.dim)"]),
+                ("ship_stop", {"ship": "Grand"}, ["def lvl = gm.level(c.dim ?: 'minecraft:overworld')"])):
             b = FakeBridge({"script": {"ok": True, "value": True}})
             self.assertTrue(recipes.run(found[name], params, b, self.ctx(), guard.check_call)["ok"], name)
-            code = json.dumps(b.calls, ensure_ascii=False)
+            code = "\n".join(p.get("code") or p.get("script") or "" for _, p in b.calls)
             self.assertNotIn("server.overworld", code)
+            for part in want:
+                self.assertIn(part, code)
 
     def test_bind_and_substitute(self):
         r = recipes.load_all([os.path.join(KIT, "skill", "recipes")])[0]["give_item"]

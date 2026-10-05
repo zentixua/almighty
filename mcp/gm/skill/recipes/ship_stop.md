@@ -14,7 +14,7 @@ import com.simibubi.create.foundation.blockEntity.SmartBlockEntity
 import com.simibubi.create.foundation.blockEntity.behaviour.scrollValue.ScrollValueBehaviour
 def c = state['ship_ap.${ship}']
 if (c == null) return [ok: false, error: 'автопилота корабля ${ship} нет (ship_autopilot)']
-def lvl = gm.level(c.dim)
+def lvl = gm.level(c.dim ?: 'minecraft:overworld')   // автопилот, поставленный без dim, — в верхнем мире
 int stopped = 0
 for (p in c.port + c.star) {
     if (lvl.getChunkSource().getChunkNow(p[0] >> 4, p[2] >> 4) == null) continue
@@ -35,7 +35,7 @@ return [ok: true, motors: stopped]
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity
 import com.simibubi.create.foundation.blockEntity.behaviour.scrollValue.ScrollValueBehaviour
 def c = state['ship_ap.${ship}']
-def lvl = gm.level(c.dim)
+def lvl = gm.level(c.dim ?: 'minecraft:overworld')
 def running = (c.port + c.star).findAll { p ->
     lvl.getChunkSource().getChunkNow(p[0] >> 4, p[2] >> 4) != null &&
         lvl.getBlockEntity(new BlockPos(p[0], p[1], p[2]))?.getBehaviour(ScrollValueBehaviour.TYPE)?.getValue() != 0

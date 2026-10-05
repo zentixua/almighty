@@ -1,20 +1,21 @@
-# Ведущий: настройки сервера. Скопировать в каталог оверлея (например ~/airstrike-server/gm/config.toml);
-# рядом диспетчер держит gm.db, zones.json, runs/ и знания сервера в skill/ (git). Значения по умолчанию — conf.py.
+# Ведущий: настройки сервера. Каталог сервера заводит gm.py init (например ~/gm): config.toml из этого образца;
+# рядом диспетчер держит gm.db, runs/ и знания сервера в skill/ (git). Значения по умолчанию — conf.py.
 
 [bridge]                      # мост игры (Almighty), только петля
 url = "http://127.0.0.1:25650"
-token_file = "~/airstrike-server/gm-token"
+token_file = "~/mc-server/gm-token"
 
 [test_bridge]                 # тестовый сервер на копии мира: там наставник пробует рецепты
 url = "http://127.0.0.1:25651"
-token_file = "~/airstrike-work/gm-test/token"
+token_file = "~/mc-server/gm-test/token"
 
 [gm]
 names = ["ведущий", "ведущая", "ведущему", "ведущего", "ведущим", "ведучий", "ведучому"]   # и всегда — /gm
-owners = ["ZentixUA"]
+owners = ["Admin"]
 default_language = "ru"
-languages = { WallyFillmark = "uk" }
+languages = { Taras = "uk" }
 # bot_players = ["Tester"]    # репетиция: этих ботов ведущий слушает как игроков (на тестовом сервере)
+# plugins = ["plugins/my_checks.py"]   # плагины сервера, пути от этого каталога (README, «Плагины сервера»)
 
 [models]                      # голос — быстрый и дешёвый (выбор — по проверочному набору: gate.py evals)
 voice = "haiku"               # у Haiku уровня усилий нет; для sonnet — voice_effort = "low"
@@ -31,26 +32,7 @@ workers = 2
 task_minutes = 20
 teacher_gap_minutes = 10
 
-[guard]
-owner_only = ['^(op|deop|whitelist|ban|ban-ip|pardon|pardon-ip|kick)\b', '^airstrike\s+(nuke|radiation)\b']
-script_never = ['ua\.zentix\.airstrike\.(strike|nuclear|launcher)']
-
-# Удары Airstrike: первое подходящее правило решает. Цель — «at x y z» числами, путь — «from x z» и «via x z …».
-[[guard.strike]]
-match = '^airstrike\s+launcher\b.*\bfire\b'
-deny = "пуск со стационарной пусковой ведущий не даёт: её цель не проверить по зонам — удар залпом с from"
-
-[[guard.strike]]
-match = '^airstrike\s+launcher\b.*\bmission\b'
-target = '\bmission\s+\S+\s+\d+\s+\d+\s+(\S+)\s+(\S+)\s+(\S+)'
-from = '^airstrike\s+launcher\s+(\S+)\s+\S+\s+(\S+)'
-spread = '\bmission\s+\S+\s+\d+\s+(\d+)'
-
-[[guard.strike]]
-match = '^airstrike\s+nuke\b'
-owner = true
-margin = 600
-
-[[guard.strike]]
-match = '^airstrike\s+(salvo\s+)?(drone|shahed|missile|bunker|rocket|grad|loiter|lancet)\b'
-spread = '^airstrike\s+salvo\s+\S+\s+\d+\s+(\d+)'
+[guard]                       # только добавить к запретам набора (guard.NEVER, OWNER_ONLY, SCRIPT_NEVER): убрать их нельзя
+never = []                    # команды, которых ведущий не даёт никогда (регулярные выражения, без «/»)
+owner_only = []               # команды только по слову владельца
+script_never = []             # в коде скриптов и правил

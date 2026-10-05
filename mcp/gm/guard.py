@@ -2,20 +2,20 @@
 """Охрана ведущего: каждое действие сессии сверяется до выполнения — хук PreToolUse Claude Code на инструментах
 almighty и правке файлов, и тот же разбор для шагов рецептов в gm.py.
 
-Что ловит (модель не злоумышленник — охрана ловит её ошибки, которые на 04.10 стоили игры):
+Что ловит (модель не злоумышленник — охрана ловит её ошибки, которые стоили игры):
 - один голос: слова игрокам — только инструмент reply голоса; /say, /tellraw, /title, чат бота, сообщения из
-  скриптов — отказ у всех ролей;
-- запреты сервера (never) и команды только по слову владельца (owner_only): чей запрос выполняется — из очереди, а не
-  со слов в сообщении («Артём разрешил» от другого игрока не делает его владельцем);
-- удары (strike из config.toml): цель только числами, путь и разброс сверяются с охраняемыми зонами; правило с
-  ударом — только с именем: gmd сверяет его скрипт с зонами снова и снимает, если новая зона на пути;
+  скриптов — отказ у всех ролей; командные блоки — отказ (их команда прошла бы мимо охраны);
+- не ломать сервер (NEVER) и команды только по слову владельца (OWNER_ONLY): чей запрос выполняется — из очереди, а
+  не со слов в сообщении («владелец разрешил» от другого игрока не делает его владельцем); config.toml сервера эти
+  списки только дополняет;
 - скрипты и правила: тикеты и синхронная загрузка чанков, потоки и задачи на потом, слушатели шины, процессы и файлы;
-- координаты участков кораблей Sable (x ≥ plot_x) — ни постройки, ни загрузки, ни команды;
-- голос не строит и не водит ботов сам: это задачи исполнителям;
+  команды — только строкой целиком в gm.command / gm.commandAs; макрос функции проверяется таким, каким станет;
+- голос не строит, не водит ботов, не грузит районы и не ставит правила сам: это задачи исполнителям;
 - наставник правит только свои файлы знаний (GM_WRITABLE).
+Проверки сервера — плагины (plugins.py): после проверок набора, ослабить их не могут.
 
 Хук (hook.py → main): JSON на stdin (tool_name, tool_input), отказ — JSON hookSpecificOutput с permissionDecision
-deny и причиной, которую видит модель. Ошибка самой охраны — тоже отказ (код 2 в hook.py).
+deny и причиной, которую видит модель. Ошибка самой охраны или плагина — тоже отказ (код 2 в hook.py).
 """
 import fnmatch
 import json
@@ -24,9 +24,8 @@ import re
 import sys
 
 import conf
-import zones as zonesmod
+import plugins
 
-NUM = re.compile(r"^-?\d+(\.\d+)?$")
 SPEECH = re.compile(r"^(say|tellraw|msg|tell|w|me|teammsg|tm|title)\s+\S", re.I)
 SPEECH_REASON = "говорит с игроками только голос (reply); исполнитель сообщает итог через done/progress"
 
@@ -58,18 +57,20 @@ SCRIPT_NEVER = [
 VOICE_TASK_ONLY = {"build", "undo", "bot.spawn", "bot.remove", "bot.act", "area.prepare", "area.release",
                    "rule.add", "rule.remove"}
 
+# не ломать сервер: никогда, у всех ролей; config.toml (guard.never) только добавляет
+NEVER = [r"^(stop|reload|save-off|save-all\s+flush)\b", r"^forceload\s+add\b"]
+# только по слову владельца (тот, чей запрос сейчас выполняется, — из gm.owners); config.toml только добавляет
+OWNER_ONLY = [r"^(op|deop|whitelist|ban|ban-ip|pardon|pardon-ip|kick)\b"]
+
 # наставник правит только эти файлы своего каталога
 WRITABLE = ["skill/CORE.md", "skill/rules.local.md", "skill/knowledge/*.md", "skill/recipes/*.md",
             "evals/learned.jsonl"]
-
-# скрипт правила с ударом (имя → скрипт, роль, чей запрос) — в gm.db: gmd сверяет его с зонами снова
-RULE_KEY = "strike_rule:"
 
 STRING = re.compile(r'"""(.*?)"""|\'\'\'(.*?)\'\'\'|"((?:[^"\\\n]|\\.)*)"|\'((?:[^\'\\\n]|\\.)*)\'', re.S)
 
 
 class Ctx:
-    """Кто действует: роль, чей запрос (игрок), настройки; зоны читаются при первом ударе."""
+    """Кто действует: роль, чей запрос (игрок), настройки."""
 
     def __init__(self, cfg, role, requester=None):
         self.cfg, self.role, self.requester = cfg, role, requester
@@ -82,78 +83,34 @@ class Ctx:
 # ---------------------------------------------------------------- команды
 
 def check_command(cmd, ctx):
-    """Причина отказа или None; cmd — команда без или с «/»."""
+    """Причина отказа или None; cmd — команда без или с «/». Сначала набор по всем частям, потом плагины."""
     c = cmd.strip().lstrip("/").strip()
     if not c:
         return None
     if COMMAND_BLOCK.search(c):
         return COMMAND_BLOCK_REASON
-    for seg in _segments(c):
+    parts = segments(c)
+    for seg in parts:
         if SPEECH.match(seg):
             return SPEECH_REASON
-        for p in ctx.g["never"]:
+        for p in NEVER + ctx.g["never"]:
             if re.search(p, seg, re.I):
                 return f"«{seg[:80]}» — ведущему нельзя никогда (запрет сервера)"
-        for p in ctx.g["owner_only"]:
+        for p in OWNER_ONLY + ctx.g["owner_only"]:
             if re.search(p, seg, re.I) and not ctx.owner():
                 owners = ", ".join(ctx.cfg["gm"]["owners"]) or "не задан"
                 return (f"«{seg[:80]}» — только по слову владельца ({owners}); "
                         f"запрос сейчас от {ctx.requester or 'никого'}")
-        reason = check_strike(seg, ctx)
+    for seg in parts:
+        reason = plugins.check_command(seg, ctx)
         if reason:
             return reason
-    if re.match(r"(scoreboard|xp|experience|time|gamerule|attribute|bossbar)\b", c, re.I):  # числа — не места
-        return None
-    return check_plot_numbers(re.findall(r"-?\d+(?:\.\d+)?", re.sub(r"\[I;[^\]]*\]", "", c)), ctx)
+    return None
 
 
-def _segments(c):
-    """execute … run <команда>: каждая часть цепочки — своя команда."""
+def segments(c):
+    """execute … run <команда>: каждая часть цепочки — своя команда (первая — вся строка)."""
     return [c] + [s.strip().lstrip("/") for s in re.split(r"\brun\s+", c)[1:]]
-
-
-def check_strike(seg, ctx):
-    for rule in ctx.g["strike"]:
-        if not re.search(rule["match"], seg, re.I):
-            continue
-        if rule.get("deny"):
-            return rule["deny"]
-        if rule.get("owner") and not ctx.owner():
-            return f"«{seg[:80]}» — только по слову владельца; запрос сейчас от {ctx.requester or 'никого'}"
-        at = re.search(rule.get("target", r"\bat\s+(\S+)\s+(\S+)\s+(\S+)"), seg, re.I)
-        if not at:
-            return ("удар — только по месту числами (at x y z): цель-сущность, me и look ведущему нельзя — "
-                    "так не проверить зоны")
-        x, _, z = at.group(1), at.group(2), at.group(3)
-        frm = re.search(rule.get("from", r"\bfrom\s+(\S+)\s+(\S+)"), seg, re.I)
-        via_m = re.search(r"\bvia\s+(.*?)(?=\s+(?:from|at)\b|$)", seg, re.I)
-        via_tokens = via_m.group(1).split() if via_m else []
-        numbers = [x, z] + (list(frm.groups()) if frm else []) + via_tokens
-        if not all(NUM.match(n) for n in numbers) or len(via_tokens) % 2:
-            return "координаты удара — только числами (без ~, ^ и подстановок): иначе зоны не проверить"
-        spread = 0
-        if rule.get("spread"):
-            s = re.search(rule["spread"], seg, re.I)
-            spread = int(s.group(1)) if s else 0
-        via = [(float(via_tokens[i]), float(via_tokens[i + 1])) for i in range(0, len(via_tokens), 2)]
-        found = zonesmod.conflicts(zonesmod.load(ctx.cfg["paths"]["zones"]), (float(x), float(z)),
-                                   (float(frm.group(1)), float(frm.group(2))) if frm else None, via, spread,
-                                   rule.get("margin", ctx.g["margin"]))
-        if found:
-            return "НЕЛЬЗЯ — охраняемые зоны: " + "; ".join(found)
-        return None
-    return None
-
-
-def check_plot_numbers(numbers, ctx):
-    for n in numbers:
-        try:
-            if abs(float(n)) >= ctx.g["plot_x"]:
-                return (f"координата {n} — участки кораблей Sable (x ≥ {ctx.g['plot_x']}): там не строить, не грузить "
-                        "и не телепортировать; корабль — по его месту в мире")
-        except (TypeError, ValueError):
-            pass
-    return None
 
 
 # ---------------------------------------------------------------- скрипты
@@ -253,29 +210,16 @@ def check_script(code, ctx):
     return None
 
 
-def has_strike(code, ctx):
-    """Есть ли в скрипте удар (правила guard.strike)."""
-    return any(re.search(rule["match"], seg, re.I) for text in script_commands(code)[0]
-               for seg in _segments(text.strip().lstrip("/").strip()) for rule in ctx.g["strike"])
-
-
 def note_call(store, method, params, ctx):
-    """После разрешённого вызова на живом сервере.
-    - Правило с ударом идёт в игре само, зоны проверены только при его постановке: его скрипт — в память, gmd
-      сверяет его с зонами снова, когда они меняются. То же имя без удара или снятое правило — память стирается.
-    - Бот и правило с именем от исполнителя — в журнал задачи: оборванную задачу gmd убирает за собой."""
+    """После разрешённого вызова на живом мосту (хук сессии и шаги рецептов; у наставника мост тестовый — нет):
+    бот и правило с именем от исполнителя — в журнал задачи (оборванную задачу gmd убирает за собой); потом
+    after_call плагинов сервера."""
+    params = params or {}
     task = int(os.environ.get("GM_TASK") or 0) or None
     name = params.get("name")
-    if not isinstance(name, str) or not name:
-        return
-    if method in ("rule.add", "rule.remove"):
-        code = params.get("script") if method == "rule.add" else None
-        if isinstance(code, str) and has_strike(code, ctx):
-            store.put(RULE_KEY + name, {"script": code, "role": ctx.role, "requester": ctx.requester, "task": task})
-        else:
-            store.drop(RULE_KEY + name)
-    if task and ctx.role == "worker" and method in ("rule.add", "bot.spawn"):
+    if task and ctx.role == "worker" and method in ("rule.add", "bot.spawn") and isinstance(name, str) and name:
         store.log(ctx.role, "made", ctx.requester, task, what="rule" if method == "rule.add" else "bot", name=name)
+    plugins.after_call(store, method, params, ctx)
 
 
 def checker(store):
@@ -291,8 +235,12 @@ def checker(store):
 # ---------------------------------------------------------------- вызовы моста
 
 def check_call(method, params, ctx):
-    """Причина отказа вызова метода моста или None."""
+    """Причина отказа вызова метода моста или None: сначала проверки набора, потом плагины сервера."""
     params = params or {}
+    return _check_call(method, params, ctx) or plugins.check_call(method, params, ctx)
+
+
+def _check_call(method, params, ctx):
     if method == "say":
         return SPEECH_REASON
     if ctx.role == "voice" and method in VOICE_TASK_ONLY:
@@ -319,22 +267,12 @@ def check_call(method, params, ctx):
             reason = check_command(line, ctx)
             if reason:
                 return reason
-        return check_plot_numbers(_numbers(params.get("pos")), ctx)
+        return None
     if method in ("script", "rule.add"):
         code = params.get("code") if method == "script" else params.get("script")
-        if code is None:
-            return None
-        reason = check_script(code, ctx)
-        if reason or method == "script":
-            return reason
-        if not params.get("name") and has_strike(code, ctx):
-            return ("правило с ударом — только с именем (name): по нему охрана снимет его, если удар заденет "
-                    "зону, поставленную позже")
-        return None
+        return None if code is None else check_script(code, ctx)
     if method == "build" and COMMAND_BLOCK.search(json.dumps(params)):
         return COMMAND_BLOCK_REASON
-    if method in ("build", "area.prepare", "bot.spawn"):
-        return check_plot_numbers(_numbers(params), ctx)
     if method == "bot.act":
         if not isinstance(params.get("actions") or [], list):
             return "actions — список шагов"
@@ -346,7 +284,6 @@ def check_call(method, params, ctx):
                 reason = check_command(str(chat), ctx)
                 if reason:
                     return reason
-        return check_plot_numbers(_numbers(params), ctx)
     return None
 
 
@@ -356,15 +293,16 @@ def _macro_value(v):
     return v if isinstance(v, str) else json.dumps(v)
 
 
-def _numbers(value):
+def numbers(value):
+    """Все числа в параметрах вызова (без bool) — для проверок плагинов по координатам."""
     if isinstance(value, bool):
         return []
     if isinstance(value, (int, float)):
         return [value]
     if isinstance(value, dict):
-        return [n for v in value.values() for n in _numbers(v)]
+        return [n for v in value.values() for n in numbers(v)]
     if isinstance(value, list):
-        return [n for v in value for n in _numbers(v)]
+        return [n for v in value for n in numbers(v)]
     return []
 
 
@@ -428,6 +366,7 @@ def main():
     try:
         event = json.load(sys.stdin)
         cfg = conf.load()
+        plugins.load(cfg)  # плагин сервера не загрузился — отказ во всём, а не охрана без его проверок
         import store as storemod
         store = storemod.Store(cfg["paths"]["db"])
         ctx = Ctx(cfg, role, requester(cfg, role, store))

@@ -2,6 +2,7 @@
 import http.server
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -18,20 +19,29 @@ import gate  # noqa: E402
 import gm as gmmod  # noqa: E402
 import gmd  # noqa: E402
 import guard  # noqa: E402
+import plugins  # noqa: E402
 import recipes  # noqa: E402
 import roles  # noqa: E402
 import store as storemod  # noqa: E402
-import zones  # noqa: E402
 
 
-def make_overlay(tmp, extra=""):
-    """Каталог сервера с config.toml по образцу набора; токены — пустые файлы во временном каталоге."""
+def make_overlay(tmp, extra="", plugins=None, never=None):
+    """Каталог сервера с config.toml по образцу набора; токены — пустые файлы во временном каталоге; plugins и never —
+    вместо значений образца."""
     token = os.path.join(tmp, "token")
     with open(token, "w") as f:
         f.write("t")
     with open(os.path.join(KIT, "config.example.toml"), encoding="utf-8") as f:
         text = f.read()
-    text = text.replace("~/airstrike-server/gm-token", token).replace("~/airstrike-work/gm-test/token", token)
+    for path in ("~/mc-server/gm-token", "~/mc-server/gm-test/token"):
+        assert path in text, path
+        text = text.replace(path, token)
+    if plugins is not None:
+        assert '# plugins = ["plugins/my_checks.py"]' in text
+        text = text.replace('# plugins = ["plugins/my_checks.py"]', "plugins = " + json.dumps(plugins))
+    if never is not None:
+        text, n = re.subn(r"^never = \[\]", lambda m: "never = " + json.dumps(never), text, flags=re.M)
+        assert n == 1
     with open(os.path.join(tmp, "config.toml"), "w", encoding="utf-8") as f:
         f.write(text + extra)
     os.makedirs(os.path.join(tmp, "skill", "recipes"), exist_ok=True)
@@ -49,22 +59,6 @@ class Tmp(unittest.TestCase):
     def ctx(self, role="worker", requester="Steve"):
         return guard.Ctx(self.cfg, role, requester)
 
-    def zone(self, name, x, z, r):
-        zs = zones.load(self.cfg["paths"]["zones"])
-        zs[name] = {"x": x, "z": z, "r": r}
-        zones.save(zs, self.cfg["paths"]["zones"])
-
-
-class ZonesTest(unittest.TestCase):
-    def test_target_and_path(self):
-        zs = {"порт": {"x": 0, "z": 0, "r": 100}}
-        self.assertTrue(zones.conflicts(zs, (50, 0)))
-        self.assertTrue(zones.conflicts(zs, (150, 0)))  # запас 64
-        self.assertFalse(zones.conflicts(zs, (300, 0)))
-        found = zones.conflicts(zs, (500, 0), frm=(-500, 0))
-        self.assertIn("обход", found[0])
-        self.assertFalse(zones.conflicts(zs, (500, 0), frm=(-500, 0), via=[(0, 300)]))
-
 
 class GuardTest(Tmp):
     def test_speech_denied_everywhere(self):
@@ -77,55 +71,21 @@ class GuardTest(Tmp):
         self.assertIsNone(guard.check_command("w", self.ctx()))  # не команда речи без текста
 
     def test_never_and_owner(self):
+        self.assertEqual((self.cfg["guard"]["never"], self.cfg["guard"]["owner_only"]), ([], []))  # пусто в образце
         self.assertIn("никогда", guard.check_command("reload", self.ctx()))
         self.assertIn("никогда", guard.check_command("forceload add 0 0 100 100", self.ctx()))
-        self.assertIn("никогда", guard.check_command("summon fireball 0 100 0", self.ctx()))
+        self.assertIsNone(guard.check_command("summon fireball 0 100 0", self.ctx()))
         self.assertIn("владельца", guard.check_command("op Steve", self.ctx(requester="Steve")))
-        self.assertIsNone(guard.check_command("op Steve", self.ctx(requester="ZentixUA")))
+        self.assertIsNone(guard.check_command("op Steve", self.ctx(requester="Admin")))
         self.assertIn("владельца", guard.check_command("op Steve", self.ctx(role="teacher", requester=None)))
-
-    def test_strikes(self):
-        c = self.ctx(requester="ZentixUA")
-        self.assertIn("числами", guard.check_command("airstrike drone @p", c))
-        self.assertIn("числами", guard.check_command("airstrike salvo grad 5 20 look", c))
-        self.assertIn("числами", guard.check_command("airstrike salvo grad 5 20 at ~ ~ ~10", c))
-        self.assertIsNone(guard.check_command("airstrike salvo grad 5 20 at 300 64 0 from 600 0", c))
-        self.zone("порт", 0, 0, 100)
-        self.assertIn("зоны", guard.check_command("airstrike salvo grad 5 20 at 100 64 0", c))
-        self.assertIn("зоны", guard.check_command("airstrike salvo missile 1 0 at 500 64 0 from -500 0", c))
-        self.assertIsNone(guard.check_command("airstrike salvo missile 1 0 at 500 64 0 from -500 0 via 0 400", c))
-        self.assertIn("стационарной", guard.check_command("airstrike launcher 1 64 1 fire", c))
-        self.assertIn("зоны", guard.check_command("airstrike launcher 900 64 0 mission grad 4 10 50 64 0", c))
-        self.assertIn("владельца", guard.check_command("airstrike nuke at 5000 64 5000", self.ctx(requester="Steve")))
-        self.assertIsNone(guard.check_command("airstrike nuke at 5000 64 5000 20 air", c))
-        self.assertIn("зоны", guard.check_command("airstrike nuke at 600 64 0", c))  # запас ядерки 600
-        self.assertIsNone(guard.check_command("airstrike clear", c))
-
-    def test_strike_rules(self):
-        c = self.ctx(requester="ZentixUA")
-        volley = 'gm.command("airstrike salvo grad 5 20 at 300 64 0")'
-        self.assertTrue(guard.has_strike(volley, c))
-        self.assertTrue(guard.has_strike('gm.command("execute as @a run airstrike salvo grad 5 20 at 1 2 3")', c))
-        self.assertFalse(guard.has_strike('gm.command("time set day")', c))
-        self.assertIn("имен", guard.check_call("rule.add", {"event": "tick", "script": volley}, c))
-        self.assertIsNone(guard.check_call("rule.add", {"event": "tick", "name": "залп", "script": volley}, c))
-        self.assertIsNone(guard.check_call("rule.add", {"event": "tick", "script": 'gm.command("time set day")'}, c))
-        store = storemod.Store(self.cfg["paths"]["db"])
-        check = guard.checker(store)
-        self.assertIsNone(check("rule.add", {"event": "tick", "name": "залп", "script": volley}, c))
-        self.assertEqual(store.items(guard.RULE_KEY)["залп"]["requester"], "ZentixUA")
-        guard.note_call(store, "rule.add", {"name": "залп", "script": 'gm.command("time set day")'}, c)
-        self.assertEqual(store.items(guard.RULE_KEY), {})  # то же имя без удара
-        check("rule.add", {"event": "tick", "name": "залп", "script": volley}, c)
-        check("rule.remove", {"name": "залп"}, c)
-        self.assertEqual(store.items(guard.RULE_KEY), {})
-
-    def test_plot_coordinates(self):
-        self.assertIn("Sable", guard.check_command("tp Steve 20480100 100 0", self.ctx()))
-        self.assertIn("Sable", guard.check_call("build", {"ops": [{"op": "set", "pos": [20480000, 64, 0],
-                                                                    "block": "stone"}]}, self.ctx()))
-        self.assertIn("Sable", guard.check_call("area.prepare", {"from": [20480000, 0], "to": [20480100, 0]},
-                                                self.ctx()))
+        # config.toml только добавляет: запреты набора остаются, своё — запрещено
+        other = os.path.join(self.tmp, "other")
+        os.makedirs(other)
+        cfg = make_overlay(other, never=[r"^summon\s+(minecraft:)?fireball\b"])
+        ctx = guard.Ctx(cfg, "worker", "Steve")
+        self.assertIn("никогда", guard.check_command("summon fireball 0 100 0", ctx))
+        self.assertIn("никогда", guard.check_command("reload", ctx))
+        self.assertIn("владельца", guard.check_command("op Steve", ctx))
 
     def test_scripts(self):
         c = self.ctx()
@@ -135,14 +95,10 @@ class GuardTest(Tmp):
             self.assertIsNotNone(guard.check_script(code, c), code)
         self.assertIsNone(guard.check_script("def p = gm.player('Steve'); return p.blockPosition().toString()", c))
         self.assertIsNone(guard.check_script("lvl.getChunkSource().getChunkNow(0, 0)", c))
-        self.zone("порт", 0, 0, 100)
-        self.assertIn("зоны", guard.check_script("gm.command('airstrike salvo grad 4 10 at 20 64 20')",
-                                                 self.ctx(requester="ZentixUA")))
-        self.assertIn("строкой", guard.check_script('gm.command("airstrike salvo grad 4 10 at ${x} 64 ${z}")', c))
-        self.assertIn("числами", guard.check_call("rule.add", {"event": "tick", "script":
-                                                  "gm.command('airstrike drone @p')"}, c))
+        self.assertIn("строкой", guard.check_script('gm.command("time set ${t}")', c))
+        self.assertIn("владельца", guard.check_call("rule.add", {"event": "tick", "script": "gm.command('op Steve')"}, c))
         # команда, собранная в скрипте, охране не видна — только литералы в gm.command / gm.commandAs
-        for code in ("gm.command(args.c)", "gm.command('air' + 'strike nuke at 0 64 0')", "def g = gm; g.command('x')",
+        for code in ("gm.command(args.c)", "gm.command('o' + 'p Steve')", "def g = gm; g.command('x')",
                      "gm.command 'op Steve'", "gm.&command", "gm.commandAs(p, cmd)",
                      "server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), 'op Steve')",
                      "gm.command(['time set day', 'op Steve'])", "gm.command('setblock 0 64 0 command_block')"):
@@ -175,13 +131,10 @@ class GuardTest(Tmp):
                                                     self.ctx()))
         self.assertIn("голос", guard.check_call("command", {"commands": "say hi all"}, self.ctx()))
         self.assertIn("строк", guard.check_call("command", {"commands": [["op Steve"]]}, self.ctx()))
-        self.assertIn("Sable", guard.check_tool("mcp__almighty__command", {"commands": ["setblock ~ ~ ~ stone"],
-                                                                            "pos": [20480100, 64, 0]}, self.ctx()))
+        self.assertIsNone(guard.check_tool("mcp__almighty__command", {"commands": ["setblock ~ ~ ~ stone"],
+                                                                       "pos": [20480100, 64, 0]}, self.ctx()))
         self.assertIn("командные", guard.check_call("build", {"ops": [{"op": "set", "pos": [0, 64, 0],
                                                                        "block": "command_block"}]}, self.ctx()))
-        # числа не мест — не участки кораблей
-        self.assertIsNone(guard.check_command("scoreboard players set @s x 30000000", self.ctx()))
-        self.assertIsNone(guard.check_command("data merge entity @e[limit=1] {UUID:[I;21000000,1,2,3]}", self.ctx()))
 
     def test_teacher_edits(self):
         wt = os.path.join(self.tmp, "wt")
@@ -210,11 +163,10 @@ class GuardTest(Tmp):
         denials = storemod.Store(self.cfg["paths"]["db"]).logs(0, ["guard_deny"])
         self.assertEqual(len(denials), 1)
         rule = {"tool_name": "mcp__almighty__rule", "tool_input": {
-            "action": "add", "event": "tick", "every": 200, "name": "залп",
-            "script": 'gm.command("airstrike salvo grad 5 20 at 300 64 0")'}}
+            "action": "add", "event": "tick", "every": 200, "name": "салют", "script": 'gm.command("time set day")'}}
         out = subprocess.run(hook, input=json.dumps(rule), env=env, capture_output=True, text=True)
         self.assertEqual(out.stdout.strip(), "")
-        self.assertIn("залп", storemod.Store(self.cfg["paths"]["db"]).items(guard.RULE_KEY))
+        self.assertEqual(storemod.Store(self.cfg["paths"]["db"]).items(""), {})  # охрана ничего не запоминает
         # охрана сломалась (нет настроек) — отказ кодом 2, а не пропуск
         broken = dict(env, GM_CONFIG=os.path.join(self.tmp, "нет.toml"))
         out = subprocess.run(hook, input=json.dumps(ok), env=broken, capture_output=True, text=True)
@@ -227,6 +179,180 @@ class GuardTest(Tmp):
         out = subprocess.run([sys.executable, "-c", no_guard], input="{}", env=env, capture_output=True, text=True)
         self.assertEqual(out.returncode, 2)  # не импортировалась сама охрана
         self.assertIn("охрана не смогла", out.stderr)
+        # плагин сервера сломан — отказ во всём, даже в чтении
+        other = os.path.join(self.tmp, "broken")
+        os.makedirs(os.path.join(other, "plugins"))
+        with open(os.path.join(other, "plugins", "bad.py"), "w") as f:
+            f.write("def check_command(seg, ctx)\n")
+        cfg = make_overlay(other, plugins=["plugins/bad.py"])
+        out = subprocess.run(hook, input=json.dumps(ok), env=dict(env, GM_CONFIG=cfg["paths"]["config"]),
+                             capture_output=True, text=True)
+        decision = json.loads(out.stdout)["hookSpecificOutput"]
+        self.assertEqual(decision["permissionDecision"], "deny")
+        self.assertIn("не загрузился", decision["permissionDecisionReason"])
+
+
+PLUGIN = '''
+import re
+
+seen = []
+
+
+def check_command(seg, ctx):
+    seen.append(seg)
+    if re.match(r"summon\\s+tnt\\b", seg) or "кабум" in seg:
+        return "плагин: tnt нельзя"
+
+
+def check_call(method, params, ctx):
+    if method == "area.prepare":
+        return "плагин: районы нельзя"
+
+
+def after_call(store, method, params, ctx):
+    store.log(ctx.role, "plugin_after", ctx.requester, method=method)
+
+
+def tools(gm, safe):
+    @safe
+    def ping(text: str) -> str:
+        """Эхо."""
+        import plugins
+        if not text:
+            raise plugins.PluginError("пусто")
+        return "pong " + text
+
+    @safe
+    def tasks() -> str:
+        return "чужие задачи"
+
+
+def tick(host):
+    host.notify("Steve", "весть плагина: " + host.cfg["gm"]["owners"][0], task=7)
+'''
+
+
+class PluginsTest(unittest.TestCase):
+    """Плагин сервера во временном каталоге: его проверки доходят отовсюду, набор решает раньше, ошибка — отказ."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.tmp, "plugins"))
+        with open(os.path.join(self.tmp, "plugins", "checks.py"), "w", encoding="utf-8") as f:
+            f.write(PLUGIN)
+        self.cfg = make_overlay(self.tmp, plugins=["plugins/checks.py"])
+        self.mod = plugins.load(self.cfg)[0]
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def ctx(self, role="worker"):
+        return guard.Ctx(self.cfg, role, "Steve")
+
+    def test_checks_reach_everywhere(self):
+        c = self.ctx()
+        self.assertEqual(self.mod.__name__, "gm_plugin_checks")
+        self.assertIs(plugins.load(self.cfg)[0], self.mod)  # один раз на процесс
+        for method, params in (
+                ("command", {"commands": ["summon tnt 0 64 0"]}),
+                ("function", {"lines": ["$summon $(e) 0 64 0"], "args": {"e": "tnt"}}),
+                ("script", {"code": "gm.command('summon tnt 0 64 0')"}),
+                ("rule.add", {"event": "tick", "script": "gm.commandAs(gm.player('Steve'), 'summon tnt ~ ~ ~')"}),
+                ("bot.act", {"name": "b", "actions": [{"chat": "/summon tnt ~ ~ ~"}]})):
+            self.assertIn("плагин: tnt", guard.check_call(method, params, c) or "", method)
+        del self.mod.seen[:]
+        self.assertIn("плагин: tnt", guard.check_command("execute as @a at @s run summon tnt ~ ~ ~", c))
+        self.assertIn("summon tnt ~ ~ ~", self.mod.seen)  # каждая часть execute … run — своя команда
+        path = os.path.join(self.tmp, "skill", "recipes", "boom.md")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write('---\nname: boom\ndescription: x\nkind: instant\nparams: {}\n---\n```steps\n'
+                    '[{"method": "command", "params": {"commands": ["summon tnt 0 64 0"]}}]\n```\n')
+        with self.assertRaisesRegex(recipes.RecipeError, "плагин: tnt"):
+            recipes.run(recipes.parse(path), {}, FakeBridge(), c, guard.check_call)
+        self.assertEqual(guard.check_call("area.prepare", {"from": [0, 0], "to": [16, 16]}, c), "плагин: районы нельзя")
+        self.assertIsNone(guard.check_call("command", {"commands": ["time set day"]}, c))
+
+    def test_kit_decides_first(self):
+        c = self.ctx()
+        self.assertIn("плагин", guard.check_command("execute as @a run kill кабум", c))
+        self.assertEqual(guard.check_command("say кабум", c), guard.SPEECH_REASON)
+        self.assertEqual(guard.check_command("execute as @a run say кабум", c), guard.SPEECH_REASON)
+        self.assertIn("никогда", guard.check_command("execute as @a run stop кабум", c))
+        self.assertIn("задач", guard.check_call("area.prepare", {"from": [0, 0], "to": [16, 16]}, self.ctx("voice")))
+
+    def test_after_call_only_live(self):
+        store = storemod.Store(self.cfg["paths"]["db"])
+        guard.checker(store)("status", {}, self.ctx())
+        self.assertEqual([e["data"]["method"] for e in store.logs(0, ["plugin_after"])], ["status"])
+        guard.checker(store)("command", {"commands": ["summon tnt 0 64 0"]}, self.ctx())  # отказ — не зовётся
+        self.assertEqual(len(store.logs(0, ["plugin_after"])), 1)
+        hook = [sys.executable, os.path.join(KIT, "hook.py")]
+        event = json.dumps({"tool_name": "mcp__almighty__status", "tool_input": {}})
+        for role in ("worker", "teacher"):  # у наставника мост тестовый — живого вызова нет
+            env = dict(os.environ, GM_CONFIG=self.cfg["paths"]["config"], GM_ROLE=role)
+            out = subprocess.run(hook, input=event, env=env, capture_output=True, text=True)
+            self.assertEqual((out.returncode, out.stdout.strip()), (0, ""))
+        self.assertEqual([e["role"] for e in store.logs(0, ["plugin_after"])], ["worker", "worker"])
+
+    def test_tools_and_tick(self):
+        registered = {}
+
+        def safe(fn):
+            registered.setdefault(fn.__name__, fn)
+            return fn
+        registered["tasks"] = "набора"  # инструменты набора — первыми: имя набора плагин не перекроет
+        os.environ["GM_CONFIG"] = self.cfg["paths"]["config"]
+        try:
+            g = gmmod.Gm(self.cfg, "worker")
+        finally:
+            os.environ.pop("GM_CONFIG", None)
+        plugins.register_tools(g, safe)
+        self.assertEqual(registered["ping"]("x"), "pong x")
+        self.assertEqual(registered["tasks"], "набора")
+        with self.assertRaises(plugins.PluginError):
+            registered["ping"]("")
+        d = gmd.Dispatcher(self.cfg)
+        d.plugins_tick()
+        self.assertEqual([(it.player, it.text, it.task, it.note) for it in d.pending],
+                         [("Steve", "весть плагина: Admin", 7, True)])
+        self.assertIn("служба ведущего", gmd.compose(self.cfg, "Steve", d.pending, [], []))
+
+    def test_broken_plugin_stops_everything(self):
+        for name, code in (("missing", None), ("syntax", "def check_command(seg, ctx)\n"),
+                           ("crash", "raise RuntimeError('нет настроек')\n")):
+            other = os.path.join(self.tmp, name)
+            os.makedirs(os.path.join(other, "plugins"))
+            if code is not None:
+                with open(os.path.join(other, "plugins", name + ".py"), "w") as f:
+                    f.write(code)
+            cfg = make_overlay(other, plugins=[f"plugins/{name}.py"])
+            with self.assertRaisesRegex(plugins.PluginError, "не загрузился"):
+                gmd.Dispatcher(cfg)
+            with self.assertRaises(plugins.PluginError):
+                guard.check_command("time set day", guard.Ctx(cfg, "worker", "Steve"))
+            out = subprocess.run([sys.executable, os.path.join(KIT, "gmd.py"), "--config", cfg["paths"]["config"]],
+                                 capture_output=True, text=True, timeout=30)
+            self.assertEqual(out.returncode, 1, out.stderr)
+            self.assertIn("ведущий не запущен", out.stdout)
+        # проверка плагина упала — отказ, а не пропуск
+        with open(os.path.join(self.tmp, "plugins", "crash_check.py"), "w") as f:
+            f.write("def check_call(method, params, ctx):\n    return params['нет']\n")
+        cfg = make_overlay(os.path.join(self.tmp, "crash"), plugins=["plugins/crash_check.py"])
+        cfg["paths"]["overlay"] = self.tmp
+        with self.assertRaisesRegex(plugins.PluginError, "KeyError"):
+            guard.check_call("status", {}, guard.Ctx(cfg, "worker", "Steve"))
+
+    def test_moved_keys_refuse_to_load(self):
+        for text in ("[[guard.strike]]\nmatch = 'x'\n", "[guard]\nmargin = 64\n", "[guard]\nplot_x = 1\n"):
+            path = os.path.join(self.tmp, "old.toml")
+            with open(path, "w") as f:
+                f.write(text)
+            with self.assertRaisesRegex(conf.ConfigError, "перенесено в плагин сервера"):
+                conf.load(path)
+        with open(path, "w") as f:
+            f.write("[gm]\nplugins = 'plugins/x.py'\n")
+        with self.assertRaisesRegex(conf.ConfigError, "список строк"):
+            conf.load(path)
 
 
 class FakeBridge:
@@ -243,37 +369,9 @@ class RecipesTest(Tmp):
     def test_base_recipes_valid(self):
         found, errors = recipes.load_all([os.path.join(KIT, "skill", "recipes")])
         self.assertEqual(errors, {})
-        self.assertGreaterEqual(len(found), 9)
+        self.assertGreaterEqual(len(found), 5)
         for name in ("clear_weather", "give_item", "heal_player", "set_time", "teleport_player"):
             self.assertEqual(found[name].kind, "instant")
-
-    def test_vehicle_recipes_pass_guard(self):
-        """Рецепты транспорта набора: место и полоса — параметрами, шаги проходят охрану, мир — корабля."""
-        found = recipes.load_all([os.path.join(KIT, "skill", "recipes")])[0]
-        flight = {"bot": "Pilot", "plane": "man_of_many_planes:economy_plane", "x": 100.5, "y": 70, "z": -20,
-                  "yaw": 0, "route": "100,600,120;-300,600,140"}
-        for runway, want in (("", "def rwy = '' ?"), ("50,10,64,90", "def rwy = '50,10,64,90' ?")):
-            b = FakeBridge({"script": {"ok": True, "value": True}})
-            out = recipes.run(found["plane_flight"], dict(flight, runway=runway), b, self.ctx(), guard.check_call)
-            self.assertTrue(out["ok"])
-            self.assertEqual(b.calls[0], ("bot.spawn", {"name": "Pilot", "pos": [100.5, 70, -20], "yaw": 0,
-                                                        "gamemode": "creative"}))
-            self.assertIn(want, b.calls[3][1]["code"])
-            self.assertEqual(b.calls[4][1]["name"], "plane_ap_Pilot")
-        with self.assertRaises(recipes.RecipeError):  # места по умолчанию в наборе нет
-            recipes.bind(found["plane_flight"], {"bot": "Pilot", "plane": "x:y", "route": "0,0,100"})
-        b = FakeBridge({"script": {"ok": True, "value": True}})
-        self.assertTrue(recipes.run(found["plane_land"], {"bot": "Pilot"}, b, self.ctx(), guard.check_call)["ok"])
-        for name, params, want in (
-                ("ship_autopilot", {"ship": "Grand", "route": "0,0;100,100", "final": 120},
-                 ["dim: ship.level().dimension()", "def lvl = gm.level(c.dim)"]),
-                ("ship_stop", {"ship": "Grand"}, ["def lvl = gm.level(c.dim ?: 'minecraft:overworld')"])):
-            b = FakeBridge({"script": {"ok": True, "value": True}})
-            self.assertTrue(recipes.run(found[name], params, b, self.ctx(), guard.check_call)["ok"], name)
-            code = "\n".join(p.get("code") or p.get("script") or "" for _, p in b.calls)
-            self.assertNotIn("server.overworld", code)
-            for part in want:
-                self.assertIn(part, code)
 
     def test_bind_and_substitute(self):
         r = recipes.load_all([os.path.join(KIT, "skill", "recipes")])[0]["give_item"]
@@ -389,33 +487,14 @@ class DispatcherPartsTest(Tmp):
         self.assertEqual([t["id"] for t in gmd.runnable(q, [{"resources": ["ship"]}], 2)], [3])
 
     def test_compose(self):
-        item = gmd.Item("WallyFillmark", "привіт", "gm", pos="overworld 1 2 3")
-        text = gmd.compose(self.cfg, "WallyFillmark", [item],
+        item = gmd.Item("Taras", "привіт", "gm", pos="overworld 1 2 3")
+        text = gmd.compose(self.cfg, "Taras", [item],
                            [{"id": 4, "text": "літак", "status": "running", "progress": "збираю"}],
-                           [{"player": "ENOTzRPG", "text": "го в шахту"}])
+                           [{"player": "Alex", "text": "го в шахту"}])
         self.assertIn("uk", text)
         self.assertIn("#4", text)
-        self.assertIn("ENOTzRPG", text)
+        self.assertIn("Alex", text)
         self.assertIn("overworld 1 2 3", text)
-
-
-    def test_zones_recheck_strike_rules(self):
-        store = storemod.Store(self.cfg["paths"]["db"])
-        volley = {"name": "залп", "script": 'gm.command("airstrike salvo grad 5 20 at 300 64 0")'}
-        guard.note_call(store, "rule.add", volley, self.ctx(requester="Steve"))
-        d = gmd.Dispatcher(self.cfg)
-        d.bridge = FakeBridge({"rules": [{"name": "залп", "state": "on"}, {"name": "салют", "state": "on"}]})
-        d.zones_tick()
-        d.zones_tick()  # зоны те же, минута не прошла — мост не спрашивается
-        self.assertEqual([m for m, _ in d.bridge.calls], ["rules"])
-        self.zone("лайнер", 320, 0, 40)
-        d.zones_tick()
-        self.assertEqual(d.bridge.calls[-1], ("rule.remove", {"name": "залп"}))
-        self.assertEqual(store.items(guard.RULE_KEY), {})
-        self.assertEqual(store.logs(0, ["rule_removed"])[0]["player"], "Steve")
-        self.assertTrue(d.pending[0].note)
-        self.assertIn("служба ведущего", gmd.compose(self.cfg, "Steve", d.pending, [], []))
-
 
     def test_voice_errors_and_cleanup(self):
         d = gmd.Dispatcher(self.cfg)
@@ -466,17 +545,6 @@ class GmToolsTest(Tmp):
         g.store.put("voice.requester", requester)
         return g
 
-    def test_zones_need_owner_to_weaken(self):
-        steve = self.gm("voice", "Steve")
-        self.assertIn("зона", steve.zones("add", "зрители", 10, 10, 30, ttl_minutes=30))
-        self.assertIn("зона", steve.zones("add", "зрители", 12, 10, 40))  # свою — можно
-        self.zone("аэропорт", 0, 0, 200)
-        for call in (lambda: steve.zones("remove", "аэропорт"), lambda: steve.zones("add", "аэропорт", 0, 0, 1),
-                     lambda: steve.zones("add", "дыра", 0, 0, -1000)):
-            with self.assertRaises(gmmod.GmError):
-                call()
-        self.assertIn("убрана", self.gm("voice", "ZentixUA").zones("remove", "аэропорт"))
-
     def test_cancel_only_own(self):
         g = self.gm("voice", "Alex")
         task = g.store.task_add("Steve", "домик")
@@ -493,7 +561,7 @@ class RolesTest(Tmp):
         prompt = argv[argv.index("--system-prompt") + 1]
         self.assertIn("Правила ведущего", prompt)
         self.assertIn("Роль: голос", prompt)
-        self.assertIn("ZentixUA", prompt)
+        self.assertIn("Admin", prompt)
         self.assertIn("clear_weather [instant]", prompt)  # рецепты — в промпте, искать их не нужно
         self.assertIn("--strict-mcp-config", argv)
         self.assertEqual(env["GM_ROLE"], "voice")
@@ -527,6 +595,19 @@ class GateTest(Tmp):
             gate.ask_voice = real
 
 
+    def test_local_cases(self):
+        """Случаи сервера (evals/local.jsonl, пишут люди) — в наборе; читаются из каталога сервера, не из копии урока."""
+        os.makedirs(os.path.join(self.tmp, "evals"))
+        with open(os.path.join(self.tmp, "evals", "local.jsonl"), "w", encoding="utf-8") as f:
+            f.write('{"id": "local-case", "text": "x", "expect": {"action": ["refuse"]}}\n')
+        wt = os.path.join(self.tmp, "runs", "teach")
+        os.makedirs(os.path.join(wt, "skill"))
+        for skill, overlay in ((os.path.join(self.tmp, "skill"), self.tmp), (os.path.join(wt, "skill"), wt)):
+            ids = [c["id"] for c in gate.load_cases(self.cfg, skill, overlay)]
+            self.assertIn("local-case", ids)
+            self.assertIn("grief", ids)  # и набора
+            self.assertNotIn("fireballs", ids)
+
     def test_grade(self):
         case = {"expect": {"action": ["refuse"], "lang": "uk", "must_not": ["готово"], "max_chars": 50}}
         self.assertEqual(gate.grade(case, {"action": "refuse", "reply": "Ні, так не можна."}), [])
@@ -539,7 +620,7 @@ class GateTest(Tmp):
                            capture_output=True)
         os.makedirs(os.path.join(self.tmp, "evals"))
         with open(os.path.join(self.tmp, ".gitignore"), "w") as f:
-            f.write("gm.db*\nruns/\nzones.json*\n")
+            f.write("gm.db*\nruns/\n")
         with open(os.path.join(self.tmp, "evals", "learned.jsonl"), "w") as f:
             f.write('{"id": "a", "text": "x", "expect": {}}\n')
         git("init", "-q")

@@ -123,7 +123,7 @@ def check_strike(seg, ctx):
         at = re.search(rule.get("target", r"\bat\s+(\S+)\s+(\S+)\s+(\S+)"), seg, re.I)
         if not at:
             return ("удар — только по месту числами (at x y z): цель-сущность, me и look ведущему нельзя — "
-                    "так не проверить зоны и нельзя навести на игрока")
+                    "так не проверить зоны")
         x, _, z = at.group(1), at.group(2), at.group(3)
         frm = re.search(rule.get("from", r"\bfrom\s+(\S+)\s+(\S+)"), seg, re.I)
         via_m = re.search(r"\bvia\s+(.*?)(?=\s+(?:from|at)\b|$)", seg, re.I)

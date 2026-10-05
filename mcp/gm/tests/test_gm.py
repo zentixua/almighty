@@ -243,9 +243,32 @@ class RecipesTest(Tmp):
     def test_base_recipes_valid(self):
         found, errors = recipes.load_all([os.path.join(KIT, "skill", "recipes")])
         self.assertEqual(errors, {})
-        self.assertGreaterEqual(len(found), 5)
-        for r in found.values():
-            self.assertEqual(r.kind, "instant")
+        self.assertGreaterEqual(len(found), 9)
+        for name in ("clear_weather", "give_item", "heal_player", "set_time", "teleport_player"):
+            self.assertEqual(found[name].kind, "instant")
+
+    def test_vehicle_recipes_pass_guard(self):
+        """Рецепты транспорта набора: место и полоса — параметрами, шаги проходят охрану, мир — корабля."""
+        found = recipes.load_all([os.path.join(KIT, "skill", "recipes")])[0]
+        flight = {"bot": "Pilot", "plane": "man_of_many_planes:economy_plane", "x": 100.5, "y": 70, "z": -20,
+                  "yaw": 0, "route": "100,600,120;-300,600,140"}
+        for runway, want in (("", "[100.5, -20, 70, 0]"), ("50,10,64,90", "'50,10,64,90'")):
+            b = FakeBridge({"script": {"ok": True, "value": True}})
+            out = recipes.run(found["plane_flight"], dict(flight, runway=runway), b, self.ctx(), guard.check_call)
+            self.assertTrue(out["ok"])
+            self.assertEqual(b.calls[0], ("bot.spawn", {"name": "Pilot", "pos": [100.5, 70, -20], "yaw": 0,
+                                                        "gamemode": "creative"}))
+            self.assertIn(want, b.calls[3][1]["code"])
+            self.assertEqual(b.calls[4][1]["name"], "plane_ap_Pilot")
+        with self.assertRaises(recipes.RecipeError):  # места по умолчанию в наборе нет
+            recipes.bind(found["plane_flight"], {"bot": "Pilot", "plane": "x:y", "route": "0,0,100"})
+        for name, params in (("plane_land", {"bot": "Pilot"}),
+                             ("ship_autopilot", {"ship": "Grand", "route": "0,0;100,100", "final": 120}),
+                             ("ship_stop", {"ship": "Grand"})):
+            b = FakeBridge({"script": {"ok": True, "value": True}})
+            self.assertTrue(recipes.run(found[name], params, b, self.ctx(), guard.check_call)["ok"], name)
+            code = json.dumps(b.calls, ensure_ascii=False)
+            self.assertNotIn("server.overworld", code)
 
     def test_bind_and_substitute(self):
         r = recipes.load_all([os.path.join(KIT, "skill", "recipes")])[0]["give_item"]

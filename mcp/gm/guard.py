@@ -211,9 +211,9 @@ def check_script(code, ctx):
 
 
 def note_call(store, method, params, ctx):
-    """После разрешённого вызова на живом мосту (хук сессии и шаги рецептов; у наставника мост тестовый — нет):
-    бот и правило с именем от исполнителя — в журнал задачи (оборванную задачу gmd убирает за собой); потом
-    after_call плагинов сервера."""
+    """Вызов на живом мосту разрешён — сразу после проверки, до выполнения (хук сессии и шаги рецептов; у наставника
+    мост тестовый — нет): бот и правило с именем от исполнителя — в журнал задачи (оборванную задачу gmd убирает за
+    собой); потом after_call плагинов сервера."""
     params = params or {}
     task = int(os.environ.get("GM_TASK") or 0) or None
     name = params.get("name")
@@ -306,29 +306,83 @@ def numbers(value):
     return []
 
 
+def _given(inp, keys, rename=None):
+    """Параметры инструмента, которые адаптер передаёт мосту (None он отбрасывает), с именами моста."""
+    rename = rename or {}
+    return {rename.get(k, k): inp[k] for k in keys if inp.get(k) is not None}
+
+
+SPAN = {"start": "from", "end": "to"}
+
+
 def tool_call(tool, inp):
-    """Инструмент MCP almighty и его параметры → (метод моста, параметры) для проверки."""
+    """Инструмент MCP almighty и его параметры → (метод моста, параметры) — то, что шлёт мосту адаптер
+    (mcp/almighty.py, тест AdapterMirrorTest), без его значений по умолчанию: охрана и плагины видят тот же вызов."""
     name = tool.removeprefix("mcp__almighty__")
+    if name == "status":
+        return ("player", {"name": inp["player"]}) if inp.get("player") is not None else ("status", {})
+    if name == "entities":
+        return "entities", _given(inp, ("center", "radius", "start", "end", "type", "limit", "dimension"), SPAN)
     if name == "command":
         if inp.get("lines") is not None:
-            return "function", {k: inp.get(k) for k in ("lines", "args", "pos")}
-        return "command", {k: inp.get(k) for k in ("commands", "args", "pos")}
+            return "function", _given(inp, ("lines", "args", "pos", "dimension"))
+        return "command", _given(inp, ("commands", "args", "pos", "dimension"))
+    if name == "say":
+        return "say", _given(inp, ("text", "component", "to", "style"))
     if name == "script":
-        return "script", {k: inp.get(k) for k in ("code", "args")}
+        return "script", _given(inp, ("code", "args", "timeout_ms"))
     if name == "rule":
         action = inp.get("action", "list")
-        return {"add": "rule.add", "remove": "rule.remove"}.get(action, "rules"), inp
+        if action == "add":
+            return "rule.add", _given(inp, ("event", "script", "name", "every", "limit", "priority", "canceled",
+                                            "budget_ms", "persist"))
+        if action == "remove":
+            return "rule.remove", _given(inp, ("id", "name"))
+        if action == "types":
+            return "event.types", _given(inp, ("query",))
+        return "rules", {}
+    if name == "events":
+        return "events", _given(inp, ("after", "wait", "limit"))
+    if name == "view":
+        kind = inp.get("kind")
+        if kind == "eye":
+            who = inp.get("who")
+            ident = {} if who is None else {"uuid": who} if len(who) == 36 and who.count("-") == 4 else {"name": who}
+            return "see", {**ident, **_given(inp, ("eye", "yaw", "pitch", "dimension", "image", "width", "height", "fov",
+                                                   "distance", "radius", "wait"), {"eye": "at"})}
+        if kind == "map":
+            keys = ("center", "size", "start", "end", "below", "marks", "dimension", "wait")
+            return "map", _given(inp, keys if inp.get("center") is not None else keys[:1] + keys[2:], SPAN)
+        if kind == "look":
+            return "look", _given(inp, ("start", "end", "direction", "dimension", "wait"), {**SPAN, "direction": "look"})
+        if kind == "blocks":
+            return "blocks", _given(inp, ("start", "end", "properties", "dimension"), SPAN)
+        return "view", inp
     if name == "build":
-        return ("undo", inp) if inp.get("undo") is not None else ("build", {"ops": inp.get("ops")})
+        if inp.get("undo") is not None:
+            return "undo", {"job": inp["undo"], **_given(inp, ("wait",))}
+        return "build", _given(inp, ("ops", "dimension", "wait"))
     if name == "area":
         action = inp.get("action", "list")
-        return {"prepare": "area.prepare", "release": "area.release"}.get(action, "areas"), {
-            "from": inp.get("start"), "to": inp.get("end")}
+        if action == "prepare":
+            return "area.prepare", _given(inp, ("start", "end", "ttl_seconds", "wait", "dimension"), SPAN)
+        if action == "release":
+            return "area.release", _given(inp, ("id",))
+        return "areas", {}
+    if name == "job":
+        if inp.get("id") is None:
+            return "jobs", {}
+        return ("cancel", {"id": inp["id"]}) if inp.get("cancel") else ("job", _given(inp, ("id", "wait")))
     if name == "bot":
         action = inp.get("action", "list")
-        return {"spawn": "bot.spawn", "remove": "bot.remove", "act": "bot.act", "state": "bot"}.get(action, "bots"), inp
+        keys = {"spawn": ("name", "pos", "dimension", "yaw", "pitch", "gamemode", "skin", "marker", "auto_respawn"),
+                "remove": ("name",), "state": ("name", "after"), "act": ("name", "actions", "replace", "wait")}
+        method = {"spawn": "bot.spawn", "remove": "bot.remove", "state": "bot", "act": "bot.act"}.get(action)
+        return (method, _given(inp, keys[action])) if method else ("bots", {})
+    if name == "notes":
+        return "notes", {}
     if name == "call":
-        return inp.get("method", ""), inp.get("params") or {}
+        return inp.get("method", ""), {k: v for k, v in (inp.get("params") or {}).items() if v is not None}
     return name, inp
 
 

@@ -80,10 +80,10 @@ cp mcp/gm/systemd/gm.service ~/.config/systemd/user/ && systemctl --user enable 
 | Функция | Когда | Ответ |
 |---|---|---|
 | `check_command(seg, ctx)` | каждая часть команды (`execute … run …`), откуда бы она ни пришла: `command`, строки функции и макросы, команды-литералы скриптов и правил, чат бота, шаги рецептов | причина отказа или `None` |
-| `check_call(method, params, ctx)` | вызов моста целиком, после проверок набора | причина отказа или `None` |
-| `after_call(store, method, params, ctx)` | после разрешённого вызова на живом мосту (хук сессии, шаги рецептов; у наставника — нет) | — |
-| `tools(gm, safe)` | запуск MCP-сервера `gm`: свои инструменты, `@safe def имя(...)` → `mcp__gm__имя`; ошибка — `plugins.PluginError` | — |
-| `tick(host)` | каждый круг диспетчера: `host.cfg`, `host.store`, `host.bridge`, `host.notify(player, text, task=None)` — весть голосу | — |
+| `check_call(method, params, ctx)` | вызов моста целиком — метод и параметры моста, как их шлёт адаптер, без его значений по умолчанию (`guard.tool_call`), после проверок набора | причина отказа или `None` |
+| `after_call(store, method, params, ctx)` | вызов на живом мосту разрешён: сразу после проверки, до выполнения (хук PreToolUse, шаг рецепта), мост ещё может его отклонить; у наставника — нет | — |
+| `tools(gm, safe)` | запуск MCP-сервера `gm`: свои инструменты, `@safe def имя(...)` → `mcp__gm__имя`; ошибка — `plugins.PluginError`. Хук их не видит: инструмент, который сам зовёт мост, проверяет вызов `guard.checker(gm.store)(method, params, gm.ctx())` | — |
+| `tick(host)` | каждый круг диспетчера (5 раз в секунду): `host.cfg`, `host.store`, `host.bridge`, `host.notify(player, text, task=None)` — весть голосу; упал — снова через минуту | — |
 
 ```python
 # plugins/no_tnt.py — ведущий не ставит и не призывает TNT

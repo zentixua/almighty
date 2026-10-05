@@ -1,5 +1,7 @@
 """Проверки набора ведущего без сети и моделей: python3 -m unittest discover -s mcp/gm/tests"""
+import contextlib
 import http.server
+import importlib.util
 import json
 import os
 import re
@@ -9,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -46,6 +49,39 @@ def make_overlay(tmp, extra="", plugins=None, never=None):
         f.write(text + extra)
     os.makedirs(os.path.join(tmp, "skill", "recipes"), exist_ok=True)
     return conf.load(os.path.join(tmp, "config.toml"))
+
+
+@contextlib.contextmanager
+def stub_mcp(tools):
+    """Заглушка пакета mcp (FastMCP, как в mcp 1.x: инструмент с занятым именем не заменяется) и httpx: без сети и
+    зависимостей. tools — имя → функция, по порядку регистрации."""
+    class FastMCP:
+        def __init__(self, *a, **kw):
+            pass
+
+        def tool(self):
+            def register(fn):
+                tools.setdefault(fn.__name__, fn)
+                return fn
+            return register
+
+        def run(self):
+            pass
+
+    fastmcp = types.ModuleType("mcp.server.fastmcp")
+    fastmcp.FastMCP, fastmcp.Image = FastMCP, object
+    names = ("mcp", "mcp.server", "mcp.server.fastmcp", "httpx")
+    saved = {n: sys.modules.get(n) for n in names}
+    sys.modules.update({"mcp": types.ModuleType("mcp"), "mcp.server": types.ModuleType("mcp.server"),
+                        "mcp.server.fastmcp": fastmcp, "httpx": types.ModuleType("httpx")})
+    try:
+        yield
+    finally:
+        for n, m in saved.items():
+            if m is None:
+                sys.modules.pop(n, None)
+            else:
+                sys.modules[n] = m
 
 
 class Tmp(unittest.TestCase):
@@ -207,6 +243,10 @@ def check_command(seg, ctx):
 def check_call(method, params, ctx):
     if method == "area.prepare":
         return "плагин: районы нельзя"
+    if params.get("dimension") == "minecraft:the_end":
+        return "плагин: Энд нельзя"
+    if method == "rules":
+        return True  # не строка — охрана отдаст её строкой
 
 
 def after_call(store, method, params, ctx):
@@ -228,6 +268,8 @@ def tools(gm, safe):
 
 
 def tick(host):
+    if host.cfg["gm"].get("tick_fails"):
+        raise RuntimeError("мост лёг")
     host.notify("Steve", "весть плагина: " + host.cfg["gm"]["owners"][0], task=7)
 '''
 
@@ -271,6 +313,13 @@ class PluginsTest(unittest.TestCase):
             recipes.run(recipes.parse(path), {}, FakeBridge(), c, guard.check_call)
         self.assertEqual(guard.check_call("area.prepare", {"from": [0, 0], "to": [16, 16]}, c), "плагин: районы нельзя")
         self.assertIsNone(guard.check_call("command", {"commands": ["time set day"]}, c))
+        self.assertEqual(guard.check_call("rules", {}, c), "True")
+        # инструмент сессии — тот же вызов, что получит мост: измерение доходит до плагина
+        for tool, inp in (("build", {"ops": [], "dimension": "minecraft:the_end"}),
+                          ("command", {"commands": ["time set day"], "dimension": "minecraft:the_end"}),
+                          ("area", {"action": "prepare", "start": [0, 0], "end": [1, 1]}),
+                          ("bot", {"action": "spawn", "name": "b", "dimension": "minecraft:the_end"})):
+            self.assertIn("плагин", guard.check_tool("mcp__almighty__" + tool, inp, c) or "", tool)
 
     def test_kit_decides_first(self):
         c = self.ctx()
@@ -295,27 +344,38 @@ class PluginsTest(unittest.TestCase):
         self.assertEqual([e["role"] for e in store.logs(0, ["plugin_after"])], ["worker", "worker"])
 
     def test_tools_and_tick(self):
-        registered = {}
-
-        def safe(fn):
-            registered.setdefault(fn.__name__, fn)
-            return fn
-        registered["tasks"] = "набора"  # инструменты набора — первыми: имя набора плагин не перекроет
-        os.environ["GM_CONFIG"] = self.cfg["paths"]["config"]
+        tools = {}
+        os.environ.update(GM_CONFIG=self.cfg["paths"]["config"], GM_ROLE="worker")
         try:
-            g = gmmod.Gm(self.cfg, "worker")
+            with stub_mcp(tools):
+                gmmod.serve(self.cfg, "worker")
         finally:
-            os.environ.pop("GM_CONFIG", None)
-        plugins.register_tools(g, safe)
-        self.assertEqual(registered["ping"]("x"), "pong x")
-        self.assertEqual(registered["tasks"], "набора")
+            for k in ("GM_CONFIG", "GM_ROLE"):
+                os.environ.pop(k, None)
+        names = list(tools)
+        self.assertEqual(names[-1], "ping")  # инструменты плагина — после инструментов набора
+        self.assertIn("done", names)
+        self.assertEqual(tools["ping"]("x"), "pong x")
+        self.assertEqual(tools["tasks"](), "задач нет")  # имя набора плагин не перекрыл
         with self.assertRaises(plugins.PluginError):
-            registered["ping"]("")
+            tools["ping"]("")
+        self.assertEqual(storemod.Store(self.cfg["paths"]["db"]).logs(0, ["tool_error"])[0]["data"]["error"], "пусто")
         d = gmd.Dispatcher(self.cfg)
         d.plugins_tick()
         self.assertEqual([(it.player, it.text, it.task, it.note) for it in d.pending],
                          [("Steve", "весть плагина: Admin", 7, True)])
         self.assertIn("служба ведущего", gmd.compose(self.cfg, "Steve", d.pending, [], []))
+        # tick упал — ошибка раз, следующий раз — через TICK_RETRY, а не каждый круг
+        d.cfg["gm"]["tick_fails"] = True
+        now = time.time()
+        with self.assertRaisesRegex(plugins.PluginError, "мост лёг"):
+            plugins.tick(d.host, now)
+        plugins.tick(d.host, now + 1)
+        d.cfg["gm"]["tick_fails"] = False
+        plugins.tick(d.host, now + plugins.TICK_RETRY - 1)
+        self.assertEqual(len(d.pending), 1)
+        plugins.tick(d.host, now + plugins.TICK_RETRY)
+        self.assertEqual(len(d.pending), 2)
 
     def test_broken_plugin_stops_everything(self):
         for name, code in (("missing", None), ("syntax", "def check_command(seg, ctx)\n"),
@@ -353,6 +413,65 @@ class PluginsTest(unittest.TestCase):
             f.write("[gm]\nplugins = 'plugins/x.py'\n")
         with self.assertRaisesRegex(conf.ConfigError, "список строк"):
             conf.load(path)
+
+
+class AdapterMirrorTest(unittest.TestCase):
+    """guard.tool_call — тот вызов моста, что шлёт адаптер mcp/almighty.py (все параметры заданы — умолчаний адаптера
+    охрана не добавляет): охрана и плагины видят то же, что мост."""
+
+    def test_tool_call_is_what_adapter_sends(self):
+        tools, sent = {}, []
+        with stub_mcp(tools):
+            spec = importlib.util.spec_from_file_location("almighty_adapter",
+                                                          os.path.join(os.path.dirname(KIT), "almighty.py"))
+            adapter = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(adapter)
+            adapter.rpc = lambda method, params=None, timeout=None: sent.append(
+                (method, {k: v for k, v in (params or {}).items() if v is not None})) or {}
+            adapter.serve_mcp()
+        end, box = "minecraft:the_end", [[0, 60, 0], [4, 64, 4]]
+        cases = [
+            ("status", {}), ("status", {"player": "Steve"}),
+            ("entities", {"center": [0, 64, 0], "radius": 9, "type": "zombie", "limit": 5, "dimension": end}),
+            ("entities", {"start": box[0], "end": box[1], "limit": 5}),
+            ("command", {"commands": ["time set day"], "pos": [1, 2, 3], "dimension": end}),
+            ("command", {"lines": ["$time set $(t)"], "args": {"t": "day"}, "pos": [1, 2, 3], "dimension": end}),
+            ("say", {"text": "x", "to": ["Steve"], "style": "title"}),
+            ("script", {"code": "1", "args": {"a": 1}, "timeout_ms": 500}),
+            ("rule", {"action": "add", "event": "tick", "script": "1", "name": "n", "every": 2, "limit": 3,
+                      "priority": "high", "canceled": False, "budget_ms": 5, "persist": True}),
+            ("rule", {"action": "remove", "name": "n"}), ("rule", {"action": "list"}),
+            ("rule", {"action": "types", "query": "Death"}),
+            ("events", {"after": 1, "wait": 2, "limit": 3}),
+            ("view", {"kind": "eye", "who": "Steve", "image": False, "width": 64, "height": 32, "fov": 70,
+                      "distance": 50, "radius": 8, "wait": 5}),
+            ("view", {"kind": "eye", "who": "123e4567-e89b-12d3-a456-426614174000", "image": True, "wait": 5}),
+            ("view", {"kind": "eye", "eye": [0, 70, 0], "yaw": 90, "pitch": 10, "dimension": end, "image": True,
+                      "wait": 5}),
+            ("view", {"kind": "map", "center": [0, 0], "size": 64, "below": 2, "marks": [], "dimension": end,
+                      "wait": 5}),
+            ("view", {"kind": "map", "start": [0, 0], "end": [64, 64], "size": 64, "wait": 5}),
+            ("view", {"kind": "look", "start": box[0], "end": box[1], "direction": "north", "dimension": end,
+                      "wait": 5}),
+            ("view", {"kind": "blocks", "start": box[0], "end": box[1], "properties": False, "dimension": end}),
+            ("build", {"ops": [{"op": "set", "pos": [0, 64, 0], "block": "stone"}], "dimension": end, "wait": 5}),
+            ("build", {"undo": 7, "wait": 5}),
+            ("area", {"action": "prepare", "start": [0, 0], "end": [16, 16], "ttl_seconds": 60, "wait": 1,
+                      "dimension": end}),
+            ("area", {"action": "release", "id": 3}), ("area", {"action": "list"}),
+            ("job", {"wait": 0}), ("job", {"id": 3, "wait": 2}), ("job", {"id": 3, "cancel": True}),
+            ("bot", {"action": "spawn", "name": "b", "pos": [0, 64, 0], "dimension": end, "yaw": 1, "pitch": 2,
+                     "gamemode": "creative", "skin": "Steve", "marker": True, "auto_respawn": False}),
+            ("bot", {"action": "remove", "name": "b"}), ("bot", {"action": "state", "name": "b", "after": 2}),
+            ("bot", {"action": "act", "name": "b", "actions": [{"chat": "/spawn"}], "replace": True, "wait": 5}),
+            ("bot", {"action": "list"}),
+            ("notes", {}), ("call", {"method": "ships", "params": {"name": "Grand", "center": None}}),
+        ]
+        self.assertEqual(sorted({t for t, _ in cases}), sorted(tools))  # каждый инструмент адаптера — в проверке
+        for tool, inp in cases:
+            sent.clear()
+            tools[tool](**inp)
+            self.assertEqual(sent, [guard.tool_call("mcp__almighty__" + tool, inp)], (tool, inp))
 
 
 class FakeBridge:

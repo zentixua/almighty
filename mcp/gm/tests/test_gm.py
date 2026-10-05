@@ -284,6 +284,7 @@ class PluginsTest(unittest.TestCase):
             f.write(PLUGIN)
         self.cfg = make_overlay(self.tmp, plugins=["plugins/checks.py"])
         self.mod = plugins.load(self.cfg)[0]
+        self.addCleanup(plugins._tick_after.clear)  # пауза упавшего tick — не дальше этого теста
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)

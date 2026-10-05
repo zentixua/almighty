@@ -7,8 +7,10 @@
 1. Порядок: только свои файлы (guard.WRITABLE); evals/learned.jsonl и rules.local.md — только дописываются;
    CORE.md — не длиннее limits.core_lines; рецепты годны (recipes.validate) и каждый новый или изменённый — с
    удачной пробой этого же текста на тестовом сервере (recipe_test в журнале).
-2. Проверочный набор: голос с новым навыком отвечает на случаи evals/ (набора и сервера) не хуже, чем с прежним:
-   случай, что проходил, не падает (упавший — ещё одна попытка), новые случаи урока проходят.
+2. Проверочный набор: голос с новым навыком отвечает на случаи evals/ не хуже, чем с прежним: случай, что
+   проходил, не падает (упавший — ещё одна попытка), новые случаи урока проходят. Случаи — base.jsonl набора,
+   local.jsonl сервера (их пишут люди; у наставника его нет в WRITABLE, читается из каталога сервера, не из копии
+   урока) и learned.jsonl, который дописывает наставник.
 3. Независимый взгляд: сессия-рецензент читает дифф и говорит clean или block с причинами.
 
   uv run mcp/gm/gate.py evals [--skill DIR]   — проверочный набор на навыке (по умолчанию — навык сервера)
@@ -137,8 +139,9 @@ def _read(path):
 
 def _eval_files(cfg, skill_dir, overlay=None):
     base = os.path.join(cfg["paths"]["kit"], "evals", "base.jsonl")
+    local = os.path.join(cfg["paths"]["overlay"], "evals", "local.jsonl")
     learned = os.path.join(overlay or os.path.dirname(skill_dir), "evals", "learned.jsonl")
-    return [p for p in (base, learned) if os.path.exists(p)]
+    return [p for p in (base, local, learned) if os.path.exists(p)]
 
 
 def load_cases(cfg, skill_dir, overlay=None):

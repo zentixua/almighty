@@ -16,7 +16,7 @@
 
 Настройки — config.toml оверлея (GM_CONFIG или --config).
 Роли: voice — reply, task, task_cancel; worker — progress, done, fail; teacher — experience, recipe_test;
-всем — tasks, recipes, recipe_run (голосу — только instant), zones, lesson.
+всем — tasks, recipes, recipe_run (голосу — только instant), lesson; и инструменты плагинов сервера (plugins.py).
 """
 import argparse
 import functools
@@ -31,9 +31,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bridge as bridgemod  # noqa: E402
 import conf  # noqa: E402
 import guard  # noqa: E402
+import plugins  # noqa: E402
 import recipes as recipesmod  # noqa: E402
 import store as storemod  # noqa: E402
-import zones as zonesmod  # noqa: E402
 
 READS = {"entities", "player", "blocks", "see", "script", "map", "look", "status", "bot", "bots", "job", "jobs",
          "rules", "areas", "events"}
@@ -226,49 +226,6 @@ class Gm:
         lines += [f"НЕГОДЕН {name}: {'; '.join(e)}" for name, e in errors.items()]
         return "\n".join(lines) or "рецептов нет"
 
-    def zones(self, action="list", name=None, x=None, z=None, r=None, note="", ttl_minutes=None, start=None,
-              via=None, target=None, spread=0):
-        path = self.cfg["paths"]["zones"]
-        with zonesmod.Locked(path):
-            zones = zonesmod.load(path)
-            if action == "list":
-                return json.dumps(zones, ensure_ascii=False) if zones else "зон нет"
-            if action == "check":
-                if not target:
-                    raise GmError("zones check: target [x, z]")
-                found = zonesmod.conflicts(zones, target, start, via or [], spread, self.cfg["guard"]["margin"])
-                return "НЕЛЬЗЯ:\n" + "\n".join(found) if found else f"можно: зоны не задеты (зон {len(zones)})"
-            if action == "add":
-                if None in (name, x, z, r):
-                    raise GmError("zones add: name, x, z, r")
-                if not 0 < r <= 10000:
-                    raise GmError("zones add: радиус r — от 1 до 10000 блоков")
-                if name in zones:
-                    self._may_change(zones[name], name)
-                zone = {"x": x, "z": z, "r": r, "note": note, "set": time.strftime("%H:%M"), "by": self.requester()}
-                if ttl_minutes:
-                    zone["expires"] = time.time() + ttl_minutes * 60
-                zones[name] = zone
-                zonesmod.save(zones, path)
-                self.store.log(self.role, "zone_add", self.requester(), self.task_id, name=name, zone=zone)
-                return f"зона «{name}»: ({x}, {z}), r={r}"
-            if action == "remove":
-                if name not in zones:
-                    return f"зоны «{name}» нет"
-                self._may_change(zones[name], name)
-                del zones[name]
-                zonesmod.save(zones, path)
-                self.store.log(self.role, "zone_remove", self.requester(), self.task_id, name=name)
-                return f"зона «{name}» убрана"
-        raise GmError("zones: action — list, check, add или remove")
-
-    def _may_change(self, zone, name):
-        """Ослабить охрану (убрать или переставить зону) может владелец или тот, по чьей просьбе она стоит."""
-        ctx = self.ctx()
-        if not ctx.owner() and not (zone.get("by") and zone.get("by") == ctx.requester):
-            raise GmError(f"зона «{name}» охраняет игроков: убрать или передвинуть её может только владелец "
-                          f"({', '.join(self.cfg['gm']['owners']) or 'не задан'})")
-
     def lesson(self, text):
         self.store.log(self.role, "lesson", self.requester(), self.task_id, text=text)
         return "урок записан: наставник разберёт"
@@ -290,14 +247,15 @@ def serve(cfg, role):
     from mcp.server.fastmcp import FastMCP
 
     gm = Gm(cfg, role)
-    mcp = FastMCP("gm", instructions="Инструменты ведущего: очередь задач, рецепты, охраняемые зоны, уроки.")
+    mcp = FastMCP("gm", instructions="Инструменты ведущего: очередь задач, рецепты, уроки; и инструменты этого сервера, "
+                                         "если есть.")
 
     def safe(fn):
         @functools.wraps(fn)
         def wrapped(*a, **kw):
             try:
                 out = fn(*a, **kw)
-            except (GmError, recipesmod.RecipeError, bridgemod.BridgeError) as e:
+            except (GmError, recipesmod.RecipeError, bridgemod.BridgeError, plugins.PluginError) as e:
                 gm.store.log(role, "tool_error", None, gm.task_id, tool=fn.__name__, error=str(e))
                 raise
             return out if isinstance(out, str) else json.dumps(out, ensure_ascii=False, indent=1)
@@ -317,7 +275,7 @@ def serve(cfg, role):
             """Поставить задачу исполнителю: всё, что дольше пары вызовов или строит, водит ботов, грузит районы,
             ставит правила. Задача — того, кто просит сейчас (для другого игрока — так и написать в text).
             text — что сделать, своими словами, со всем, что сказал игрок и что ты уже узнал (место, кому,
-            сколько); recipe и params — если есть рецепт; resources — что займёт (место, корабль: "ship:NagaAI");
+            сколько); recipe и params — если есть рецепт; resources — что займёт (например "place:<имя>");
             minutes — срок. Дубль задачи отклоняется."""
             return gm.task(text, recipe, params, resources, minutes)
 
@@ -374,21 +332,11 @@ def serve(cfg, role):
         return gm.recipe_run(name, params)
 
     @safe
-    def zones(action: str = "list", name: str | None = None, x: int | None = None, z: int | None = None,
-              r: int | None = None, note: str = "", ttl_minutes: float | None = None, start: list[int] | None = None,
-              via: list[list[int]] | None = None, target: list[int] | None = None, spread: int = 0) -> str:
-        """Охраняемые зоны — места, куда удары и полёты не должны попадать (стоянки кораблей игроков, базы,
-        зрители). action: list; check — путь start [x, z] → via → target [x, z] с разбросом spread (удары охрана
-        проверяет и сама); add — name, x, z, r, note, ttl_minutes; remove — name. Кто сажает игроков, ставит
-        корабль или собирает зрителей — сам ставит зону. Убрать или передвинуть чужую зону — только по слову
-        владельца."""
-        return gm.zones(action, name, x, z, r, note, ttl_minutes, start, via, target, spread)
-
-    @safe
     def lesson(text: str) -> str:
         """Урок на будущее: что не знал, что вышло не так, что сработало лучше. Наставник превратит его в навык."""
         return gm.lesson(text)
 
+    plugins.register_tools(gm, safe)  # после своих: имя инструмента набора плагин не перекроет
     mcp.run()
 
 
@@ -402,7 +350,7 @@ def init(path):
     kit = os.path.dirname(os.path.abspath(__file__))
     files = {
         "config.toml": None,
-        ".gitignore": "gm.db*\nruns/\nzones.json*\n",
+        ".gitignore": "gm.db*\nruns/\n__pycache__/\n",
         "skill/CORE.md": "",
         "skill/rules.local.md": "",
         "skill/knowledge/README.md": ("# Знания сервера\n\nМеста, игроки, корабли и машины, как здесь что "
@@ -466,7 +414,7 @@ def main():
             print(f"рецепта {a.name} нет {errors.get(a.name, '')}", file=sys.stderr)
             return 1
         b = gm.test if a.test else gm.live
-        # человек у консоли — владелец: охрана всё равно проверяет шаги (зоны, запреты)
+        # человек у консоли — владелец: охрана всё равно проверяет шаги (запреты набора и плагины сервера)
         ctx = guard.Ctx(cfg, "owner", cfg["gm"]["owners"][0] if cfg["gm"]["owners"] else None)
         check = guard.check_call if a.test else guard.checker(gm.store)
         print(json.dumps(recipesmod.run(found[a.name], json.loads(a.params), b, ctx, check),

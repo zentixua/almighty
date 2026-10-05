@@ -113,10 +113,9 @@ def mcp_config(cfg, role, env):
     return {"mcpServers": servers}
 
 
-def env(cfg, role, skill_dir, task=None, writable=None, zones=None):
+def env(cfg, role, skill_dir, task=None, writable=None):
     e = dict(os.environ)
-    e.update({"GM_CONFIG": cfg["paths"]["config"], "GM_ROLE": role, "GM_ZONES": zones or cfg["paths"]["zones"],
-              "GM_SKILL": skill_dir,
+    e.update({"GM_CONFIG": cfg["paths"]["config"], "GM_ROLE": role, "GM_SKILL": skill_dir,
               # чистая сессия: без памяти и CLAUDE.md Claude Code
               "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1"})
     for k in ("GM_TASK", "GM_WRITABLE"):
@@ -128,11 +127,10 @@ def env(cfg, role, skill_dir, task=None, writable=None, zones=None):
     return e
 
 
-def prepare(cfg, role, run_dir, skill_dir, task=None, writable=None, add_dirs=(), zones=None):
-    """Каталог запуска (рабочий каталог сессии) с настройками и MCP; ответ — (argv без вывода, env).
-    zones — свой файл зон (у наставника — копия: его пробы не меняют охрану игры)."""
+def prepare(cfg, role, run_dir, skill_dir, task=None, writable=None, add_dirs=()):
+    """Каталог запуска (рабочий каталог сессии) с настройками и MCP; ответ — (argv без вывода, env)."""
     os.makedirs(run_dir, exist_ok=True)
-    e = env(cfg, role, skill_dir, task, writable, zones)
+    e = env(cfg, role, skill_dir, task, writable)
     with open(os.path.join(run_dir, "settings.json"), "w", encoding="utf-8") as f:
         json.dump(settings(cfg, role), f, ensure_ascii=False, indent=1)
     with open(os.path.join(run_dir, "mcp.json"), "w", encoding="utf-8") as f:

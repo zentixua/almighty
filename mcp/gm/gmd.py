@@ -4,7 +4,7 @@
 # ///
 """Диспетчер ведущего — служба без ИИ: слушает игру, будит голос, ведёт очередь исполнителей, учит наставника.
 
-  uv run mcp/gm/gmd.py --config ~/airstrike-server/gm/config.toml
+  uv run mcp/gm/gmd.py --config ~/gm/config.toml
 
 - Лента моста: личное /gm и сообщения в чате, где ведущего назвали (gm.names), — голосу. Кто только что говорил с
   ведущим, тому имя повторять не нужно 90 с. Сообщения одного игрока подряд — одним ходом; разные игроки — по
@@ -15,6 +15,8 @@
   отмена. Итог задачи (с доказательством из мира) — голосу, он скажет игроку.
 - Наставник — после нового опыта (не чаще teacher_gap_minutes): правит знания сервера в отдельной копии (git
   worktree), правка проходит ворота (gate.py) и только тогда входит в навык.
+- Плагины сервера (plugins.py) — грузятся при старте (не загрузились — служба не стартует), их tick — каждый круг
+  (упавший — через минуту).
 Всё — в журнал gm.db: время ответа, цена, отказы охраны, итоги — сырьё наставника и цифры для людей.
 """
 import argparse
@@ -24,7 +26,6 @@ import json
 import os
 import queue
 import re
-import shutil
 import signal
 import subprocess
 import sys
@@ -35,9 +36,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bridge as bridgemod  # noqa: E402
 import conf  # noqa: E402
-import guard  # noqa: E402
+import plugins  # noqa: E402
 import roles  # noqa: E402
-import zones as zonesmod  # noqa: E402
 import store as storemod  # noqa: E402
 
 CONVERSATION_SECONDS = 90
@@ -46,9 +46,8 @@ FALLBACK = {"ru": "Ведущий сейчас не смог ответить �
             "en": "The game master couldn't answer just now — please try again in a minute."}
 # что будит наставника сразу; прочие события (сообщения, ответы) — когда их накопилось TEACH_AFTER
 SIGNALS = ("lesson", "task_failed", "no_reply", "guard_deny", "tool_error", "recipe_error", "voice_timeout",
-           "voice_crash", "slow_reply", "rule_removed")
+           "voice_crash", "slow_reply")
 TEACH_AFTER = 8
-RULES_RECHECK = 60  # правила с ударом сверяются с зонами при каждой их правке и не реже раза в минуту
 STALE_SECONDS = 20  # голос не поднялся — сообщения старше этого получают запасную фразу и не копятся
 EXPERIENCE_ROWS = 300  # записей журнала на один урок (столько отдаёт experience)
 
@@ -203,9 +202,33 @@ class Voice:
         self.proc = None
 
 
+class Host:
+    """Что видит tick плагина сервера: настройки, память, мост и весть голосу."""
+
+    def __init__(self, dispatcher):
+        self._d = dispatcher
+
+    @property
+    def cfg(self):
+        return self._d.cfg
+
+    @property
+    def store(self):
+        return self._d.store
+
+    @property
+    def bridge(self):
+        return self._d.bridge
+
+    def notify(self, player, text, task=None):
+        """Весть голосу: он скажет игроку player своими словами (ход «служба ведущего»)."""
+        self._d.pending.append(Item(player, text, task=task, note=True))
+
+
 class Dispatcher:
     def __init__(self, cfg):
         self.cfg = cfg
+        plugins.load(cfg)  # плагин не загрузился — PluginError: служба не стартует без проверок сервера
         os.makedirs(cfg["paths"]["runs"], exist_ok=True)
         self.store = storemod.Store(cfg["paths"]["db"])
         self.bridge = bridgemod.of(cfg, "bridge")
@@ -222,8 +245,7 @@ class Dispatcher:
         self.teacher = None
         self.gate = None
         self.last_teach = 0.0
-        self.zones_seen = None
-        self.rules_checked = 0.0
+        self.host = Host(self)
         self.stopping = False
 
     # ---------------------------------------------------------------- лента
@@ -519,15 +541,7 @@ class Dispatcher:
         rows = self.store.logs(seen, limit=EXPERIENCE_ROWS)  # больше — следующим уроком, не мимо
         until = rows[-1]["id"] if len(rows) == EXPERIENCE_ROWS else self.store.last_log_id()
         run_dir = os.path.join(self.cfg["paths"]["runs"], "teacher")
-        os.makedirs(run_dir, exist_ok=True)
-        zones = os.path.join(run_dir, "zones.json")  # копия: пробы наставника не меняют охрану игры
-        with zonesmod.Locked(self.cfg["paths"]["zones"]):
-            if os.path.exists(self.cfg["paths"]["zones"]):
-                shutil.copyfile(self.cfg["paths"]["zones"], zones)
-            elif os.path.exists(zones):
-                os.remove(zones)
-        argv, env = roles.prepare(self.cfg, "teacher", run_dir, os.path.join(wt, "skill"), writable=wt, add_dirs=(wt,),
-                                  zones=zones)
+        argv, env = roles.prepare(self.cfg, "teacher", run_dir, os.path.join(wt, "skill"), writable=wt, add_dirs=(wt,))
         argv += ["--output-format", "json", "--max-budget-usd", str(self.cfg["limits"]["teacher_usd"])]
         prompt = (f"Новый опыт — записи журнала после {seen} до {until} (experience). "
                   f"Твоя копия знаний сервера — {wt}: правь там skill/ и evals/learned.jsonl по своей роли; рецепты — с удачной пробой recipe_test. "
@@ -577,40 +591,8 @@ class Dispatcher:
 
     # ---------------------------------------------------------------- цикл
 
-    # ---------------------------------------------------------------- удары в правилах
-
-    def zones_tick(self):
-        """Правило с ударом идёт в игре само: зоны сверены при его постановке. Зону поставили позже (голос, человек
-        из zones.py) — скрипт правила сверяется снова, задетое правило снимается, игроку — весть через голос."""
-        try:
-            mtime = os.stat(self.cfg["paths"]["zones"]).st_mtime_ns
-        except FileNotFoundError:
-            mtime = 0
-        if mtime == self.zones_seen and time.time() - self.rules_checked < RULES_RECHECK:
-            return
-        self.zones_seen, self.rules_checked = mtime, time.time()  # мост лёг — снова через минуту, не каждый круг
-        remembered = self.store.items(guard.RULE_KEY)
-        if not remembered:
-            return
-        on = {r.get("name") for r in self.bridge.call("rules") if r.get("state") == "on"}
-        for name, rule in remembered.items():
-            if name not in on:
-                continue
-            reason = guard.check_script(rule["script"], guard.Ctx(self.cfg, rule["role"], rule["requester"]))
-            if not reason:
-                continue
-            try:
-                self.bridge.call("rule.remove", {"name": name})
-            except bridgemod.BridgeError as e:  # память остаётся: снова через минуту
-                self.store.log("gmd", "error", where="zones_tick", error=f"rule.remove {name}: {e}")
-                continue
-            self.store.drop(guard.RULE_KEY + name)
-            self.store.log("gmd", "rule_removed", rule["requester"], rule["task"], name=name, reason=reason)
-            log(f"правило «{name}» снято: {reason}")
-            if rule["requester"]:
-                self.pending.append(Item(rule["requester"], f"Правило «{name}» снято охраной: {reason}. Скажи "
-                                         "игроку коротко, что удары по нему остановлены и почему.",
-                                         task=rule["task"], note=True))
+    def plugins_tick(self):
+        plugins.tick(self.host)
 
     def recover(self):
         """Задачи, оборванные прошлым запуском диспетчера: честно — не доделаны."""
@@ -622,6 +604,8 @@ class Dispatcher:
     def run(self):
         self.recover()
         threading.Thread(target=self.follow, daemon=True).start()
+        found = plugins.names(self.cfg)
+        log("плагины: " + ", ".join(found) if found else "плагинов нет")
         log("ведущий слушает")
         while not self.stopping:
             try:
@@ -629,7 +613,7 @@ class Dispatcher:
                     self.on_event(self.events.get_nowait())
             except queue.Empty:
                 pass
-            for step in (self.voice_tick, self.workers_tick, self.teacher_tick, self.zones_tick):
+            for step in (self.voice_tick, self.workers_tick, self.teacher_tick, self.plugins_tick):
                 try:
                     step()
                 except Exception as e:  # служба не падает от одной ошибки: в журнал и дальше
@@ -647,7 +631,11 @@ def main():
     p = argparse.ArgumentParser(description="Диспетчер ведущего")
     p.add_argument("--config", help="config.toml оверлея (иначе GM_CONFIG)")
     a = p.parse_args()
-    d = Dispatcher(conf.load(a.config))
+    try:
+        d = Dispatcher(conf.load(a.config))
+    except (conf.ConfigError, plugins.PluginError) as e:  # без своих проверок сервер не ведём: выход, причина — в журнал
+        log(f"ведущий не запущен: {e}")
+        return 1
 
     def stop(*_):
         d.stopping = True

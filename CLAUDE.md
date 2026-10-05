@@ -92,7 +92,7 @@ airstrike-pack с jar выпуска.
 Рядом — `mcp/gm/` (README): набор ведущего на Claude — диспетчер `gmd.py` (служба без ИИ: лента, голос, очередь
 исполнителей, наставник), инструменты сессий `gm.py` (MCP gm), охрана `guard.py` (хук PreToolUse через `hook.py` и
 шаги рецептов), ворота навыка `gate.py`, навык `skill/` (ядро, правила, роли, рычаги, рецепты), проверочный набор `evals/`,
-охраняемые зоны `zones.py`. Python 3.11 без зависимостей (кроме `gm.py mcp` — пакет mcp); тесты —
+плагины сервера `plugins.py`. Python 3.11 без зависимостей (кроме `gm.py mcp` — пакет mcp); тесты —
 `python3 -m unittest discover -s mcp/gm/tests`.
 
 Скрипт и правило: Groovy в потоке сервера, переменные `server`, `gm` (`command`, `commandAs(entity, …)` — от лица

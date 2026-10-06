@@ -12,9 +12,20 @@ class MovePacketsTest {
     void standingStillReportsEveryTwentyTicks() {
         MovePackets m = new MovePackets();
         assertTrue(m.tick(0, 64, 0, 0, 0, true), "первый тик");
-        int sent = 0;
-        for (int i = 0; i < 100; i++) if (m.tick(0, 64, 0, 0, 0, true)) sent++;
-        assertEquals(100 / MovePackets.REMINDER_TICKS, sent);
+        for (int round = 0; round < 5; round++) {
+            for (int i = 1; i < MovePackets.REMINDER_TICKS; i++) assertFalse(m.tick(0, 64, 0, 0, 0, true), "тик " + i);
+            assertTrue(m.tick(0, 64, 0, 0, 0, true), "тик " + MovePackets.REMINDER_TICKS);
+        }
+    }
+
+    @Test
+    void turningDoesNotResetReminder() {
+        MovePackets m = new MovePackets();
+        m.tick(0, 64, 0, 0, 0, true);
+        for (int i = 1; i < 10; i++) m.tick(0, 64, 0, 0, 0, true);
+        assertTrue(m.tick(0, 64, 0, 45, 0, true), "поворот на 10-м тике");
+        for (int i = 11; i < MovePackets.REMINDER_TICKS; i++) assertFalse(m.tick(0, 64, 0, 45, 0, true), "тик " + i);
+        assertTrue(m.tick(0, 64, 0, 45, 0, true), "место — всё так же через 20 тиков после прошлого с местом");
     }
 
     @Test
@@ -42,5 +53,6 @@ class MovePacketsTest {
         assertFalse(m.tick(0, 64, 0, 10, 0, false));
         assertTrue(m.tick(0, 64, 0, 10, 0, true), "приземлился");
         assertFalse(m.tick(0, 64, 0, 10, 0, true));
+        assertTrue(m.tick(0, 64, 0, 10, 0, false), "оторвался от земли");
     }
 }

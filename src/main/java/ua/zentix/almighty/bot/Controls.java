@@ -386,7 +386,10 @@ final class Controls {
         // клиент не тикает игрока, пока чанк под ним не пришёл (LocalPlayer.tick); бот — пока не готовы чанки, которых
         // коснётся его тик: физика игрока читает блоки и жидкость под ногами, и неготовый чанк грузился бы в тике сразу
         if (!p.isPassenger() && !ready(p)) {
-            p.serverLevel().getChunkSource().move(p);
+            // место после телепорта сервер узнаёт первым же пакетом (сдвиг), дальше — раз в 20 тиков, как у клиента
+            if (movePackets.tick(p.getX(), p.getY(), p.getZ(), p.getYRot(), p.getXRot(), p.onGround())) {
+                p.serverLevel().getChunkSource().move(p);
+            }
             return;
         }
         if (p.isPassenger()) bot.send(new ServerboundPlayerInputPacket(strafe, forward, jump, sneak));
@@ -410,7 +413,8 @@ final class Controls {
         if (p.isRemoved()) return;
         if (riding && p.isPassenger()) p.absMoveTo(before.x, before.y, before.z, p.getYRot(), p.getXRot());
         Vec3 d = p.position().subtract(before);
-        // седок шлёт пакет каждый тик, пеший — когда сдвинулся, повернулся, коснулся земли или раз в 20 тиков
+        // седок шлёт пакет каждый тик, пеший — когда сдвинулся, повернулся, встал на землю или оторвался от неё,
+        // а стоя — раз в 20 тиков
         if (riding || movePackets.tick(p.getX(), p.getY(), p.getZ(), p.getYRot(), p.getXRot(), p.onGround())) {
             p.serverLevel().getChunkSource().move(p);
         }

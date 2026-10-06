@@ -84,6 +84,8 @@ final class Controls {
     private int destroyDelay;
     private int sequence;
     private boolean shiftSent, attackedThisTick;
+    /** Пакеты движения, которые клиент послал бы после своих тиков: на них сервер пересчитывает, кого игрок видит. */
+    private final MovePackets movePackets = new MovePackets();
     /** Сколько блоков доломано удержанием атаки с прошлого чтения (итог шага). */
     private int broken;
 
@@ -360,8 +362,9 @@ final class Controls {
      * Ходьба — как {@code LocalPlayer.aiStep}: толчки от клавиш (присед и использование предмета замедляют), бег,
      * присед, полёт вверх-вниз; верхом — пакет ввода транспорту и то, что клиент делает с ним сам ({@link Vehicles}).
      * Потом физика игрока сервером ({@code doTick}) и то,
-     * что сервер делает после пакета движения: чанки вокруг, урон от падения, движение игрока (его берут снаряды —
-     * {@code getKnownMovement}), статистика и голод от ходьбы. Седока физика не сдвигает: его место — в транспорте.
+     * что сервер делает после пакета движения: чанки вокруг и кого игрок видит — когда клиент послал бы пакет
+     * ({@link MovePackets}), урон от падения, движение игрока (его берут снаряды — {@code getKnownMovement}), статистика
+     * и голод от ходьбы. Седока физика не сдвигает: его место — в транспорте.
      */
     private void move(ServerPlayer p) {
         float forward = impulse(Key.FORWARD, Key.BACK), strafe = impulse(Key.LEFT, Key.RIGHT);
@@ -407,7 +410,10 @@ final class Controls {
         if (p.isRemoved()) return;
         if (riding && p.isPassenger()) p.absMoveTo(before.x, before.y, before.z, p.getYRot(), p.getXRot());
         Vec3 d = p.position().subtract(before);
-        p.serverLevel().getChunkSource().move(p);
+        // седок шлёт пакет каждый тик, пеший — когда сдвинулся, повернулся, коснулся земли или раз в 20 тиков
+        if (riding || movePackets.tick(p.getX(), p.getY(), p.getZ(), p.getYRot(), p.getXRot(), p.onGround())) {
+            p.serverLevel().getChunkSource().move(p);
+        }
         if (!riding && !p.isPassenger()) {
             p.doCheckFallDamage(d.x, d.y, d.z, p.onGround());
             p.setKnownMovement(d);

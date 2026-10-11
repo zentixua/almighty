@@ -1,0 +1,16 @@
+{
+  "description": "Ответ ведущего в чат и конец его хода — каналу almighty-chat (порт — HOOK_PORT в almighty-chat.mjs)",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__almighty__say",
+        "hooks": [{ "type": "http", "url": "http://127.0.0.1:25680/hook", "timeout": 5 }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "http", "url": "http://127.0.0.1:25680/hook", "timeout": 5 }]
+      }
+    ]
+  }
+}

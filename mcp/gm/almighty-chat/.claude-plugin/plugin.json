@@ -1,0 +1,7 @@
+{
+  "name": "almighty-chat",
+  "version": "0.2.0",
+  "description": "Канал Claude Code: игроки Minecraft пишут сессии ведущего через мост мода Almighty, ответы — инструментом say Almighty MCP",
+  "author": { "name": "zentixua" },
+  "license": "MIT"
+}

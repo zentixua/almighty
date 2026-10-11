@@ -1,0 +1,12 @@
+{
+  "name": "almighty",
+  "owner": { "name": "zentixua" },
+  "description": "Плагины ведущего сервера Minecraft на моде Almighty",
+  "plugins": [
+    {
+      "name": "almighty-chat",
+      "source": "./almighty-chat",
+      "description": "Канал: чат и события Minecraft (мост Almighty) — в сессию ведущего; запросы разрешений — владельцу в игру"
+    }
+  ]
+}

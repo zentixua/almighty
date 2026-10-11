@@ -89,11 +89,9 @@ airstrike-pack с jar выпуска.
 строки функции), `say`, `script`, `rule` (add/remove/list/types), `events`, `view` (map/look/blocks/eye), `build` (+ undo),
 `area`, `job` (+ cancel), `bot` (spawn/remove/list/state/act), `notes`, `call` — любой метод. Новое — сперва подумать, не делается ли оно скриптом или правилом;
 отдельный инструмент — только когда он и правда снимает ошибки. `from`/`to` там `start`/`end`.
-Рядом — `mcp/gm/` (README): набор ведущего на Claude — диспетчер `gmd.py` (служба без ИИ: лента, голос, очередь
-исполнителей, наставник), инструменты сессий `gm.py` (MCP gm), охрана `guard.py` (хук PreToolUse через `hook.py` и
-шаги рецептов), ворота навыка `gate.py`, навык `skill/` (ядро, правила, роли, рычаги, рецепты), проверочный набор `evals/`,
-плагины сервера `plugins.py`. Python 3.11 без зависимостей (кроме `gm.py mcp` — пакет mcp); тесты —
-`python3 -m unittest discover -s mcp/gm/tests`.
+Рядом — `mcp/gm/` (README): ведущий как одна сессия Claude Code — канал чата `almighty-chat/` (плагин, Node),
+хук от падений `crash_guard.py` (PreToolUse) и запуск рецептов `recipes.py`; тесты — `python3 -m unittest discover -s
+mcp/gm/tests` и `node --test` в `mcp/gm/almighty-chat/`.
 
 Скрипт и правило: Groovy в потоке сервера, переменные `server`, `gm` (`command`, `commandAs(entity, …)` — от лица
 сущности, `emit(data)` — в ленту событием `emit`, `fields(event)`, `player(name)`, `level(dim)`, `bot(name)` —

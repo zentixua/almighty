@@ -1,0 +1,20 @@
+{
+  "name": "almighty-chat",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Канал Claude Code: чат и события Minecraft (мод Almighty) — в сессию ведущего",
+  "bin": {
+    "almighty-chat": "almighty-chat.mjs"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^4.6.5"
+  }
+}

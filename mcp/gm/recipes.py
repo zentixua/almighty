@@ -1,4 +1,16 @@
-"""Рецепты ведущего — проверенные способы сделать дело: файл .md в skill/recipes (набора или сервера).
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "httpx>=0.27",
+# ]
+# ///
+"""Рецепты ведущего — проверенные способы сделать дело: файлы .md в каталоге рецептов сервера.
+
+  uv run --script mcp/gm/recipes.py list <каталог>                    — рецепты (и негодные — с ошибками)
+  uv run --script mcp/gm/recipes.py run <каталог> <рецепт> ['{…}']    — выполнить; ответ — JSON {ok, steps, check}
+
+Мост — тот же, что у mcp/almighty.py: ALMIGHTY_URL и ALMIGHTY_TOKEN_FILE (тестовый сервер — его адрес и токен).
 
 Рецепт — то, что уже получилось в мире, записанное так, чтобы получилось снова без импровизации:
 
@@ -7,7 +19,6 @@
     description: Ясная погода (одна строка: когда брать)
     kind: instant
     params: {"seconds": {"type": "int", "min": 60, "max": 7200, "default": 1200}}
-    resources: ["weather"]
     ---
     Пояснение: что делает, подводные камни, как понять, что вышло.
 
@@ -19,13 +30,13 @@
     return !server.overworld().isRaining()
     ```
 
-name — как имя файла; kind: instant — делает голос сразу, task — исполнитель, show — долгое, правилом в игре;
-resources — что занимает (две задачи с общим ресурсом не идут одновременно; ${имя} — текстом: "ship:${ship}").
-Шапка — строки «ключ: значение», значение — JSON или строка. Шаги — вызовы моста (методы ALLOWED, слов игрокам
-среди них нет), ${имя} — параметр:
-строка целиком — значение своего типа, внутри строки — текстом. Каждый шаг перед вызовом проходит охрану
-(guard.check_call). check — Groovy, который после шагов говорит, вышло ли (true или {ok: true, …}); у task и show
-он обязателен: «готово» — по миру.
+name — как имя файла; kind: instant — за секунды, task — дольше (ведущий запускает его в фоне), show — оставляет в
+игре правило, которое живёт дальше. Шапка — строки «ключ: значение», значение — JSON или строка. Шаги — вызовы
+моста (методы ALLOWED, слов игрокам среди них нет), ${имя} — параметр: строка целиком — значение своего типа,
+внутри строки — текстом. Каждый шаг перед вызовом проходит хук от падений (crash_guard.check_call, как вызов
+субагента: рецепт игрокам не пишет); то, что хук отклонил бы или отдал бы владельцу на подтверждение, рецепт не
+делает. check — Groovy, который после шагов говорит, вышло ли (true или {ok: true, …}); у task и show он
+обязателен: «готово» — по миру.
 
 Длинный Groovy (скрипт, правило автопилота) — своим блоком с именем, а в шагах — строкой "${code:имя}" целиком:
 
@@ -41,10 +52,16 @@ resources — что занимает (две задачи с общим рес�
 В Groovy (блоки и check) ${имя} объявленного параметра подставляется текстом, прочие ${…} — строки Groovy, их не
 трогаем.
 """
+import argparse
 import json
 import math
 import os
 import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import crash_guard  # noqa: E402
 
 ALLOWED = {"command", "function", "script", "rule.add", "rule.remove", "build", "undo", "bot.spawn", "bot.remove",
            "bot.act", "area.prepare", "area.release", "status", "player", "entities", "map", "look", "blocks", "see",
@@ -52,7 +69,6 @@ ALLOWED = {"command", "function", "script", "rule.add", "rule.remove", "build", 
 # значения шагов с кодом Groovy: параметры в них — как в блоке groovy
 GROOVY_KEYS = ("code", "script")
 KINDS = ("instant", "task", "show")
-RESOURCE_VALUE = re.compile(r"[A-Za-z0-9_.-]+")
 TYPES = {
     "int": lambda v: isinstance(v, int) and not isinstance(v, bool),
     "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v),
@@ -78,7 +94,6 @@ class Recipe:
         self.kind = meta.get("kind", "")
         self.description = meta.get("description", "")
         self.params = meta.get("params") or {}
-        self.resources = meta.get("resources") or []
 
     def summary(self):
         params = ", ".join(f"{k}: {p['type'] if isinstance(p, dict) else p}" for k, p in self.params.items())
@@ -141,10 +156,6 @@ def validate(recipe):
             t = p.get("type") if isinstance(p, dict) else p
             if t not in TYPES:
                 errors.append(f"параметр {k}: тип {t!r} — один из {', '.join(TYPES)}")
-    if not isinstance(recipe.resources, list) or not all(isinstance(x, str) and x.strip() for x in recipe.resources):
-        errors.append("resources — список непустых строк")
-    elif any(CODE.search(x) for x in recipe.resources):
-        errors.append("${code:…} в resources нельзя: ресурс — имя места или корабля")
     if not isinstance(recipe.steps, list) or not recipe.steps:
         errors.append("нет шагов (```steps со списком JSON)")
     else:
@@ -153,7 +164,7 @@ def validate(recipe):
                 errors.append(f"шаг {i}: {{\"method\", \"params\"}}")
             elif s.get("method") not in ALLOWED:
                 errors.append(f"шаг {i}: метод {s.get('method')!r} нельзя (можно: {', '.join(sorted(ALLOWED))})")
-    steps_text = json.dumps([recipe.steps, recipe.resources], ensure_ascii=False)
+    steps_text = json.dumps(recipe.steps, ensure_ascii=False)
     for k in sorted(set(PARAM.findall(steps_text)) - set(recipe.params if isinstance(recipe.params, dict) else {})):
         errors.append(f"${{{k}}} не объявлен в params")
     refs = set(CODE.findall(json.dumps(recipe.steps, ensure_ascii=False)))
@@ -168,27 +179,22 @@ def validate(recipe):
     return errors
 
 
-def load_all(dirs):
-    """Рецепты по имени из каталогов по порядку (поздний перекрывает ранний); негодные — в errors."""
+def load_all(directory):
+    """Рецепты каталога по имени; негодные — в errors."""
     found, errors = {}, {}
-    for d in dirs:
-        if not os.path.isdir(d):
+    for f in sorted(os.listdir(directory)):
+        if not f.endswith(".md"):
             continue
-        for f in sorted(os.listdir(d)):
-            if not f.endswith(".md"):
-                continue
-            path = os.path.join(d, f)
-            try:
-                r = parse(path)
-                problems = validate(r)
-            except RecipeError as e:
-                errors[f[:-3]] = [str(e)]
-                continue
-            if problems:
-                errors[f[:-3]] = problems
-            else:
-                found[r.name] = r
-                errors.pop(r.name, None)
+        try:
+            r = parse(os.path.join(directory, f))
+            problems = validate(r)
+        except RecipeError as e:
+            errors[f[:-3]] = [str(e)]
+            continue
+        if problems:
+            errors[f[:-3]] = problems
+        else:
+            found[r.name] = r
     return found, errors
 
 
@@ -222,17 +228,6 @@ def _text(v):
     if isinstance(v, float):
         return repr(round(v, 6)).removesuffix(".0") if v == int(v) else repr(round(v, 6))
     return str(v)
-
-
-def resources(recipe, values):
-    """Ресурсы задачи по рецепту: ${имя} — текстом ("ship:${ship}" → "ship:Grand")."""
-    def put(m):
-        text = _text(values[m.group(1)])
-        # пустое или с разделителями — общий замок на всех («ship:») или чужой ресурс
-        if not RESOURCE_VALUE.fullmatch(text):
-            raise RecipeError(f"{recipe.name}: {m.group(1)}={text!r} в resources — только латиница, цифры, _ . -")
-        return text
-    return [PARAM.sub(put, r) for r in recipe.resources]
 
 
 def substitute(obj, values, code=None):
@@ -291,26 +286,33 @@ def _failed(result):
     return None
 
 
-def run(recipe, given, bridge, ctx, check_call):
-    """Выполнить рецепт: охрана и вызов каждого шага, потом проверка. Ответ — {ok, steps, check}."""
+def guard(method, params):
+    """Причина отказа хука от падений или None: рецепт — как субагент (игрокам не пишет), подтверждений не ждёт."""
+    found = crash_guard.check_call(method, params, subagent=True)
+    return found[1] if found else None
+
+
+def run(recipe, given, call):
+    """Выполнить рецепт: хук и вызов моста call(method, params) на каждый шаг, потом проверка. Ответ — {ok, steps,
+    check}."""
     values = bind(recipe, given)
     steps = substitute(recipe.steps, values, recipe.code)
     done = []
     for i, step in enumerate(steps, 1):
-        reason = check_call(step["method"], step.get("params") or {}, ctx)
+        reason = guard(step["method"], step.get("params") or {})
         if reason:
-            raise RecipeError(f"{recipe.name}, шаг {i}: охрана — {reason}")
-        result = bridge.call(step["method"], step.get("params") or {})
+            raise RecipeError(f"{recipe.name}, шаг {i}: хук — {reason}")
+        result = call(step["method"], step.get("params") or {})
         failed = _failed(result)
         done.append({"method": step["method"], "result": _short(result)})
         if failed:
             return {"ok": False, "steps": done, "error": f"шаг {i}: {failed}"}
     if recipe.check:
         code = groovy(recipe.check, values)
-        reason = check_call("script", {"code": code}, ctx)
+        reason = guard("script", {"code": code})
         if reason:
-            raise RecipeError(f"{recipe.name}, проверка: охрана — {reason}")
-        check = bridge.call("script", {"code": code, "args": values, "timeout_ms": 5000})
+            raise RecipeError(f"{recipe.name}, проверка: хук — {reason}")
+        check = call("script", {"code": code, "args": values, "timeout_ms": 5000})
         ok = check.get("ok") and (check.get("value") is True
                                   or isinstance(check.get("value"), dict) and check["value"].get("ok") is True)
         return {"ok": bool(ok), "steps": done, "check": _short(check)}
@@ -320,3 +322,38 @@ def run(recipe, given, bridge, ctx, check_call):
 def _short(result, limit=1500):
     text = json.dumps(result, ensure_ascii=False)
     return result if len(text) <= limit else text[:limit] + "…"
+
+
+def main():
+    p = argparse.ArgumentParser(description="Рецепты ведущего: список и запуск")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    ls = sub.add_parser("list", help="рецепты каталога (и негодные — с ошибками)")
+    ls.add_argument("dir")
+    rn = sub.add_parser("run", help="выполнить рецепт")
+    rn.add_argument("dir")
+    rn.add_argument("name")
+    rn.add_argument("params", nargs="?", default="{}", help="параметры JSON")
+    a = p.parse_args()
+    found, errors = load_all(a.dir)
+    if a.cmd == "list":
+        for r in found.values():
+            print(r.summary())
+        for name, problems in errors.items():
+            print(f"НЕГОДЕН {name}: {'; '.join(problems)}")
+        return 0
+    if a.name not in found:
+        print(f"рецепта {a.name} нет" + (f": {'; '.join(errors[a.name])}" if a.name in errors else ""), file=sys.stderr)
+        return 1
+    # мост — вызов адаптера mcp/almighty.py, с его ALMIGHTY_URL и ALMIGHTY_TOKEN_FILE
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import almighty
+    try:
+        result = run(found[a.name], json.loads(a.params), almighty.rpc)
+    except (RecipeError, almighty.GmError, ValueError) as e:
+        result = {"ok": False, "error": str(e)}
+    print(json.dumps(result, ensure_ascii=False, indent=1))
+    return 0 if result["ok"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

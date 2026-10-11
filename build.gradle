@@ -87,14 +87,14 @@ dependencies {
     }
     additionalRuntimeClasspath 'org.apache.groovy:groovy:4.0.33'
 
-    // Immersive Aircraft 1.5.2 (Modrinth, версия ZZTlNkV9): привод самолётов ботом вызывается, только когда мод стоит
-    compileOnly 'maven.modrinth:immersive-aircraft:ZZTlNkV9'
-    devtestRuntimeOnly 'maven.modrinth:immersive-aircraft:ZZTlNkV9'
-    // Sable 2.0.5 (Modrinth, версия U678xqle; корабли Create Aeronautics): корабли (compat/sable) — через его открытую
+    // Immersive Aircraft 1.6.0 (Modrinth, версия ZCSI1mBS): привод самолётов ботом вызывается, только когда мод стоит
+    compileOnly 'maven.modrinth:immersive-aircraft:ZCSI1mBS'
+    devtestRuntimeOnly 'maven.modrinth:immersive-aircraft:ZCSI1mBS'
+    // Sable 2.0.6 (Modrinth, версия fg9dTRz9; корабли Create Aeronautics): корабли (compat/sable) — через его открытую
     // библиотеку sable-companion (MIT, её несёт сам Sable: в jar и mods.toml её нет); сам Sable — только GameTest
     compileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
-    devtestCompileOnly 'maven.modrinth:sable:U678xqle'
-    devtestRuntimeOnly 'maven.modrinth:sable:U678xqle'
+    devtestCompileOnly 'maven.modrinth:sable:fg9dTRz9'
+    devtestRuntimeOnly 'maven.modrinth:sable:fg9dTRz9'
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'

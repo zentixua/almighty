@@ -27,7 +27,7 @@ Immersive Aircraft, и всё это без окна игры. Игрокам с
 
 ## Установка
 
-1. Сервер NeoForge 21.1.250 или новее для Minecraft 1.21.1: `almighty-<версия>.jar` из
+1. Сервер NeoForge 21.1.259 или новее для Minecraft 1.21.1: `almighty-<версия>.jar` из
    [выпусков](https://github.com/zentixua/almighty/releases) — в `mods/` сервера.
 2. Запустить сервер один раз: появятся `config/almighty-common.toml` (адрес, порт, бюджет работ, скрипты) и
    `config/almighty/token`.

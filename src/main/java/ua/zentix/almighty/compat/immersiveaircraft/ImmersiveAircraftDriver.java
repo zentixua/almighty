@@ -26,12 +26,13 @@ import java.util.List;
  * ускорителя — сообщения клиента IA, их обработкой на сервере ({@code receiveServer}). Класс грузится, только когда мод
  * стоит ({@code Compat}). Поток сервера.
  * <p>
- * Рефлексия — только там, где открытого пути нет. Проверено по Immersive Aircraft 1.5.2+1.21.1 (NeoForge): шаг пилота
- * — защищённые {@code updateVelocity}, {@code applyBoost}, {@code updateController} класса {@code VehicleEntity}
- * (подклассы их переопределяют), зовёт их только {@code VehicleEntity.tick}, когда пилот «местный»; открытого метода
- * шага нет. Методы берутся у {@code VehicleEntity} ({@code getDeclaredMethod}), вызов идёт к переопределению
- * подкласса. Остальное — открытое: {@code setInputs}, {@code move}, сглаживание рулей, сообщения. Нет метода в другой
- * версии IA — предупреждение в лог, привод выключен ({@link #drives} — нет), самолёты бот не ведёт.
+ * Рефлексия — только там, где открытого пути нет. Проверено по Immersive Aircraft 1.5.2 и 1.6.0 для 1.21.1
+ * (NeoForge): шаг пилота — защищённые {@code updateVelocity}, {@code applyBoost}, {@code updateController} класса
+ * {@code VehicleEntity} (подклассы их переопределяют), зовёт их только {@code VehicleEntity.tick}, когда пилот
+ * «местный»; открытого метода шага нет. Методы берутся у {@code VehicleEntity} ({@code getDeclaredMethod}), вызов
+ * идёт к переопределению подкласса. Остальное — открытое: {@code setInputs}, {@code move}, сглаживание рулей,
+ * сообщения. Нет метода в другой версии IA — предупреждение в лог, привод выключен ({@link #drives} — нет), самолёты
+ * бот не ведёт.
  */
 public final class ImmersiveAircraftDriver implements VehicleDriver {
     public static final String MOD_ID = "immersive_aircraft";

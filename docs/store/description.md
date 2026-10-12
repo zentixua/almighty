@@ -61,8 +61,9 @@ Almighty depends on no other mod.
 
 ## How it is made
 
-The mod is designed by its author and tested on the author's own server. The code and the texts are written with
-Claude Code. The icon is a screenshot from the game; the gallery pictures are the bridge's own pictures from a server.
+I'm Zentix. I came up with Almighty, decided how every part of it should work, and test it with my friends on my own
+server. I write the code with Claude Code. The icon is a screenshot from the game; the gallery pictures are drawn by
+the mod itself on a server.
 
 ## Source and license
 

@@ -1,6 +1,6 @@
 {
   "name": "almighty-chat",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Claude Code channel: Minecraft players talk to the game master session through the Almighty bridge; replies go through the say tool of the Almighty MCP adapter",
   "author": { "name": "zentixua" },
   "license": "GPL-3.0-only"

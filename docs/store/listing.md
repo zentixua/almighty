@@ -37,7 +37,7 @@ rename categories from time to time.
 
 ## Files
 
-- Upload `almighty-<version>.jar` from https://github.com/zentixua/almighty/releases (the current version is 0.3.1).
+- Upload `almighty-<version>.jar` from https://github.com/zentixua/almighty/releases (the first release after 0.3.1, the one with English texts).
 - Release type: Release or Beta, owner's choice. Changelog: the matching `docs/releases/<version>.md`, which is in
   Russian; an English changelog has to be written for the first public upload.
 

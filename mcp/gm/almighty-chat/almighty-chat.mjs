@@ -16,14 +16,14 @@ import { CONTEXT_HEADER, Router, Turns } from './router.mjs'
 
 // пустая переменная — как незаданная: .mcp.json передаёт незаданные как «${X:-}»
 const list = (v, dflt) => (v || dflt).split(',').map(s => s.trim()).filter(Boolean)
-const URL = (process.env.ALMIGHTY_URL ?? 'http://127.0.0.1:25650').replace(/\/$/, '') + '/rpc'
+const URL = (process.env.ALMIGHTY_URL || 'http://127.0.0.1:25650').replace(/\/$/, '') + '/rpc'
 const TOKEN_FILE = process.env.ALMIGHTY_TOKEN_FILE
 // Язык того, что видят игроки (GM_LANG: en — по умолчанию, ru): имена ведущего в чате по умолчанию, строка над
 // хотбаром, запрос разрешения владельцу. Ответ владельца понимается на обоих языках (router.mjs).
 const TEXTS = {
   en: {
-    names: 'gm',
-    typoNames: 'claude',
+    names: 'claude,claud',
+    typoNames: '',
     thinking: 'the game master is thinking…',
     permission: (tool, preview, id) => `The game master asks for permission: ${tool} ${preview} — answer /gm yes ${id} or /gm no ${id}`
   },
@@ -35,7 +35,8 @@ const TEXTS = {
     permission: (tool, preview, id) => `Ведущий просит разрешения: ${tool} ${preview} — ответь /gm да ${id} или /gm нет ${id}`
   }
 }
-const T = TEXTS[process.env.GM_LANG || 'en'] ?? TEXTS.en
+const LANG = (process.env.GM_LANG || 'en').toLowerCase().slice(0, 2)
+const T = Object.hasOwn(TEXTS, LANG) ? TEXTS[LANG] : TEXTS.en
 const owners = list(process.env.GM_OWNERS, '')
 const router = new Router({
   names: list(process.env.GM_NAMES, T.names),
@@ -53,6 +54,7 @@ const log = (...a) => console.error('[almighty-chat]', ...a)
 
 let token = null
 async function bridge (method, params = {}, timeoutMs = 70_000) {
+  if (!TOKEN_FILE) throw new Error('ALMIGHTY_TOKEN_FILE is not set (config/almighty/token on the server)')
   token ??= readFileSync(TOKEN_FILE, 'utf8').trim()
   const r = await fetch(URL, {
     method: 'POST',
@@ -67,7 +69,7 @@ async function bridge (method, params = {}, timeoutMs = 70_000) {
 }
 
 const mcp = new Server(
-  { name: 'almighty-chat', version: '0.2.0' },
+  { name: 'almighty-chat', version: '0.3.0' },
   {
     capabilities: { experimental: { 'claude/channel': {}, 'claude/channel/permission': {} } },
     instructions: [

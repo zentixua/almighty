@@ -8,8 +8,8 @@
 HTTP-мост на сервере и MCP-адаптер `mcp/almighty.py` у агента. Своих блоков, предметов, пакетов и записей в
 реестрах нет (своё в данных — только метка сущностей `almighty:driven_by_rider`) — клиентам ставить не нужно, от
 других модов мод не зависит: совместимость с модом (`compat/`) грузится, только когда тот стоит. Репозиторий
-https://github.com/zentixua/almighty (публичный) выделен из zentixua/airstrike вместе с историей: номера
-PR до переезда — `zentixua/airstrike#N`. Мост стоит на сервере сборки «Incoming Pack» (zentixua/airstrike-pack,
+https://github.com/zentixua/almighty (публичный) выделен из zentixua/incoming вместе с историей: номера
+PR до переезда — `zentixua/incoming#N`. Мост стоит на сервере сборки «Incoming Pack» (zentixua/incoming-pack,
 `side = "server"`).
 
 ## Люди и правила
@@ -29,7 +29,7 @@ uv run mcp/almighty.py call status       # один вызов моста (ад�
 CI (GitHub Actions) проверяет каждый PR и push в `main`: набор ведущего, сборка, юнит-тесты, GameTest; jar — артефакт
 `almighty-jar`. Релиз: поднять `mod_version` (`gradle.properties`), написать `docs/releases/<версия>.md`, влить в
 `main` и запустить `build` вручную на `main` с `release=true` — workflow выпускает `v<версия>` с jar. Потом — PR в
-airstrike-pack с jar выпуска.
+incoming-pack с jar выпуска.
 
 ## Устройство (`ua.zentix.almighty`)
 - `Almighty` — подписки; `GmServer` — состояние одного запуска сервера (`ServerStartedEvent` … `ServerStoppedEvent`):
@@ -129,7 +129,7 @@ mcp/gm/tests` и `node --test` в `mcp/gm/almighty-chat/`.
   чанки аренды (`getChunkNow`), не дольше 2400 тиков.
 - Отпуск — не больше 64 чанков за тик (ваниль выгружает больше 2000 держателей разом в одном тике). Остановка
   сервера снимает всё сразу в `ServerStoppingEvent` с обычным приоритетом — раньше модов, которые на `LOWEST` ждут
-  конца генерации (`StopDrain` у Airstrike), иначе они ждали бы её и по тикетам ведущего. Предел — `work.max_chunks` (1500) вместе с кольцами.
+  конца генерации (`StopDrain` у Incoming), иначе они ждали бы её и по тикетам ведущего. Предел — `work.max_chunks` (1500) вместе с кольцами.
 - Чтение — только `getChunkNow` и сам `LevelChunk`: снимки и `blocks` незагруженное не грузят (шахматка, `?`);
   загрузить — `area.prepare`. Сущности — `getEntities` по рамке (загруженные секции, снимок списка).
 - Постройка ставит место как `/fill` (`FillCommand`): сперва `getBlockEntity` (поднимает отложенную блок-сущность

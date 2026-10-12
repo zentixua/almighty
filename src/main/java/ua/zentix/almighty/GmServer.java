@@ -105,7 +105,7 @@ public final class GmServer {
 
     /**
      * Остановка: мост закрыт, боты вышли (сохранились как игроки), правила сняты с шины, работы отменены, тикеты сняты
-     * сразу (до {@code StopDrain} Airstrike).
+     * сразу (до {@code StopDrain} Incoming).
      */
     void stop() {
         if (bridge != null) bridge.stop();

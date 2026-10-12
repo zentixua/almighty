@@ -234,7 +234,7 @@ def serve_mcp():
 
     @mcp.tool()
     def events(after: int = 0, wait: int = 0, limit: int = 200) -> str:
-        """Events after number after: chat, joins and leaves, deaths with cause, advancements, dimension changes,
+        """Events numbered after `after`: chat, joins and leaves, deaths with cause, advancements, dimension changes,
         player commands, gm (a player wrote to the game master privately with /gm <text>; reply privately with say and
         to), server stalls (lag), finished jobs (job), emit (rules and scripts), rule.off and rule.error (rule turned
         off, rule error). wait - wait up to 25 s for new events. boot changes when the server restarts."""
@@ -397,9 +397,10 @@ def serve_mcp():
         When a rule that drove a bot (bot.act or bot.send in the rule's script) is turned off, the bot stops: programs
         are dropped, keys released (bot_stopped event; bots_stopped in rule.off).
         Vehicles: get in with click use on it, get out with sneak. A horse, boat, pig or camel is driven with keys, as
-        by a client (jump while riding: hold and release jump); a mod vehicle that reads player input, once it has
-        the entity tag almighty:driven_by_rider (datapack). Immersive Aircraft vehicles: left/right, jump/sneak,
-        forward/back are its controls, as for a player (for an aircraft: heading, more/less thrust with brake, pitch);
+        by a client (jump while riding: hold and release jump); a mod vehicle that reads player input is driven
+        the same way once it has the entity tag almighty:driven_by_rider (datapack). Immersive Aircraft vehicles:
+        left/right, jump/sneak, forward/back are its controls, as for a player (for an aircraft: heading, more/less
+        thrust with brake, pitch);
         get out with press key.immersive_aircraft.dismount (in the air, twice within a second), boost with
         key.immersive_aircraft.boost."""
         given = {"name": name, "actions": actions, "pos": pos, "dimension": dimension, "yaw": yaw, "pitch": pitch,

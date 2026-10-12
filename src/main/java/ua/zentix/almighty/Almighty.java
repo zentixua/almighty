@@ -49,7 +49,7 @@ public final class Almighty {
         if (gm != null) gm.tickEnd();
     }
 
-    /** Обычный приоритет: тикеты ведущего сняты раньше, чем {@code StopDrain} Airstrike ({@code LOWEST}) ждёт генерацию. */
+    /** Обычный приоритет: тикеты ведущего сняты раньше, чем {@code StopDrain} Incoming ({@code LOWEST}) ждёт генерацию. */
     private static void onStopping(ServerStoppingEvent e) {
         GmServer gm = GmServer.of(e.getServer());
         if (gm != null) gm.stop();

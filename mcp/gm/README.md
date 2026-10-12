@@ -41,8 +41,8 @@ Settings are environment variables of the session:
 | `GM_TYPO_NAMES` | Names that are also recognised with one typo; meant for long names that no other word is one letter away from. |
 | `GM_BOT_PLAYERS` | Bots to listen to as if they were players, for testing. |
 
-With `GM_LANG=en`, the game master answers to `gm` and to `claude` with one typo, and the line above the hotbar is
-"the game master is thinking…". With `GM_LANG=ru`, the default names are Russian and Ukrainian words for "game master"
+With `GM_LANG=en`, the game master answers to `claude` and `claud`, and the line above the hotbar is "the game
+master is thinking…". With `GM_LANG=ru`, the default names are Russian and Ukrainian words for "game master"
 and "Claude" in Cyrillic and Latin letters, and the texts are in Russian.
 
 ## Crash guard hook

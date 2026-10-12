@@ -61,8 +61,10 @@ Almighty такой мод не зависит: без него файл про�
 1. Сервер Minecraft 1.21.1 на NeoForge 21.1.259 или новее. `almighty-<версия>.jar` из
    [выпусков](https://github.com/zentixua/almighty/releases) — в папку `mods/` сервера.
 2. Запустить сервер один раз: появятся `config/almighty-common.toml` и `config/almighty/token`.
-3. На машине агента поставить [uv](https://docs.astral.sh/uv/) и подключить адаптер к Claude Code:
+3. На машине агента поставить [uv](https://docs.astral.sh/uv/), взять адаптер из репозитория с меткой выпуска и
+   подключить его к Claude Code:
    ```sh
+   git clone --branch v<версия> https://github.com/zentixua/almighty
    claude mcp add almighty -e ALMIGHTY_TOKEN_FILE=/путь/к/серверу/config/almighty/token \
      -- uv run /путь/к/almighty/mcp/almighty.py mcp
    ```

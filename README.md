@@ -61,8 +61,10 @@ an empty file removes the note. The mod does not depend on Almighty: without it,
 1. Use a Minecraft 1.21.1 server with NeoForge 21.1.259 or newer. Put `almighty-<version>.jar` from the
    [releases](https://github.com/zentixua/almighty/releases) into the server's `mods/` folder.
 2. Start the server once. It creates `config/almighty-common.toml` and `config/almighty/token`.
-3. On the agent's machine, install [uv](https://docs.astral.sh/uv/) and add the adapter to Claude Code:
+3. On the agent's machine, install [uv](https://docs.astral.sh/uv/), get the adapter from the repository at the
+   release tag, and add it to Claude Code:
    ```sh
+   git clone --branch v<version> https://github.com/zentixua/almighty
    claude mcp add almighty -e ALMIGHTY_TOKEN_FILE=/path/to/server/config/almighty/token \
      -- uv run /path/to/almighty/mcp/almighty.py mcp
    ```

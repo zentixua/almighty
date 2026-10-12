@@ -57,7 +57,7 @@ public final class GmConfig {
         BOTS_MARKER = b.comment("Marker shown before a bot's name in the tab list and in chat. Empty: no marker.").define("marker", "[bot]");
         BOTS_ALLOW_DISGUISE = b.comment("Allow a bot to look like a player of this server: without the marker, with the name or skin of a player the server",
                         "knows (online, whitelisted, operator, or joined before). The bot still has its own UUID: when the real player joins,",
-                        "the bot gives the name up. The server owner decides.")
+                        "the bot gives the name up.")
                 .define("allow_disguise", false);
         b.pop();
         NAME = b.comment("Name the game master uses in chat and as the source of its commands.").define("name", "Claude");

@@ -5,7 +5,8 @@
 // Хуки сессии (hooks/hooks.json, тип http) сообщают каналу ответ ведущего в чат и конец хода: так канал знает,
 // с кем идёт разговор и кому показывать над хотбаром «ведущий думает…».
 // Контракт канала: https://code.claude.com/docs/en/channels-reference, хуки: https://code.claude.com/docs/en/hooks
-// Настройки — переменные среды: ALMIGHTY_URL, ALMIGHTY_TOKEN_FILE, GM_NAMES, GM_TYPO_NAMES, GM_OWNERS, GM_BOT_PLAYERS.
+// Настройки — переменные среды: ALMIGHTY_URL, ALMIGHTY_TOKEN_FILE, GM_LANG, GM_NAMES, GM_TYPO_NAMES, GM_OWNERS,
+// GM_BOT_PLAYERS.
 import { readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -13,21 +14,39 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { CONTEXT_HEADER, Router, Turns } from './router.mjs'
 
-const list = (v, dflt) => (v ?? dflt).split(',').map(s => s.trim()).filter(Boolean)
+// пустая переменная — как незаданная: .mcp.json передаёт незаданные как «${X:-}»
+const list = (v, dflt) => (v || dflt).split(',').map(s => s.trim()).filter(Boolean)
 const URL = (process.env.ALMIGHTY_URL ?? 'http://127.0.0.1:25650').replace(/\/$/, '') + '/rpc'
 const TOKEN_FILE = process.env.ALMIGHTY_TOKEN_FILE
+// Язык того, что видят игроки (GM_LANG: en — по умолчанию, ru): имена ведущего в чате по умолчанию, строка над
+// хотбаром, запрос разрешения владельцу. Ответ владельца понимается на обоих языках (router.mjs).
+const TEXTS = {
+  en: {
+    names: 'gm',
+    typoNames: 'claude',
+    thinking: 'the game master is thinking…',
+    permission: (tool, preview, id) => `The game master asks for permission: ${tool} ${preview} — answer /gm yes ${id} or /gm no ${id}`
+  },
+  ru: {
+    names: 'ведучий,ведучому,ведучого,ведучим,ведуча,клод,клода,клоду,клодом,клоде,клодик,' +
+      'клауд,клауда,клауду,клаудом,клауде,claud',
+    typoNames: 'ведущий,ведущая,ведущему,ведущего,ведущим,ведущей,ведущую,claude',
+    thinking: 'ведущий думает…',
+    permission: (tool, preview, id) => `Ведущий просит разрешения: ${tool} ${preview} — ответь /gm да ${id} или /gm нет ${id}`
+  }
+}
+const T = TEXTS[process.env.GM_LANG || 'en'] ?? TEXTS.en
 const owners = list(process.env.GM_OWNERS, '')
 const router = new Router({
-  names: list(process.env.GM_NAMES, 'ведучий,ведучому,ведучого,ведучим,ведуча,клод,клода,клоду,клодом,клоде,клодик,' +
-    'клауд,клауда,клауду,клаудом,клауде,claud'),
-  typoNames: list(process.env.GM_TYPO_NAMES, 'ведущий,ведущая,ведущему,ведущего,ведущим,ведущей,ведущую,claude'),
+  names: list(process.env.GM_NAMES, T.names),
+  typoNames: list(process.env.GM_TYPO_NAMES, T.typoNames),
   owners,
   botPlayers: list(process.env.GM_BOT_PLAYERS, '')
 })
 const turns = new Turns()
 // порт хуков — тот же, что в hooks/hooks.json
 const HOOK_PORT = 25680
-const THINKING = { text: 'ведущий думает…', color: 'gray', italic: true }
+const THINKING = { text: T.thinking, color: 'gray', italic: true }
 
 // stdout занят протоколом MCP: журнал — в stderr
 const log = (...a) => console.error('[almighty-chat]', ...a)
@@ -77,8 +96,7 @@ mcp.setNotificationHandler(z.object({
   params: z.object({ request_id: z.string(), tool_name: z.string(), description: z.string(), input_preview: z.string() })
 }), async ({ params }) => {
   const preview = params.input_preview.length > 300 ? params.input_preview.slice(0, 300) + '…' : params.input_preview
-  const text = `Ведущий просит разрешения: ${params.tool_name.replace(/^mcp__\w+?__/, '')} ${preview} ` +
-    `— ответь /gm да ${params.request_id} или /gm нет ${params.request_id}`
+  const text = T.permission(params.tool_name.replace(/^mcp__\w+?__/, ''), preview, params.request_id)
   await Promise.all(owners.map(owner => bridge('say', { text, to: [owner], style: 'chat' })
     .catch(e => log(`permission request to ${owner}:`, e.message))))
 })

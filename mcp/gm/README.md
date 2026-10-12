@@ -26,7 +26,7 @@ message to the game master. Joins, leaves, deaths, rules that were turned off, s
 minute) and bridge restarts are forwarded as they happen.
 
 Permission requests of the session go to the owners as private messages in the game; an owner answers
-`/gm да <id>` or `/gm нет <id>` (`yes`, `no`, `y` and `n` work too). The plugin's hooks (`hooks/hooks.json`, type
+`/gm yes <id>` or `/gm no <id>` (`y`, `n`, `да` and `нет` work too). The plugin's hooks (`hooks/hooks.json`, type
 http, port 25680) tell the channel when the game master replies in chat and when its turn ends. Until then, the
 player who is waiting sees a grey line above the hotbar.
 
@@ -36,13 +36,14 @@ Settings are environment variables of the session:
 |---|---|
 | `ALMIGHTY_URL`, `ALMIGHTY_TOKEN_FILE` | The bridge, as for the adapter. |
 | `GM_OWNERS` | Comma-separated owner names: they get permission requests and their answers count. |
+| `GM_LANG` | Language of what players see from the plugin: `en` (default) or `ru`. It sets the default names below, the line above the hotbar and the permission request. |
 | `GM_NAMES` | Names that address the game master in public chat, compared after lower-casing and folding repeated letters. |
 | `GM_TYPO_NAMES` | Names that are also recognised with one typo; meant for long names that no other word is one letter away from. |
 | `GM_BOT_PLAYERS` | Bots to listen to as if they were players, for testing. |
 
-By default, `GM_NAMES` and `GM_TYPO_NAMES` hold Russian and Ukrainian words for "game master", "Claude" in Cyrillic
-and `claude`/`claud`. The line above the hotbar ("ведущий думает…") and the permission request sent to the owner are
-in Russian; there is no setting for them yet.
+With `GM_LANG=en`, the game master answers to `gm` and to `claude` with one typo, and the line above the hotbar is
+"the game master is thinking…". With `GM_LANG=ru`, the default names are Russian and Ukrainian words for "game master"
+and "Claude" in Cyrillic and Latin letters, and the texts are in Russian.
 
 ## Crash guard hook
 

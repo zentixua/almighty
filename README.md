@@ -99,7 +99,6 @@ uv run mcp/almighty.py follow                                           # event 
 | `bots.allow_disguise` | `false` | Allow a bot without the marker, or with the name or skin of a player the server knows. A bot always has its own UUID and gives the name up when that player joins. |
 | `name` | `"Claude"` | Name the game master uses in chat and as the source of its commands. |
 
-A config file created by version 0.3.1 or earlier keeps its old marker `[бот]` until you change it.
 Rules saved with `persist` are stored in `<world>/almighty/rules.json`.
 
 ## Security

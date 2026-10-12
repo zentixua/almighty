@@ -9,7 +9,7 @@ HTTP-мост на сервере и MCP-адаптер `mcp/almighty.py` у а�
 реестрах нет (своё в данных — только метка сущностей `almighty:driven_by_rider`) — клиентам ставить не нужно, от
 других модов мод не зависит: совместимость с модом (`compat/`) грузится, только когда тот стоит. Репозиторий
 https://github.com/zentixua/almighty (публичный) выделен из zentixua/incoming вместе с историей: номера
-PR до переезда — `zentixua/incoming#N`. Мост стоит на сервере сборки «Incoming Pack» (zentixua/incoming-pack,
+PR до переезда — `zentixua/incoming#N`. Мост стоит на сервере сборки «Airstrike Pack» (zentixua/airstrike-pack,
 `side = "server"`).
 
 ## Люди и правила
@@ -29,7 +29,7 @@ uv run mcp/almighty.py call status       # один вызов моста (ад�
 CI (GitHub Actions) проверяет каждый PR и push в `main`: набор ведущего, сборка, юнит-тесты, GameTest; jar — артефакт
 `almighty-jar`. Релиз: поднять `mod_version` (`gradle.properties`), написать `docs/releases/<версия>.md`, влить в
 `main` и запустить `build` вручную на `main` с `release=true` — workflow выпускает `v<версия>` с jar. Потом — PR в
-incoming-pack с jar выпуска.
+airstrike-pack с jar выпуска.
 
 ## Устройство (`ua.zentix.almighty`)
 - `Almighty` — подписки; `GmServer` — состояние одного запуска сервера (`ServerStartedEvent` … `ServerStoppedEvent`):

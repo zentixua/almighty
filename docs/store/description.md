@@ -59,6 +59,11 @@ Almighty depends on no other mod.
 - **Sable** (the physics behind Create Aeronautics): the agent can read a ship's position, rotation, velocity and
   bounds.
 
+## How it is made
+
+The mod is designed by its author and tested on the author's own server. The code and the texts are written with
+Claude Code. The icon is a screenshot from the game; the gallery pictures are the bridge's own pictures from a server.
+
 ## Source and license
 
 Source, issues and documentation: https://github.com/zentixua/almighty. Licensed under GPL-3.0-only; the jar bundles

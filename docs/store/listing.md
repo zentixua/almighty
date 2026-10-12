@@ -36,6 +36,8 @@ sites rename categories from time to time.
 - **Issues:** https://github.com/zentixua/almighty/issues
 - **Wiki:** none; the README on GitHub is the documentation.
 - **Discord:** none.
+- **Content disclosure:** on Modrinth, "Contains AI-generated content": the code is written with Claude Code, and the
+  mod exists for AI agents. It is set by hand in the project's Settings → Disclosures. CurseForge has no such field.
 
 ## Files
 
@@ -46,7 +48,8 @@ sites rename categories from time to time.
 
 ## Gallery
 
-The icon is `docs/media/icon.png` (512×512), the same picture as the mod's logo `almighty.png` in the jar. The
+The icon is `docs/media/icon.png` (512×512), the same picture as the mod's logo `almighty.png` in the jar. CurseForge
+takes a 400×400 avatar and no WebP, so its avatar is `docs/media/icon-400.png`, the same picture scaled down. The
 gallery shows the bridge's own pictures from a server, enlarged three times without smoothing. In this order (the first
 one is featured):
 

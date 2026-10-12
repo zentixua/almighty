@@ -8,8 +8,8 @@
 HTTP-мост на сервере и MCP-адаптер `mcp/almighty.py` у агента. Своих блоков, предметов, пакетов и записей в
 реестрах нет (своё в данных — только метка сущностей `almighty:driven_by_rider`) — клиентам ставить не нужно, от
 других модов мод не зависит: совместимость с модом (`compat/`) грузится, только когда тот стоит. Репозиторий
-https://github.com/zentixua/almighty (публичный). Мост стоит на сервере сборки «Airstrike Pack»
-(zentixua/airstrike-pack, `side = "server"`).
+https://github.com/zentixua/almighty (публичный). Мост стоит на сервере сборки «Open Skies»
+(zentixua/open-skies, `side = "server"`).
 
 ## Люди и правила
 - Автор: **Артём** (GitHub zentixua, в игре ZentixUA). Общаемся по-русски, кратко и по делу.
@@ -28,7 +28,7 @@ uv run mcp/almighty.py call status       # один вызов моста (ад�
 CI (GitHub Actions) проверяет каждый PR и push в `main`: набор ведущего, сборка, юнит-тесты, GameTest; jar — артефакт
 `almighty-jar`. Релиз: поднять `mod_version` (`gradle.properties`), написать `docs/releases/<версия>.md`, влить в
 `main` и запустить `build` вручную на `main` с `release=true` — workflow выпускает `v<версия>` с jar. Потом — PR в
-airstrike-pack с jar выпуска. Страницы Modrinth и CurseForge — workflow `publish`, только ручным запуском: `draft`
+open-skies с jar выпуска. Страницы Modrinth и CurseForge — workflow `publish`, только ручным запуском: `draft`
 (скрытый черновик Modrinth), `submit`, `release`; поля — `docs/store/modrinth.json`, порядок — `docs/store/listing.md`.
 
 ## Устройство (`ua.zentix.almighty`)

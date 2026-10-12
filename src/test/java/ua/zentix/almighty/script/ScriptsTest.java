@@ -12,8 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Срок скрипта идёт только во время его вызова. На Zearth скрипт отдал замыкание игре сравнением тикетов
- * ({@code TicketType.create}), игра позвала его после срока — и мир упал на {@code TimeoutException}.
+ * Срок скрипта идёт только во время его вызова: замыкание, отданное игре сравнением тикетов
+ * ({@code TicketType.create}), игра зовёт после срока, и {@code TimeoutException} в нём уронил бы мир.
  */
 class ScriptsTest {
     private static final long TIMEOUT_MS = 50;

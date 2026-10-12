@@ -411,7 +411,7 @@ public final class Rules {
             feed.add("rule.off", d);
         }
 
-        /** «Мёртвая рука»: бот автопилота не держит последний ввод (самолёт с рулём вниз ушёл в море). */
+        /** «Мёртвая рука»: бот автопилота не держит последний ввод (иначе самолёт с рулём вниз уходит в море). */
         private JsonArray stopDriven(String reason) {
             JsonArray stopped = new JsonArray();
             for (Bot bot : driven) {

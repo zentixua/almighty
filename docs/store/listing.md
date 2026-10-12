@@ -5,7 +5,7 @@ Fields to paste into the project forms. The long description is [description.md]
 ## Name and summary
 
 - **Title:** "Almighty: AI Game Master" (the name stays Almighty)
-- **Slug:** `almighty` on Modrinth (free, checked 2026-10-12). On CurseForge `almighty` is taken by a 2023 Fabric
+- **Slug:** `almighty` on Modrinth. On CurseForge `almighty` is taken by a 2023 Fabric
   modpack named "Almighty" (https://www.curseforge.com/minecraft/modpacks/almighty), so use `almighty-game-master`
   there; the title with "AI Game Master" keeps the two apart.
 - **Summary** (206 of 256 characters):
@@ -26,7 +26,7 @@ Fields to paste into the project forms. The long description is [description.md]
 | Dependencies | none required; optional: Immersive Aircraft, Sable | none required; optional: Immersive Aircraft, Sable |
 
 The mod has no blocks, items or network packets, so clients never need it. Sable is on both sites (on CurseForge
-with the slug `sable`, by the same authors, checked 2026-10-12). Check the category names against the forms: both
+with the slug `sable`, by the same authors). Check the category names against the forms: both
 sites rename categories from time to time.
 
 ## License and links

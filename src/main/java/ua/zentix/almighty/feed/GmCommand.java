@@ -37,7 +37,7 @@ public final class GmCommand {
         ServerPlayer player = source.getPlayerOrException();
         GmServer gm = GmServer.of(source.getServer());
         if (gm == null) {
-            source.sendFailure(Component.literal("Ведущего на этом сервере нет"));
+            source.sendFailure(Component.literal("The game master is not running on this server"));
             return 0;
         }
         JsonObject d = FeedListeners.where(player);

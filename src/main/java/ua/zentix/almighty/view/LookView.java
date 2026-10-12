@@ -47,7 +47,7 @@ public final class LookView extends View {
             try {
                 return valueOf(s.toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
-                throw RpcException.badRequest("look: north, south, east, west, down или up");
+                throw RpcException.badRequest("look: north, south, east, west, down or up");
             }
         }
     }
@@ -76,11 +76,11 @@ public final class LookView extends View {
         this.width = extent(look.u, size);
         this.height = extent(look.v, size);
         this.depth = extent(look.d, size);
-        if (width > MAX_FACE || height > MAX_FACE) throw RpcException.badRequest("Грань рамки — не больше " + MAX_FACE + "×" + MAX_FACE + " блоков");
-        if (depth > MAX_DEPTH) throw RpcException.badRequest("Глубина рамки — не больше " + MAX_DEPTH + " блоков");
-        if ((long) width * height * depth > MAX_VOLUME) throw RpcException.badRequest("Рамка — не больше " + MAX_VOLUME + " блоков");
+        if (width > MAX_FACE || height > MAX_FACE) throw RpcException.badRequest("Box face: at most " + MAX_FACE + "×" + MAX_FACE + " blocks");
+        if (depth > MAX_DEPTH) throw RpcException.badRequest("Box depth: at most " + MAX_DEPTH + " blocks");
+        if ((long) width * height * depth > MAX_VOLUME) throw RpcException.badRequest("Box: at most " + MAX_VOLUME + " blocks");
         int minY = level.getMinBuildHeight(), maxY = level.getMaxBuildHeight() - 1;
-        if (min[1] > maxY || min[1] + size[1] - 1 < minY) throw RpcException.badRequest("Рамка вне высот мира " + minY + ".." + maxY);
+        if (min[1] > maxY || min[1] + size[1] - 1 < minY) throw RpcException.badRequest("Box is outside the world height range " + minY + ".." + maxY);
         this.png = new Png(width, height);
     }
 
@@ -146,7 +146,7 @@ public final class LookView extends View {
         legend.add("depth_dir", vector(look.d));
         legend.addProperty("cells", width + "×" + height);
         legend.addProperty("depth", depth);
-        legend.addProperty("shading", "чем темнее, тем дальше от ближней грани; голубой — насквозь пусто; белёсый налёт — стекло, барьер и другие блоки без цвета карты на пути; шахматка — чанк не загружен");
+        legend.addProperty("shading", "darker is farther from the near face; light blue: empty all the way through; whitish film: glass, barriers and other blocks without a map colour on the way; checkerboard: chunk not loaded");
         image(png, 0, 0, 0);
         finish();
     }

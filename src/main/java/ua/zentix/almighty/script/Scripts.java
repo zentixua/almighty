@@ -101,12 +101,12 @@ public final class Scripts {
         try {
             @SuppressWarnings("unchecked")
             Class<? extends Script> type = loader.parseClass(new GroovyCodeSource(code, file, "/groovy/almighty"));
-            if (!Script.class.isAssignableFrom(type)) throw new CompileError("Ожидается скрипт, а не объявление класса " + type.getName());
+            if (!Script.class.isAssignableFrom(type)) throw new CompileError("Expected a script, not a class declaration: " + type.getName());
             return new Compiled(type, loader, file, timeoutMs);
         } catch (CompilationFailedException e) {
             closeQuietly(loader);
             String text = e.getMessage().replaceFirst("^startup failed:\\s*", "");
-            throw new CompileError(text.replace(file + ": ", "строка "));
+            throw new CompileError(text.replace(file + ": ", "line "));
         } catch (CompileError e) {
             closeQuietly(loader);
             throw e;
@@ -167,7 +167,7 @@ public final class Scripts {
             }
         }
         String message = cause instanceof TimeoutException
-                ? "Скрипт шёл дольше " + script.timeoutMs() + " мс и прерван; сделанное до этого места осталось"
+                ? "Script ran longer than " + script.timeoutMs() + " ms and was interrupted; changes made up to that point remain"
                 : cause.getClass().getSimpleName() + (cause.getMessage() == null ? "" : ": " + cause.getMessage());
         return new Result(null, cause, message, line, text.toString(), System.nanoTime() - start);
     }
@@ -200,7 +200,7 @@ public final class Scripts {
 
         @Override
         public String toString() {
-            return cut ? text + "\n… вывод отрезан на " + MAX_OUTPUT / 1024 + " КБ" : text.toString();
+            return cut ? text + "\n… output cut at " + MAX_OUTPUT / 1024 + " KB" : text.toString();
         }
     }
 }

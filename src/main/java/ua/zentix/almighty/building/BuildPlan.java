@@ -100,7 +100,7 @@ public final class BuildPlan<B> {
 
     /** Разобрать операции; высоты — в {@code [minY, maxY]}, мест — не больше {@code maxBlocks}. */
     public static <B> BuildPlan<B> parse(JsonArray json, Resolver<B> resolver, int minY, int maxY, long maxBlocks) throws RpcException {
-        if (json.isEmpty() || json.size() > MAX_OPS) throw RpcException.badRequest("ops: от 1 до " + MAX_OPS + " операций");
+        if (json.isEmpty() || json.size() > MAX_OPS) throw RpcException.badRequest("ops: 1 to " + MAX_OPS + " operations");
         Map<String, B> cache = new HashMap<>();
         Resolver<B> cached = s -> {
             B b = cache.get(s);
@@ -114,7 +114,7 @@ public final class BuildPlan<B> {
         long total = 0;
         for (int i = 0; i < json.size(); i++) {
             JsonElement e = json.get(i);
-            if (!e.isJsonObject()) throw RpcException.badRequest("ops[" + i + "]: ожидается объект");
+            if (!e.isJsonObject()) throw RpcException.badRequest("ops[" + i + "]: expected an object");
             Op<B> op;
             try {
                 op = op(new Args(e.getAsJsonObject()), cached);
@@ -123,13 +123,13 @@ public final class BuildPlan<B> {
             }
             int[] b = op.bounds();
             if (op.size() > 0 && (b[1] < minY || b[4] > maxY)) {
-                throw RpcException.badRequest("ops[" + i + "]: высоты " + b[1] + ".." + b[4] + " вне мира " + minY + ".." + maxY);
+                throw RpcException.badRequest("ops[" + i + "]: heights " + b[1] + ".." + b[4] + " are outside the world (" + minY + ".." + maxY + ")");
             }
             total += op.size();
-            if (total > maxBlocks) throw RpcException.badRequest("Постройка больше " + maxBlocks + " мест: разбить на части");
+            if (total > maxBlocks) throw RpcException.badRequest("Build larger than " + maxBlocks + " positions: split it into parts");
             if (op.size() > 0) ops.add(op);
         }
-        if (ops.isEmpty()) throw RpcException.badRequest("В постройке нет ни одного места");
+        if (ops.isEmpty()) throw RpcException.badRequest("The build covers no positions");
         return new BuildPlan<>(ops);
     }
 
@@ -139,7 +139,7 @@ public final class BuildPlan<B> {
             case "fill" -> {
                 String mode = args.string("mode", "replace").toLowerCase(Locale.ROOT);
                 if (!List.of("replace", "keep", "hollow", "outline").contains(mode)) {
-                    throw RpcException.badRequest("mode: replace, keep, hollow или outline");
+                    throw RpcException.badRequest("mode: replace, keep, hollow or outline");
                 }
                 B air = mode.equals("hollow") ? resolver.resolve("minecraft:air") : null;
                 yield new Fill<>(args.ints("from", 3), args.ints("to", 3), resolver.resolve(args.string("block")), mode, air);
@@ -149,7 +149,7 @@ public final class BuildPlan<B> {
                 yield new Fill<>(p, p, resolver.resolve(args.string("block")), "replace", null);
             }
             case "layers" -> layers(args, resolver);
-            default -> throw RpcException.badRequest("op: fill, set или layers, а не " + kind);
+            default -> throw RpcException.badRequest("op: fill, set or layers, not " + kind);
         };
     }
 
@@ -215,8 +215,8 @@ public final class BuildPlan<B> {
         JsonObject paletteJson = args.object("palette");
         Map<Character, B> palette = new HashMap<>();
         for (Map.Entry<String, JsonElement> e : paletteJson.entrySet()) {
-            if (e.getKey().length() != 1) throw RpcException.badRequest("palette: ключ — один символ, а не «" + e.getKey() + "»");
-            if (!e.getValue().isJsonPrimitive()) throw RpcException.badRequest("palette." + e.getKey() + ": ожидается строка блока");
+            if (e.getKey().length() != 1) throw RpcException.badRequest("palette: a key is one character, not \"" + e.getKey() + "\"");
+            if (!e.getValue().isJsonPrimitive()) throw RpcException.badRequest("palette." + e.getKey() + ": expected a block string");
             palette.put(e.getKey().charAt(0), resolver.resolve(e.getValue().getAsString()));
         }
         JsonArray layersJson = args.array("layers");
@@ -224,10 +224,10 @@ public final class BuildPlan<B> {
         for (int i = 0; i < layersJson.size(); i++) {
             JsonElement layer = layersJson.get(i);
             JsonElement rows = layer.isJsonObject() ? layer.getAsJsonObject().get("rows") : layer;
-            if (rows == null || !rows.isJsonArray()) throw RpcException.badRequest("layers[" + i + "]: ожидается массив строк или {\"rows\": [...]}");
+            if (rows == null || !rows.isJsonArray()) throw RpcException.badRequest("layers[" + i + "]: expected an array of strings or {\"rows\": [...]}");
             List<String> list = new ArrayList<>();
             for (JsonElement row : rows.getAsJsonArray()) {
-                if (!row.isJsonPrimitive() || !row.getAsJsonPrimitive().isString()) throw RpcException.badRequest("layers[" + i + "]: строки — строками");
+                if (!row.isJsonPrimitive() || !row.getAsJsonPrimitive().isString()) throw RpcException.badRequest("layers[" + i + "]: rows must be strings");
                 list.add(row.getAsString());
             }
             layers.add(list.toArray(String[]::new));

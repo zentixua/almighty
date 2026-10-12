@@ -51,7 +51,7 @@ public final class ScriptApi {
     }
 
     public Object commandAs(Entity entity, List<String> commands) {
-        if (entity == null) throw new IllegalArgumentException("commandAs: сущность null");
+        if (entity == null) throw new IllegalArgumentException("commandAs: entity is null");
         ServerLevel level = (ServerLevel) entity.level();
         return Json.toJava(CommandRunner.run(server, level, entity.position(), entity, commands, quiet));
     }

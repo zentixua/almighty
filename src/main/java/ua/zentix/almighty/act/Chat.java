@@ -41,7 +41,7 @@ public final class Chat {
                 if (p == null) missing.add(name);
                 else to.add(p);
             }
-            if (!missing.isEmpty()) throw RpcException.notFound("Нет в игре: " + String.join(", ", missing));
+            if (!missing.isEmpty()) throw RpcException.notFound("Not online: " + String.join(", ", missing));
         } else {
             to.addAll(server.getPlayerList().getPlayers());
         }
@@ -65,9 +65,9 @@ public final class Chat {
                 }
             }
             case "actionbar" -> to.forEach(p -> p.sendSystemMessage(text, true));
-            default -> throw RpcException.badRequest("style: chat, title, subtitle или actionbar");
+            default -> throw RpcException.badRequest("style: chat, title, subtitle or actionbar");
         }
-        if (!style.equals("chat") || args.has("to")) LOG.info("Ведущий ({}): {}", style, text.getString());
+        if (!style.equals("chat") || args.has("to")) LOG.info("GM ({}): {}", style, text.getString());
         JsonObject out = new JsonObject();
         out.addProperty("players", to.size());
         return out;

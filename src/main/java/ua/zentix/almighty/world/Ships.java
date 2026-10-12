@@ -54,7 +54,7 @@ public final class Ships {
 
     /** Метод {@code ships}: {@code name} — один по имени; {@code center} + {@code radius} — рамкой рядом; измерение. */
     public static JsonArray describe(MinecraftServer server, Args a) throws RpcException {
-        if (!available()) throw RpcException.unavailable("Кораблей нет: мод кораблей (Sable) не стоит");
+        if (!available()) throw RpcException.unavailable("No ships: the ship mod (Sable) is not installed");
         ServerLevel level = Dims.level(server, a);
         String name = a.string("name", null);
         Vec3 center = null;

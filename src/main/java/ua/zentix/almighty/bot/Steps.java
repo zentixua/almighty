@@ -82,12 +82,12 @@ final class Steps {
     }
 
     static List<Step> parse(JsonArray array) throws RpcException {
-        if (array.isEmpty()) throw RpcException.badRequest("actions: пустой список");
-        if (array.size() > MAX_STEPS) throw RpcException.badRequest("actions: не больше " + MAX_STEPS + " шагов");
+        if (array.isEmpty()) throw RpcException.badRequest("actions: empty list");
+        if (array.size() > MAX_STEPS) throw RpcException.badRequest("actions: at most " + MAX_STEPS + " steps");
         List<Step> out = new ArrayList<>();
         for (int i = 0; i < array.size(); i++) {
             JsonElement e = array.get(i);
-            if (!e.isJsonObject()) throw RpcException.badRequest("actions[" + i + "]: ожидается объект, например {\"hold\": \"forward\"}");
+            if (!e.isJsonObject()) throw RpcException.badRequest("actions[" + i + "]: expected an object, for example {\"hold\": \"forward\"}");
             try {
                 out.add(step(new Args(e.getAsJsonObject())));
             } catch (RpcException x) {
@@ -115,13 +115,13 @@ final class Steps {
         if (a.has("look_at")) return new LookAt(Target.parse(a, "look_at"));
         if (a.has("click")) {
             String button = a.string("click");
-            if (!button.equals("attack") && !button.equals("use")) throw RpcException.badRequest("click: attack или use");
+            if (!button.equals("attack") && !button.equals("use")) throw RpcException.badRequest("click: attack or use");
             return new Click(button.equals("attack"), a.has("at") ? Target.parse(a, "at") : null);
         }
         if (a.has("slot")) return packet("slot", new ServerboundSetCarriedItemPacket(a.integer("slot", 0, 8)));
         if (a.has("drop")) {
             String what = a.string("drop");
-            if (!what.equals("one") && !what.equals("stack")) throw RpcException.badRequest("drop: one или stack");
+            if (!what.equals("one") && !what.equals("stack")) throw RpcException.badRequest("drop: one or stack");
             return packet("drop", new ServerboundPlayerActionPacket(what.equals("one")
                     ? ServerboundPlayerActionPacket.Action.DROP_ITEM : ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS, BlockPos.ZERO, Direction.DOWN));
         }
@@ -131,7 +131,7 @@ final class Steps {
             try {
                 mode = ClickType.valueOf(a.string("mode", "pickup").toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
-                throw RpcException.badRequest("mode: pickup, quick_move, swap, clone, throw, quick_craft или pickup_all");
+                throw RpcException.badRequest("mode: pickup, quick_move, swap, clone, throw, quick_craft or pickup_all");
             }
             return new MenuClick(a.integer("menu", -999, 1023), a.integer("button", 0, 0, 40), mode);
         }
@@ -141,7 +141,7 @@ final class Steps {
         if (a.has("sign")) {
             int[] pos = a.ints("sign", 3);
             List<String> lines = a.has("lines") ? a.strings("lines") : List.of();
-            if (lines.size() > 4) throw RpcException.badRequest("lines: не больше 4 строк");
+            if (lines.size() > 4) throw RpcException.badRequest("lines: at most 4 lines");
             String[] four = {"", "", "", ""};
             for (int i = 0; i < lines.size(); i++) four[i] = text(lines.get(i), 384, "lines");
             return packet("sign", new ServerboundSignUpdatePacket(new BlockPos(pos[0], pos[1], pos[2]), a.bool("front", true), four[0], four[1], four[2], four[3]));
@@ -159,24 +159,24 @@ final class Steps {
             try {
                 action = ServerboundPlayerCommandPacket.Action.valueOf(a.string("player_command").toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
-                throw RpcException.badRequest("player_command: start_fall_flying, stop_sleeping, start_riding_jump, stop_riding_jump, open_inventory, start_sprinting, stop_sprinting, press_shift_key или release_shift_key");
+                throw RpcException.badRequest("player_command: start_fall_flying, stop_sleeping, start_riding_jump, stop_riding_jump, open_inventory, start_sprinting, stop_sprinting, press_shift_key or release_shift_key");
             }
             return new PlayerCommand(action, a.integer("data", 0, 0, 100));
         }
         if (a.has("walk_to")) {
             JsonArray to = a.array("walk_to");
-            if (to.size() != 2 && to.size() != 3) throw RpcException.badRequest("walk_to: [x, z] или [x, y, z]");
+            if (to.size() != 2 && to.size() != 3) throw RpcException.badRequest("walk_to: [x, z] or [x, y, z]");
             double[] v = numbers(a, "walk_to", to.size());
             return new WalkTo(v[0], v.length == 3 ? v[2] : v[1], a.bool("sprint", false), a.number("within", 0.6, 0.1, 8), a.integer("max_ticks", 1200, 1, MAX_WAIT));
         }
-        throw RpcException.badRequest("неизвестный шаг " + a.raw().keySet() + ": wait, hold, release, look, turn, look_at, click, slot, drop, swap_hands, menu, menu_button, close, chat, sign, respawn, press, payload, fly, player_command, walk_to");
+        throw RpcException.badRequest("unknown step " + a.raw().keySet() + "; steps: wait, hold, release, look, turn, look_at, click, slot, drop, swap_hands, menu, menu_button, close, chat, sign, respawn, press, payload, fly, player_command, walk_to");
     }
 
     private static Set<Controls.Key> keys(Args a, String name) throws RpcException {
         Set<Controls.Key> out = EnumSet.noneOf(Controls.Key.class);
         for (String s : a.strings(name)) {
             Controls.Key key = Controls.Key.parse(s);
-            if (key == null) throw RpcException.badRequest(name + ": клавиши forward, back, left, right, jump, sneak, sprint, attack, use");
+            if (key == null) throw RpcException.badRequest(name + ": keys are forward, back, left, right, jump, sneak, sprint, attack, use");
             out.add(key);
         }
         return out;
@@ -184,22 +184,22 @@ final class Steps {
 
     static double[] numbers(Args a, String name, int count) throws RpcException {
         JsonArray arr = a.array(name);
-        if (arr.size() != count) throw RpcException.badRequest(name + ": ожидается " + count + " числа");
+        if (arr.size() != count) throw RpcException.badRequest(name + ": expected " + count + " numbers");
         double[] out = new double[count];
         for (int i = 0; i < count; i++) {
             JsonElement v = arr.get(i);
-            if (!v.isJsonPrimitive() || !v.getAsJsonPrimitive().isNumber()) throw RpcException.badRequest(name + ": ожидаются числа");
+            if (!v.isJsonPrimitive() || !v.getAsJsonPrimitive().isNumber()) throw RpcException.badRequest(name + ": expected numbers");
             out[i] = v.getAsDouble();
-            if (!Double.isFinite(out[i]) || Math.abs(out[i]) > 3e7) throw RpcException.badRequest(name + ": число вне мира");
+            if (!Double.isFinite(out[i]) || Math.abs(out[i]) > 3e7) throw RpcException.badRequest(name + ": number outside the world");
         }
         return out;
     }
 
     /** Текст, который сервер примет от клиента: без § и управляющих символов (иначе он отключает игрока). */
     private static String text(String s, int max, String name) throws RpcException {
-        if (s.length() > max) throw RpcException.badRequest(name + ": не длиннее " + max + " символов");
+        if (s.length() > max) throw RpcException.badRequest(name + ": at most " + max + " characters");
         for (int i = 0; i < s.length(); i++) {
-            if (!StringUtil.isAllowedChatCharacter(s.charAt(i))) throw RpcException.badRequest(name + ": символ «§» и управляющие символы сервер не принимает");
+            if (!StringUtil.isAllowedChatCharacter(s.charAt(i))) throw RpcException.badRequest(name + ": the server does not accept § or control characters");
         }
         return s;
     }
@@ -237,7 +237,7 @@ final class Steps {
                 ServerPlayer named = p.server.getPlayerList().getPlayerByName(entity);
                 if (named != null && named.level() == p.level()) target = named;
             }
-            if (target == null) throw new Failed("нет сущности «" + entity + "» в измерении бота");
+            if (target == null) throw new Failed("no entity \"" + entity + "\" in the bot's dimension");
             return target.getBoundingBox().getCenter();
         }
     }
@@ -307,14 +307,14 @@ final class Steps {
 
         static Payload parse(Args a) throws RpcException {
             ResourceLocation id = ResourceLocation.tryParse(a.string("payload"));
-            if (id == null) throw RpcException.badRequest("payload: id пакета вида namespace:path");
+            if (id == null) throw RpcException.badRequest("payload: packet id of the form namespace:path");
             byte[] data;
             try {
                 data = Base64.getDecoder().decode(a.string("data", ""));
             } catch (IllegalArgumentException e) {
-                throw RpcException.badRequest("data: байты пакета в base64");
+                throw RpcException.badRequest("data: packet bytes in base64");
             }
-            if (data.length > MAX_BYTES) throw RpcException.badRequest("data: не больше " + MAX_BYTES + " байт");
+            if (data.length > MAX_BYTES) throw RpcException.badRequest("data: at most " + MAX_BYTES + " bytes");
             return new Payload(id, data);
         }
 
@@ -332,13 +332,13 @@ final class Steps {
                 left = buf.readableBytes();
             } catch (Exception | StackOverflowError | LinkageError e) {
                 // у клиента это ловит netty и отключает его; в тике сервера ошибка кодека уронила бы сервер
-                throw new Failed("пакет " + id + " не разобран: " + e);
+                throw new Failed("packet " + id + " failed to decode: " + e);
             } finally {
                 buf.release();
             }
-            if (packet.payload() instanceof DiscardedPayload) throw new Failed("у модов сервера нет пакета " + id + " от клиента");
+            if (packet.payload() instanceof DiscardedPayload) throw new Failed("no client packet " + id + " among the server's mods");
             // сетевой слой отключил бы клиента за пакет длиннее, чем прочёл кодек
-            if (left > 0) throw new Failed("пакет " + id + ": лишние байты после разбора — " + left);
+            if (left > 0) throw new Failed("packet " + id + ": extra bytes after decoding: " + left);
             bot.send(packet);
             out.addProperty("bytes", data.length);
             return true;
@@ -380,7 +380,7 @@ final class Steps {
         @Override
         public boolean tick(Bot bot, ServerPlayer p, JsonObject out) {
             out.addProperty("do", attack ? "click_attack" : "click_use");
-            if (p.isDeadOrDying()) throw new Failed("бот мёртв: сперва respawn");
+            if (p.isDeadOrDying()) throw new Failed("the bot is dead: respawn first");
             if (at != null) lookAt(p, at.resolve(p));
             JsonObject r = attack ? bot.controls.attack(p) : bot.controls.use(p);
             for (String k : r.keySet()) out.add(k, r.get(k));
@@ -394,7 +394,7 @@ final class Steps {
             out.addProperty("do", "menu");
             AbstractContainerMenu menu = p.containerMenu;
             if (slot != -999 && (slot < 0 || slot >= menu.slots.size())) {
-                throw new Failed("в меню " + menu.slots.size() + " ячеек (0.." + (menu.slots.size() - 1) + ", -999 — мимо окна)");
+                throw new Failed("the menu has " + menu.slots.size() + " slots (0.." + (menu.slots.size() - 1) + ", -999 for outside the window)");
             }
             bot.send(new ServerboundContainerClickPacket(menu.containerId, menu.getStateId(), slot, button, mode, ItemStack.EMPTY, new Int2ObjectOpenHashMap<>()));
             if (slot >= 0) out.add("slot", item(p.containerMenu.getSlot(slot).getItem()));
@@ -458,7 +458,7 @@ final class Steps {
         public boolean tick(Bot bot, ServerPlayer p, JsonObject out) {
             out.addProperty("do", "respawn");
             if (!p.isDeadOrDying()) {
-                out.addProperty("ignored", "бот жив");
+                out.addProperty("ignored", "the bot is alive");
                 return true;
             }
             bot.send(new ServerboundClientCommandPacket(ServerboundClientCommandPacket.Action.PERFORM_RESPAWN));
@@ -502,9 +502,9 @@ final class Steps {
             double dist = Math.sqrt(dx * dx + dz * dz);
             String reason = null;
             if (dist <= within) reason = "";
-            else if (p.isDeadOrDying()) reason = "бот умер";
-            else if (ticks >= maxTicks) reason = "не дошёл за " + maxTicks + " тиков";
-            else if (sinceBetter >= 60) reason = "застрял";
+            else if (p.isDeadOrDying()) reason = "the bot died";
+            else if (ticks >= maxTicks) reason = "did not arrive within " + maxTicks + " ticks";
+            else if (sinceBetter >= 60) reason = "stuck";
             if (reason != null) {
                 cancel(bot, p);
                 out.addProperty("do", "walk_to");

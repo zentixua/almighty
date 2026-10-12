@@ -27,7 +27,7 @@ class Commands(unittest.TestCase):
             self.assertEqual(decision("command", {"commands": [c]}), "ask", c)
 
     def test_ordinary_allowed(self):
-        for c in ("time set day", "save-all", "tick rate 20", "tick freeze", "airstrike salvo missile 1 0 at 1 64 2",
+        for c in ("time set day", "save-all", "tick rate 20", "tick freeze", "incoming salvo missile 1 0 at 1 64 2",
                   "tp ZentixUA 3590 110 310", "gamerule doFireTick true", "spark profiler start --timeout 30"):
             self.assertIsNone(decision("command", {"commands": [c]}), c)
 
@@ -60,7 +60,7 @@ class Scripts(unittest.TestCase):
     def test_reads_allowed(self):
         for code in ("Runtime.runtime.maxMemory()", "server.getCommands().getDispatcher().getRoot().getChild('sable')",
                      "new File('config/spark').list()", "java.lang.management.ManagementFactory.getMemoryMXBean()",
-                     "level.getChunkNow(0, 0)", "[1, 2].join(',')", "gm.command(\"airstrike salvo missile 1 0 at ${x} 64 ${z}\")"):
+                     "level.getChunkNow(0, 0)", "[1, 2].join(',')", "gm.command(\"incoming salvo missile 1 0 at ${x} 64 ${z}\")"):
             self.assertIsNone(decision("script", {"code": code}), code)
 
     def test_command_literal_in_rule(self):
@@ -81,7 +81,7 @@ class OneVoice(unittest.TestCase):
         self.assertEqual(self.sub("bot", {"action": "act", "name": "B", "actions": [{"chat": "Огонь!"}]}), "deny")
 
     def test_subagent_still_works(self):
-        self.assertIsNone(self.sub("command", {"commands": ["airstrike salvo missile 1 0 at 1 64 2"]}))
+        self.assertIsNone(self.sub("command", {"commands": ["incoming salvo missile 1 0 at 1 64 2"]}))
         self.assertIsNone(self.sub("bot", {"action": "act", "name": "B", "actions": [{"chat": "/gamemode creative"}]}))
 
     def test_main_session_talks(self):

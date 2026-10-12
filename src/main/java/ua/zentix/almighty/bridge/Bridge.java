@@ -95,13 +95,13 @@ public final class Bridge {
     }
 
     private JsonElement respond(HttpExchange exchange) throws RpcException, IOException {
-        if (!"POST".equals(exchange.getRequestMethod())) throw new RpcException(405, "method_not_allowed", "Только POST /rpc");
+        if (!"POST".equals(exchange.getRequestMethod())) throw new RpcException(405, "method_not_allowed", "Only POST /rpc");
         if (!token.accepts(exchange.getRequestHeaders().getFirst("Authorization"))) {
-            LOG.warn("Мост ведущего: запрос без верного токена с {}", exchange.getRemoteAddress());
-            throw new RpcException(401, "unauthorized", "Нужен заголовок Authorization: Bearer <токен>");
+            LOG.warn("Almighty bridge: request without a valid token from {}", exchange.getRemoteAddress());
+            throw new RpcException(401, "unauthorized", "Header Authorization: Bearer <token> required");
         }
         byte[] body = read(exchange.getRequestBody());
-        if (body == null) throw new RpcException(413, "too_large", "Тело запроса больше " + (MAX_BODY >> 20) + " МБ");
+        if (body == null) throw new RpcException(413, "too_large", "Request body larger than " + (MAX_BODY >> 20) + " MB");
         return dispatch(new String(body, StandardCharsets.UTF_8));
     }
 
@@ -109,35 +109,35 @@ public final class Bridge {
         JsonObject request;
         try {
             JsonElement parsed = JsonParser.parseString(body);
-            if (!parsed.isJsonObject()) throw RpcException.badRequest("Ожидается объект {\"method\": ..., \"params\": {...}}");
+            if (!parsed.isJsonObject()) throw RpcException.badRequest("Expected an object {\"method\": ..., \"params\": {...}}");
             request = parsed.getAsJsonObject();
         } catch (JsonParseException e) {
-            throw RpcException.badRequest("Не JSON: " + e.getMessage());
+            throw RpcException.badRequest("Not JSON: " + e.getMessage());
         }
         JsonElement name = request.get("method");
-        if (name == null || !name.isJsonPrimitive()) throw RpcException.badRequest("Нет поля method");
+        if (name == null || !name.isJsonPrimitive()) throw RpcException.badRequest("Missing field method");
         Method method = methods.get(name.getAsString());
         if (method == null) {
-            throw RpcException.notFound("Нет метода " + name.getAsString() + "; есть: " + String.join(", ", new TreeSet<>(methods.keySet())));
+            throw RpcException.notFound("No method " + name.getAsString() + "; methods: " + String.join(", ", new TreeSet<>(methods.keySet())));
         }
         JsonElement params = request.get("params");
-        if (params != null && !params.isJsonNull() && !params.isJsonObject()) throw RpcException.badRequest("params: ожидается объект");
+        if (params != null && !params.isJsonNull() && !params.isJsonObject()) throw RpcException.badRequest("params: expected an object");
         try {
             return method.call(new Args(params == null || params.isJsonNull() ? null : params.getAsJsonObject()))
                     .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof RpcException rpc) throw rpc;
-            LOG.warn("Мост ведущего: метод {} упал", name.getAsString(), cause);
+            LOG.warn("Almighty bridge: method {} failed", name.getAsString(), cause);
             throw new RpcException(500, "internal", cause.getClass().getSimpleName() + ": " + cause.getMessage());
         } catch (TimeoutException e) {
             throw new RpcException(504, "timeout",
-                    "Сервер не ответил за " + TIMEOUT_SECONDS + " с (поток сервера занят); вызов мог выполниться позже");
+                    "The server did not answer within " + TIMEOUT_SECONDS + " s (the server thread is busy); the call may still run later");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw RpcException.unavailable("Мост останавливается");
+            throw RpcException.unavailable("The bridge is stopping");
         } catch (RuntimeException e) {
-            LOG.warn("Мост ведущего: метод {} упал", name.getAsString(), e);
+            LOG.warn("Almighty bridge: method {} failed", name.getAsString(), e);
             throw new RpcException(500, "internal", e.getClass().getSimpleName() + ": " + e.getMessage());
         }
     }

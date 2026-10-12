@@ -46,8 +46,8 @@ import java.util.Map;
  * поэтому аренды считаются здесь: тикет ставит первая аренда чанка, снимает очередь отпуска после последней.
  *
  * <p>Отпуск — не больше {@value #RELEASE_PER_TICK} чанков за тик: ваниль выгружает больше 2000 держателей разом в одном
- * тике (Отбой залпа Airstrike стоил тика 6,8 с). Остановка сервера снимает всё сразу ({@link #releaseAll}), в
- * {@code ServerStoppingEvent} до {@code StopDrain} Airstrike: иначе он ждал бы генерацию по тикетам ведущего.
+ * тике (Отбой залпа Incoming стоил тика 6,8 с). Остановка сервера снимает всё сразу ({@link #releaseAll}), в
+ * {@code ServerStoppingEvent} до {@code StopDrain} Incoming: иначе он ждал бы генерацию по тикетам ведущего.
  * Только поток сервера.
  */
 public final class Areas {
@@ -113,8 +113,8 @@ public final class Areas {
         public String refusal() {
             int n = count(true);
             if (n == 0) return null;
-            return n + " из " + chunks() + " чанков (с кольцом соседей) не принимают загрузку — их ведёт другой мод"
-                    + " (например, участок корабля): работа их не дождётся, там — только команды в уже загруженных чанках";
+            return n + " of " + chunks() + " chunks (with the ring of neighbours) refuse loading because another mod manages them"
+                    + " (for example, a ship plot): a job will not wait for them; use commands there, in chunks that are already loaded";
         }
 
         private int count(boolean unready) {
@@ -196,8 +196,8 @@ public final class Areas {
             }
         }
         if (area > maxChunks || held() + fresh > maxChunks) {
-            throw RpcException.conflict("Ведущий держит " + held() + " чанков, просится ещё " + (area > maxChunks ? area : fresh)
-                    + " (с кольцом соседей), предел " + maxChunks + ": отпустить районы (area.release) или взять меньше");
+            throw RpcException.conflict("The game master holds " + held() + " chunks and asks for " + (area > maxChunks ? area : fresh)
+                    + " more (with the ring of neighbours); the limit is " + maxChunks + ": release areas (area.release) or take a smaller one");
         }
         LongLinkedOpenHashSet queue = releasing.computeIfAbsent(level, l -> new LongLinkedOpenHashSet());
         LongOpenHashSet no = refused.computeIfAbsent(level, l -> new LongOpenHashSet());
@@ -228,8 +228,8 @@ public final class Areas {
         try {
             return ObfuscationReflectionHelper.findField(DistanceManager.class, "tickets");
         } catch (RuntimeException | LinkageError e) {
-            LOG.error("Ведущий: нет DistanceManager.tickets — аренда не видит, где мод отказал в тикете (участки кораблей Sable),"
-                    + " и снимает тикеты там тоже", e);
+            LOG.error("GM: DistanceManager.tickets not found; leases cannot see where a mod refused a ticket (Sable ship plots)"
+                    + " and remove tickets there too", e);
             return null;
         }
     }

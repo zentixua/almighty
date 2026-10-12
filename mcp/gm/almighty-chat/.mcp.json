@@ -2,11 +2,16 @@
   "mcpServers": {
     "almighty-chat": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/almighty-chat.mjs"],
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/almighty-chat.mjs"
+      ],
       "env": {
-        "ALMIGHTY_URL": "${ALMIGHTY_URL}",
-        "ALMIGHTY_TOKEN_FILE": "${ALMIGHTY_TOKEN_FILE}",
-        "GM_OWNERS": "${GM_OWNERS}",
+        "ALMIGHTY_URL": "${ALMIGHTY_URL:-}",
+        "ALMIGHTY_TOKEN_FILE": "${ALMIGHTY_TOKEN_FILE:-}",
+        "GM_OWNERS": "${GM_OWNERS:-}",
+        "GM_LANG": "${GM_LANG:-}",
+        "GM_NAMES": "${GM_NAMES:-}",
+        "GM_TYPO_NAMES": "${GM_TYPO_NAMES:-}",
         "GM_BOT_PLAYERS": "${GM_BOT_PLAYERS:-}"
       }
     }

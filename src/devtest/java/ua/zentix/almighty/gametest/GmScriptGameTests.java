@@ -167,9 +167,9 @@ public final class GmScriptGameTests {
         check(!npe.get("ok").getAsBoolean() && npe.get("line").getAsInt() == 2 && npe.get("error").getAsString().contains("NullPointerException"),
                 "ошибка: " + npe);
         JsonObject parse = script(h, "def (", null, 0);
-        check(!parse.get("ok").getAsBoolean() && parse.get("error").getAsString().startsWith("Скрипт не разобран"), "разбор: " + parse);
+        check(!parse.get("ok").getAsBoolean() && parse.get("error").getAsString().startsWith("Script failed to compile"), "разбор: " + parse);
         JsonObject loop = script(h, "while (true) {}", null, 50);
-        check(!loop.get("ok").getAsBoolean() && loop.get("error").getAsString().contains("прерван") && loop.get("ms").getAsDouble() >= 50,
+        check(!loop.get("ok").getAsBoolean() && loop.get("error").getAsString().contains("interrupted") && loop.get("ms").getAsDouble() >= 50,
                 "срок: " + loop);
         h.succeed();
     }
@@ -229,7 +229,7 @@ public final class GmScriptGameTests {
             drop(h, "gm-test-full");
             JsonObject unknown = new JsonObject();
             unknown.addProperty("event", "NoSuchEventAtAll");
-            check(rejected(h, "rule.add", unknown).startsWith("Нет события"), "неизвестное событие принято");
+            check(rejected(h, "rule.add", unknown).startsWith("No event"), "неизвестное событие принято");
 
             // событие из команды ведущего: команды правила выполняются сразу (а не в очередь внешней команды),
             // вызванное ими то же событие правило не запускает снова
@@ -326,8 +326,8 @@ public final class GmScriptGameTests {
                     try {
                         JsonObject slowOff = find(gm, after, "rule.off", e -> of(e, slow));
                         JsonObject slowCold = find(gm, after, "rule.error", e -> of(e, slow));
-                        check(slowCold != null && slowCold.get("error").getAsString().contains("прерван"), "первый обрыв — не ошибка: " + slowCold);
-                        check(slowOff != null && slowOff.get("reason").getAsString().contains("прерван"), "долгое правило: " + slowOff);
+                        check(slowCold != null && slowCold.get("error").getAsString().contains("interrupted"), "первый обрыв — не ошибка: " + slowCold);
+                        check(slowOff != null && slowOff.get("reason").getAsString().contains("interrupted"), "долгое правило: " + slowOff);
                         check(described(gm, "gm-test-slow").get("fired").getAsInt() == 2, "долгое правило: запусков " + described(gm, "gm-test-slow"));
                         JsonObject heavyOff = find(gm, after, "rule.off", e -> of(e, heavy));
                         check(heavyOff != null && heavyOff.get("reason").getAsString().contains("budget_ms")
@@ -336,7 +336,7 @@ public final class GmScriptGameTests {
                         check(error != null && error.get("error").getAsString().contains("нарочно") && error.get("line").getAsInt() == 1,
                                 "ошибка правила: " + error);
                         JsonObject off = find(gm, after, "rule.off", e -> of(e, failing));
-                        check(off != null && off.get("reason").getAsString().startsWith(Rules.ERRORS_OFF + " ошибок подряд"), "выключение по ошибкам: " + off);
+                        check(off != null && off.get("reason").getAsString().startsWith(Rules.ERRORS_OFF + " errors in a row"), "выключение по ошибкам: " + off);
                         check(described(gm, "gm-test-throw").get("errors").getAsInt() == Rules.ERRORS_OFF, "ошибок: " + described(gm, "gm-test-throw"));
                     } finally {
                         drop(h, "gm-test-slow", "gm-test-heavy", "gm-test-throw");
@@ -361,7 +361,7 @@ public final class GmScriptGameTests {
             rules.load();
             JsonArray list = rules.describe();
             check(list.size() == 1 && list.get(0).getAsJsonObject().get("state").getAsString().equals("unloaded")
-                    && list.get(0).getAsJsonObject().get("error").getAsString().startsWith("Нет события"), "не вставшее: " + list);
+                    && list.get(0).getAsJsonObject().get("error").getAsString().startsWith("No event"), "не вставшее: " + list);
             JsonObject p = new JsonObject();
             p.addProperty("event", "tick");
             p.addProperty("name", "gm-test-kept");

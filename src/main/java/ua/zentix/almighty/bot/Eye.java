@@ -99,15 +99,15 @@ public final class Eye {
         }
         out.add("aim_far", far(level, cam, viewer, distance));
         out.add("entities", entities(level, cam, viewer, radius));
-        out.addProperty("offsets", "yaw_offset — градусов вправо (+) или влево (−) от взгляда, pitch_offset — вниз (+) или вверх (−)");
+        out.addProperty("offsets", "yaw_offset: degrees right (+) or left (−) of the view direction; pitch_offset: degrees down (+) or up (−)");
         if (bot != null) out.add("sounds", sounds(level, cam, bot, soundTicks));
         return out;
     }
 
     private static String facing(float yaw, float pitch) {
-        if (pitch > 60) return "вниз";
-        if (pitch < -60) return "вверх";
-        String[] sides = {"юг", "юго-запад", "запад", "северо-запад", "север", "северо-восток", "восток", "юго-восток"};
+        if (pitch > 60) return "down";
+        if (pitch < -60) return "up";
+        String[] sides = {"south", "southwest", "west", "northwest", "north", "northeast", "east", "southeast"};
         return sides[Math.floorMod(Math.round(Mth.wrapDegrees(yaw) / 45.0F), 8)];
     }
 
@@ -132,9 +132,9 @@ public final class Eye {
             o.addProperty("face", b.getDirection().getSerializedName());
             o.addProperty("distance", Observe.round(blockDist, 1));
         } else if (ray.unloaded()) {
-            o.addProperty("none", "дальше " + Observe.round(ray.block().getLocation().distanceTo(cam.eye()), 0) + " блоков чанк не загружен");
+            o.addProperty("none", "chunk not loaded beyond " + Observe.round(ray.block().getLocation().distanceTo(cam.eye()), 0) + " blocks");
         } else {
-            o.addProperty("none", "в пределах " + Math.round(distance) + " блоков ничего");
+            o.addProperty("none", "nothing within " + Math.round(distance) + " blocks");
         }
         return o;
     }

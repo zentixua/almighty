@@ -87,14 +87,14 @@ public final class Rules {
         }
         EventTypes.Found event = EventTypes.resolve(a.string("event"));
         String name = a.string("name", null);
-        if (name != null && (name.isBlank() || name.length() > 64)) throw RpcException.badRequest("name: от 1 до 64 символов");
+        if (name != null && (name.isBlank() || name.length() > 64)) throw RpcException.badRequest("name: 1 to 64 characters");
         int every = a.integer("every", 0, 0, 72_000);
         long limit = a.longValue("limit", 0, 0, 1_000_000_000L);
         EventPriority priority;
         try {
             priority = EventPriority.valueOf(a.string("priority", "lowest").toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw RpcException.badRequest("priority: highest, high, normal, low или lowest");
+            throw RpcException.badRequest("priority: highest, high, normal, low or lowest");
         }
         boolean canceled = a.bool("canceled", false);
         double budget = a.number("budget_ms", 5, 0.1, 1000);
@@ -103,11 +103,11 @@ public final class Rules {
         Scripts.Compiled script = null;
         if (code != null) {
             if (!GmConfig.SCRIPTS_ENABLED.get()) throw scriptsOff();
-            if (code.length() > MAX_SCRIPT) throw RpcException.badRequest("script: не больше " + MAX_SCRIPT / 1024 + " КБ");
+            if (code.length() > MAX_SCRIPT) throw RpcException.badRequest("script: at most " + MAX_SCRIPT / 1024 + " KB");
             try {
                 script = Scripts.compile("rule", code, runLimitMs(budget));
             } catch (Scripts.CompileError e) {
-                throw RpcException.badRequest("Скрипт правила не разобран: " + e.getMessage());
+                throw RpcException.badRequest("Rule script failed to compile: " + e.getMessage());
             }
         }
         return new Spec(params, event, code, script, name, every, limit, priority, canceled, budget, persist);
@@ -119,7 +119,7 @@ public final class Rules {
     }
 
     public static RpcException scriptsOff() {
-        return RpcException.unavailable("Скрипты выключены: scripts.enabled = false в config/almighty-common.toml");
+        return RpcException.unavailable("Scripts are disabled: scripts.enabled = false in config/almighty-common.toml");
     }
 
     /** Поставить правило (поток сервера). То же имя — замена прежнего. */
@@ -127,20 +127,20 @@ public final class Rules {
         Rule old = spec.name() == null ? null : byName(spec.name());
         if (old == null && rules.size() >= MAX_RULES) {
             if (spec.script() != null) spec.script().close();
-            throw RpcException.conflict("Правил уже " + MAX_RULES + ": убрать ненужные (rule.remove)");
+            throw RpcException.conflict("Already " + MAX_RULES + " rules: remove unused ones (rule.remove)");
         }
         Rule rule = new Rule(next, spec);
         try {
             rule.listen();
         } catch (IllegalArgumentException e) {
             if (spec.script() != null) spec.script().close();
-            throw RpcException.badRequest("Шина не принимает " + spec.event().name() + ": " + e.getMessage());
+            throw RpcException.badRequest("The event bus does not accept " + spec.event().name() + ": " + e.getMessage());
         }
         next++;
         if (old != null) drop(old);
         boolean replacedSaved = spec.name() != null && unloaded.removeIf(u -> spec.name().equals(savedName(u)));
         rules.put(rule.id, rule);
-        LOG.info("Ведущий: правило №{} на {}{}", rule.id, spec.event().name(), spec.code() == null ? "" : ", скрипт:\n" + spec.code());
+        LOG.info("GM: rule #{} on {}{}", rule.id, spec.event().name(), spec.code() == null ? "" : ", script:\n" + spec.code());
         if (spec.persist() || old != null && old.spec.persist() || replacedSaved) save();
         return rule.describe();
     }
@@ -151,14 +151,14 @@ public final class Rules {
         String name = a.has("id") ? null : a.string("name", null);
         if (a.has("id")) rule = rules.get(a.longValue("id", 0, 1, Long.MAX_VALUE));
         else if (name != null) rule = byName(name);
-        else throw RpcException.badRequest("rule.remove: id или name");
+        else throw RpcException.badRequest("rule.remove: id or name");
         if (rule == null && name != null && unloaded.removeIf(u -> name.equals(savedName(u)))) {
             save();
             JsonObject out = new JsonObject();
             out.addProperty("removed", name);
             return out;
         }
-        if (rule == null) throw RpcException.notFound("Нет такого правила; список — rules");
+        if (rule == null) throw RpcException.notFound("No such rule; the list is in rules");
         drop(rule);
         if (rule.spec.persist()) save();
         JsonObject out = new JsonObject();
@@ -186,15 +186,15 @@ public final class Rules {
         JsonArray saved;
         try {
             saved = JsonParser.parseString(Files.readString(store, StandardCharsets.UTF_8)).getAsJsonObject().getAsJsonArray("rules");
-            if (saved == null) throw new IllegalStateException("нет списка rules");
+            if (saved == null) throw new IllegalStateException("no rules list");
         } catch (IOException | RuntimeException e) {
             // следующее сохранение перепишет файл: испорченный — в сторону
             Path bad = store.resolveSibling(store.getFileName() + ".bad");
-            LOG.error("Правила ведущего не прочитаны из {}, файл перенесён в {}", store, bad, e);
+            LOG.error("GM rules could not be read from {}; the file was moved to {}", store, bad, e);
             try {
                 Files.move(store, bad, StandardCopyOption.REPLACE_EXISTING);
             } catch (IOException ex) {
-                LOG.error("Не перенесён {}", store, ex);
+                LOG.error("Could not move {}", store, ex);
             }
             return;
         }
@@ -205,7 +205,7 @@ public final class Rules {
                     Spec spec = parse(new Args(e.getAsJsonObject()));
                     add(spec);
                 } catch (RpcException | RuntimeException ex) {
-                    LOG.warn("Сохранённое правило не встало: {} — {}", e, ex.getMessage());
+                    LOG.warn("Saved rule did not load: {}: {}", e, ex.getMessage());
                     JsonObject d = new JsonObject();
                     d.add("spec", e);
                     d.addProperty("error", ex.getMessage());
@@ -257,7 +257,7 @@ public final class Rules {
             Files.writeString(tmp, new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(root), StandardCharsets.UTF_8);
             Files.move(tmp, store, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
-            LOG.error("Правила ведущего не сохранены в {}", store, e);
+            LOG.error("GM rules could not be saved to {}", store, e);
         }
     }
 
@@ -310,7 +310,7 @@ public final class Rules {
                 if (!wrongThread) {
                     wrongThread = true;
                     String thread = Thread.currentThread().getName();
-                    server.execute(() -> turnOff("событие пришло не из потока сервера (" + thread + "): правила работают только в нём"));
+                    server.execute(() -> turnOff("the event fired outside the server thread (" + thread + "); rules run only on the server thread"));
                 }
                 return;
             }
@@ -349,11 +349,11 @@ public final class Rules {
             }
             if (off != null) return;
             if (timeNanos > spec.budgetMs() * 1e6 * WINDOW) {
-                turnOff(String.format(Locale.ROOT, "%.1f мс за %d тиков при бюджете %.1f мс за тик (budget_ms)", timeNanos / 1e6, WINDOW, spec.budgetMs()));
+                turnOff(String.format(Locale.ROOT, "%.1f ms over %d ticks with a budget of %.1f ms per tick (budget_ms)", timeNanos / 1e6, WINDOW, spec.budgetMs()));
             } else if (spec.limit() > 0 && fired >= spec.limit()) {
                 drop(this);
                 JsonObject d = who();
-                d.addProperty("reason", "исчерпан limit = " + spec.limit());
+                d.addProperty("reason", "limit = " + spec.limit() + " reached");
                 feed.add("rule.off", d);
                 if (spec.persist()) save();
             }
@@ -363,7 +363,7 @@ public final class Rules {
             errors++;
             errorsInRow++;
             if (errorsInRow >= ERRORS_OFF) {
-                turnOff(ERRORS_OFF + " ошибок подряд, последняя: " + r.message() + (r.line() > 0 ? " (строка " + r.line() + ")" : ""));
+                turnOff(ERRORS_OFF + " errors in a row, last: " + r.message() + (r.line() > 0 ? " (line " + r.line() + ")" : ""));
                 return;
             }
             // первый запуск может съесть срок на связывании вызовов Groovy: его обрыв — ошибка, выключает — второй
@@ -388,7 +388,7 @@ public final class Rules {
                 windowEmits = 0;
             }
             if (++windowEmits > EMITS_PER_SECOND) {
-                if (off == null) turnOff("больше " + EMITS_PER_SECOND + " записей в ленту за " + WINDOW + " тиков: сузить условие или задать every");
+                if (off == null) turnOff("more than " + EMITS_PER_SECOND + " feed entries in " + WINDOW + " ticks: narrow the condition or set every");
                 return;
             }
             emitted++;
@@ -403,7 +403,7 @@ public final class Rules {
             off = reason;
             if (listener != null) bus.unregister(listener);
             listener = null;
-            LOG.warn("Правило ведущего №{} выключено: {}", id, reason);
+            LOG.warn("GM rule #{} turned off: {}", id, reason);
             JsonObject d = who();
             d.addProperty("reason", reason);
             JsonArray stopped = stopDriven(reason);
@@ -416,7 +416,7 @@ public final class Rules {
             JsonArray stopped = new JsonArray();
             for (Bot bot : driven) {
                 if (!bot.online()) continue;
-                bot.stop("правило " + (spec.name() != null ? "«" + spec.name() + "»" : "№" + id) + " выключено: " + reason);
+                bot.stop("rule " + (spec.name() != null ? "\"" + spec.name() + "\"" : "#" + id) + " turned off: " + reason);
                 stopped.add(bot.name());
             }
             driven.clear();

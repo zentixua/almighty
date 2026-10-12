@@ -88,12 +88,12 @@ public final class Bots {
                        String skinOf, Property textures, boolean marker, boolean autoRespawn) {
         public static Spec parse(Args a) throws RpcException {
             String name = a.string("name");
-            if (!NAME.matcher(name).matches()) throw RpcException.badRequest("name: 3–16 латинских букв, цифр или _ (так имя понимают команды)");
+            if (!NAME.matcher(name).matches()) throw RpcException.badRequest("name: 3–16 Latin letters, digits or _ (the names commands accept)");
             double[] pos = a.has("pos") ? Steps.numbers(a, "pos", 3) : null;
             GameType mode = null;
             if (a.has("gamemode")) {
                 mode = GameType.byName(a.string("gamemode"), null);
-                if (mode == null) throw RpcException.badRequest("gamemode: survival, creative, adventure или spectator");
+                if (mode == null) throw RpcException.badRequest("gamemode: survival, creative, adventure or spectator");
             }
             String skinOf = null;
             Property textures = null;
@@ -104,7 +104,7 @@ public final class Bots {
                     texturesOwner(textures);
                 } else {
                     skinOf = a.string("skin");
-                    if (!NAME.matcher(skinOf).matches()) throw RpcException.badRequest("skin: имя аккаунта Minecraft или {value, signature}");
+                    if (!NAME.matcher(skinOf).matches()) throw RpcException.badRequest("skin: a Minecraft account name or {value, signature}");
                 }
             }
             return new Spec(name, pos, a.string("dimension", null), (float) a.number("yaw", 0, -360, 360), (float) a.number("pitch", 0, -90, 90),
@@ -137,7 +137,7 @@ public final class Bots {
                     // дальше чанки держит тикет самого игрока: он встаёт не сразу (очередь тикетов игроков), аренда — ещё немного
                     if (lease != null) held.add(new Held(bot, lease, tickNow() + HOLD_AFTER));
                     JsonObject out = bot.describe(0);
-                    if (spec.skinOf() != null && textures.isEmpty()) out.addProperty("skin", "скин «" + spec.skinOf() + "» не найден: обычный");
+                    if (spec.skinOf() != null && textures.isEmpty()) out.addProperty("skin", "skin \"" + spec.skinOf() + "\" not found: default skin");
                     return out;
                 })));
     }
@@ -153,7 +153,7 @@ public final class Bots {
         if (spec.pos() == null && level == server.overworld()) return CompletableFuture.completedFuture(null);
         int x = spec.pos() != null ? Mth.floor(spec.pos()[0]) : level.getSharedSpawnPos().getX();
         int z = spec.pos() != null ? Mth.floor(spec.pos()[2]) : level.getSharedSpawnPos().getZ();
-        Areas.Lease lease = gm.areas().acquire(level, "бот " + spec.name(), x, z, x, z, PLACE_WAIT + 200);
+        Areas.Lease lease = gm.areas().acquire(level, "bot " + spec.name(), x, z, x, z, PLACE_WAIT + 200);
         if (lease.isReady()) return CompletableFuture.completedFuture(lease);
         CompletableFuture<Areas.Lease> ready = new CompletableFuture<>();
         waiting.add(new Waiting(lease, tickNow() + PLACE_WAIT, ready));
@@ -162,16 +162,16 @@ public final class Bots {
 
     private void check(Spec spec) throws RpcException {
         MinecraftServer server = gm.server();
-        if (byName.containsKey(key(spec.name()))) throw RpcException.conflict("Бот " + spec.name() + " уже в игре");
-        if (byName.size() >= GmConfig.BOTS_MAX.get()) throw RpcException.conflict("Ботов уже " + byName.size() + " — это предел bots.max в config/" + Almighty.ID + "-common.toml");
-        if (server.getPlayerList().getPlayerByName(spec.name()) != null) throw RpcException.conflict("Игрок " + spec.name() + " в игре: бот не займёт его имя");
+        if (byName.containsKey(key(spec.name()))) throw RpcException.conflict("Bot " + spec.name() + " is already online");
+        if (byName.size() >= GmConfig.BOTS_MAX.get()) throw RpcException.conflict("Already " + byName.size() + " bots: that is the bots.max limit in config/" + Almighty.ID + "-common.toml");
+        if (server.getPlayerList().getPlayerByName(spec.name()) != null) throw RpcException.conflict("Player " + spec.name() + " is online: a bot cannot take their name");
         boolean disguise = GmConfig.BOTS_ALLOW_DISGUISE.get();
-        if (!disguise && !spec.marker()) throw RpcException.badRequest("Бот без пометки — только с bots.allow_disguise = true (решает владелец сервера)");
-        if (!disguise && known(spec.name())) throw RpcException.badRequest("Имя " + spec.name() + " — игрока этого сервера: только с bots.allow_disguise = true (решает владелец сервера)");
-        if (!disguise && spec.skinOf() != null && known(spec.skinOf())) throw RpcException.badRequest("Скин игрока этого сервера — только с bots.allow_disguise = true (решает владелец сервера)");
+        if (!disguise && !spec.marker()) throw RpcException.badRequest("A bot without the marker needs bots.allow_disguise = true (the server owner decides)");
+        if (!disguise && known(spec.name())) throw RpcException.badRequest("The name " + spec.name() + " belongs to a player of this server: needs bots.allow_disguise = true (the server owner decides)");
+        if (!disguise && spec.skinOf() != null && known(spec.skinOf())) throw RpcException.badRequest("The skin of a player of this server needs bots.allow_disguise = true (the server owner decides)");
         if (!disguise && spec.textures() != null) {
             GameProfile owner = texturesOwner(spec.textures());
-            if (known(owner.getName()) || knownId(owner.getId())) throw RpcException.badRequest("Скин игрока этого сервера — только с bots.allow_disguise = true (решает владелец сервера)");
+            if (known(owner.getName()) || knownId(owner.getId())) throw RpcException.badRequest("The skin of a player of this server needs bots.allow_disguise = true (the server owner decides)");
         }
         if (spec.dimension() != null) Dims.level(server, spec.dimension());
     }
@@ -209,7 +209,7 @@ public final class Bots {
             UUID id = o.has("profileId") ? UndashedUuid.fromStringLenient(o.get("profileId").getAsString()) : null;
             return new GameProfile(id, name);
         } catch (RuntimeException e) {
-            throw RpcException.badRequest("skin.value: не base64 JSON текстур Mojang (" + e.getMessage() + ")");
+            throw RpcException.badRequest("skin.value: not base64 JSON of Mojang textures (" + e.getMessage() + ")");
         }
     }
 
@@ -233,7 +233,7 @@ public final class Bots {
             server.getPlayerList().placeNewPlayer(bot.connection(), player, cookie);
         } catch (RuntimeException e) {
             forget(bot);
-            bot.disconnect(Component.literal("не вошёл"));
+            bot.disconnect(Component.literal("failed to join"));
             throw e;
         } finally {
             // вход записал бота в кэш профилей: имя → его UUID; команды по имени (/op, /whitelist) нашли бы бота
@@ -251,7 +251,7 @@ public final class Bots {
         // тикет игрока — сразу на новое место: чанки там начнут грузиться в фоне, пока бот ждёт их (Controls.move)
         p.serverLevel().getChunkSource().move(p);
         bot.settle();
-        LOG.info("Ведущий: бот {} вошёл{}", spec.name(), spec.marker() ? "" : " без пометки");
+        LOG.info("GM: bot {} joined{}", spec.name(), spec.marker() ? "" : " without the marker");
         return bot;
     }
 
@@ -273,7 +273,7 @@ public final class Bots {
 
     public Bot get(String name) throws RpcException {
         Bot bot = find(name);
-        if (bot == null) throw RpcException.notFound("Нет бота " + name + " (боты: " + String.join(", ", names()) + ")");
+        if (bot == null) throw RpcException.notFound("No bot " + name + " (bots: " + String.join(", ", names()) + ")");
         return bot;
     }
 
@@ -363,7 +363,7 @@ public final class Bots {
                 String refusal = w.lease().refusal();
                 w.lease().release();
                 after.add(() -> w.ready().completeExceptionally(RpcException.unavailable(refusal != null
-                        ? "Место входа бота: " + refusal : "Место входа бота не загрузилось за " + PLACE_WAIT / 20 + " с")));
+                        ? "Bot spawn position: " + refusal : "Bot spawn position did not load within " + PLACE_WAIT / 20 + " s")));
             }
         }
         after.forEach(Runnable::run);
@@ -373,7 +373,7 @@ public final class Bots {
     public void stop() {
         for (Waiting w : waiting) {
             w.lease().release();
-            w.ready().completeExceptionally(RpcException.unavailable("Сервер останавливается"));
+            w.ready().completeExceptionally(RpcException.unavailable("The server is stopping"));
         }
         waiting.clear();
         held.forEach(h -> h.lease().release());
@@ -451,7 +451,7 @@ public final class Bots {
         GmServer gm = GmServer.of(player.server);
         if (gm == null || gm.bots().of(player) != null) return;
         Bot bot = gm.bots().find(player.getGameProfile().getName());
-        if (bot != null) gm.bots().remove(bot, "уступил имя игроку " + player.getGameProfile().getName());
+        if (bot != null) gm.bots().remove(bot, "gave the name up to player " + player.getGameProfile().getName());
     }
 
     /**
@@ -477,7 +477,7 @@ public final class Bots {
                     else uuids.remove(uuid);
                     cache.save();
                 } catch (ReflectiveOperationException | RuntimeException e) {
-                    LOG.warn("Кэш профилей: запись бота {} не убрана", name, e);
+                    LOG.warn("Profile cache: the entry of bot {} was not removed", name, e);
                 }
             }
         }
@@ -494,7 +494,7 @@ public final class Bots {
             } catch (ReflectiveOperationException | RuntimeException e) {
                 broken = true;
                 byNameField = null;
-                LOG.warn("Кэш профилей недоступен: боты останутся в usercache.json", e);
+                LOG.warn("Profile cache unavailable: bots will stay in usercache.json", e);
                 return false;
             }
         }

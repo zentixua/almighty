@@ -1,12 +1,12 @@
 {
   "name": "almighty",
   "owner": { "name": "zentixua" },
-  "description": "Плагины ведущего сервера Minecraft на моде Almighty",
+  "description": "Game master plugins for a Minecraft server running the Almighty mod",
   "plugins": [
     {
       "name": "almighty-chat",
       "source": "./almighty-chat",
-      "description": "Канал: чат и события Minecraft (мост Almighty) — в сессию ведущего; запросы разрешений — владельцу в игру"
+      "description": "Channel: Minecraft chat and events from the Almighty bridge go to the game master session; permission requests go to the owner in the game"
     }
   ]
 }

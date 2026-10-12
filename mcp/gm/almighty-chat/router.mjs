@@ -36,11 +36,11 @@ export function addressed (text, names, typoNames = []) {
   return false
 }
 
-export const CONTEXT_HEADER = '[до этого в игре, ведущему не пересылалось]'
+export const CONTEXT_HEADER = '[earlier in the game, not forwarded to the game master]'
 
 // правило ленты: номер rule и имя name; несохранившееся при загрузке — spec с именем
 function ruleName (e) {
-  return e.name ?? e.spec?.name ?? (e.rule !== undefined ? `№${e.rule}` : '?')
+  return e.name ?? e.spec?.name ?? (e.rule !== undefined ? `#${e.rule}` : '?')
 }
 
 function ruleMeta (e) {
@@ -124,22 +124,22 @@ export class Router {
         if (!player) return null
         if (e.type === 'join') this.online.add(player)
         else this.forget(player)
-        return { content: `${player} ${e.type === 'join' ? 'вошёл на сервер' : 'вышел'}`, meta: { kind: e.type, player, ...owner, ...where(e) } }
+        return { content: `${player} ${e.type === 'join' ? 'joined the server' : 'left the server'}`, meta: { kind: e.type, player, ...owner, ...where(e) } }
       case 'death': {
         if (!player) return null
         const killer = e.killer ? { killer: String(e.killer) } : {}
-        return { content: String(e.message ?? `${player} погиб`), meta: { kind: 'death', player, ...owner, ...killer, ...where(e) } }
+        return { content: String(e.message ?? `${player} died`), meta: { kind: 'death', player, ...owner, ...killer, ...where(e) } }
       }
       // правило выключилось (ошибки подряд, бюджет, исчерпан limit) — ведущему сразу; его ошибка — со следующим сообщением
       case 'rule.off':
-        return { content: `Правило ${ruleName(e)} выключено: ${e.reason ?? ''}`, meta: { kind: 'rule', state: 'off', ...ruleMeta(e) } }
+        return { content: `Rule ${ruleName(e)} turned off: ${e.reason ?? ''}`, meta: { kind: 'rule', state: 'off', ...ruleMeta(e) } }
       case 'rule.error':
-        return this.aside(`rule ${ruleName(e)}`, `правило ${ruleName(e)}: ${e.error ?? 'ошибка'}${e.line ? ` (строка ${e.line})` : ''}`)
+        return this.aside(`rule ${ruleName(e)}`, `rule ${ruleName(e)}: ${e.error ?? 'error'}${e.line ? ` (line ${e.line})` : ''}`)
       case 'lag': {
         const ms = Number(e.ms)
         if (!(ms >= this.lagMs) || this.now() - this.lastLag < this.lagEveryMs) return null
         this.lastLag = this.now()
-        return { content: `Сервер подвис на ${ms} мс`, meta: { kind: 'lag', ms: String(ms) } }
+        return { content: `Server stalled for ${ms} ms`, meta: { kind: 'lag', ms: String(ms) } }
       }
       default:
         return null

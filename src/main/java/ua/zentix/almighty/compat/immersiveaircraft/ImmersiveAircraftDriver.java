@@ -65,7 +65,7 @@ public final class ImmersiveAircraftDriver implements VehicleDriver {
             m.setAccessible(true);
             return m;
         } catch (ReflectiveOperationException | RuntimeException e) {
-            LOG.warn("Almighty: у Immersive Aircraft нет {} — боты его самолёты не ведут: {}", name, e.toString());
+            LOG.warn("Almighty: Immersive Aircraft has no {}; bots will not fly its aircraft: {}", name, e.toString());
             return null;
         }
     }
@@ -132,16 +132,16 @@ public final class ImmersiveAircraftDriver implements VehicleDriver {
             if (!v.onGround() && (warned.get() != v || v.tickCount - warnedAt >= 20)) {
                 warned = new WeakReference<>(v);
                 warnedAt = v.tickCount;
-                return "в воздухе: высадка — ещё одним нажатием в течение секунды";
+                return "in the air: press again within a second to dismount";
             }
             new CommandMessage(CommandMessage.Key.DISMOUNT, v.getDeltaMovement()).receiveServer(pilot);
             pilot.setJumping(false);
-            return "высадка";
+            return "dismounted";
         }
         if (key.equals(BOOST)) {
-            if (!v.canBoost()) return "ускоритель недоступен: нет ракеты в слоте или он уже работает";
+            if (!v.canBoost()) return "boost unavailable: no rocket in the slot, or the boost is already running";
             new CommandMessage(CommandMessage.Key.BOOST, v.getDeltaMovement()).receiveServer(pilot);
-            return "ускоритель";
+            return "boost started";
         }
         return null;
     }

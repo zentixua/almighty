@@ -41,7 +41,7 @@ class RecipesTest(unittest.TestCase):
         self.write("broken", "без шапки")
         found, errors = recipes.load_all(self.dir)
         self.assertEqual(list(found), ["clear_weather"])
-        self.assertIn("шапки", errors["broken"][0])
+        self.assertIn("header", errors["broken"][0])
         r = found["clear_weather"]
         self.assertEqual(r.kind, "instant")
         v = recipes.bind(r, {})
@@ -96,14 +96,14 @@ class RecipesTest(unittest.TestCase):
                                 '```groovy b\n2\n```\n```steps\n[{"method": "script", "params": {"code": "x ${code:a}"}},'
                                 ' {"method": "script", "params": {"code": "${code:c}"}}]\n```\n')
         problems = " | ".join(recipes.validate(recipes.parse(path)))
-        for part in ("${code:c}", "блок groovy b", "целой строкой"):
+        for part in ("${code:c}", "groovy block b", "whole string"):
             self.assertIn(part, problems)
 
     def test_validate(self):
         path = self.write("x", '---\nname: y\nkind: task\nparams: {"a": "float"}\n---\n```groovy z\n1\n```\n'
                                '```steps\n[{"method": "say", "params": {"text": "${b}"}}]\n```\n')
         problems = " | ".join(recipes.validate(recipes.parse(path)))
-        for part in ("name", "description", "float", "say", "${b}", "блок groovy z", "check"):
+        for part in ("name", "description", "float", "say", "${b}", "groovy block z", "check"):
             self.assertIn(part, problems)
 
 

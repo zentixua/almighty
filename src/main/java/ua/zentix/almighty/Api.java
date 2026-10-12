@@ -84,7 +84,7 @@ public final class Api {
             long id = a.integer("job", 1, Integer.MAX_VALUE);
             return gm.submit(() -> {
                 Job of = gm.jobs().get(id);
-                if (!(of instanceof BuildJob build)) throw RpcException.notFound("Нет постройки №" + id + " (в истории — последние 50 работ)");
+                if (!(of instanceof BuildJob build)) throw RpcException.notFound("No build #" + id + " (the history keeps the last 50 jobs)");
                 return BuildJob.undo(build, CHUNK_WAIT_TICKS);
             }, waitSeconds(a));
         });
@@ -94,7 +94,7 @@ public final class Api {
             int wait = a.integer("wait", 0, 0, MAX_WAIT);
             return gm.onMain(() -> {
                 Job job = gm.jobs().get(id);
-                if (job == null) throw RpcException.notFound("Нет работы №" + id + " (в истории — последние 50 работ)");
+                if (job == null) throw RpcException.notFound("No job #" + id + " (the history keeps the last 50 jobs)");
                 return job;
             }).thenCompose(job -> gm.await(job, wait).thenApplyAsync(result ->
                     job instanceof View view ? view.attach(result.getAsJsonObject()) : result));
@@ -103,8 +103,8 @@ public final class Api {
             long id = a.integer("id", 1, Integer.MAX_VALUE);
             return gm.onMain(() -> {
                 Job job = gm.jobs().get(id);
-                if (job == null) throw RpcException.notFound("Нет работы №" + id);
-                if (!gm.jobs().cancel(id)) throw RpcException.conflict("Работа №" + id + " уже кончилась: " + job.state().id());
+                if (job == null) throw RpcException.notFound("No job #" + id);
+                if (!gm.jobs().cancel(id)) throw RpcException.conflict("Job #" + id + " has already finished: " + job.state().id());
                 return job.describe();
             });
         });
@@ -114,7 +114,7 @@ public final class Api {
             int wait = a.integer("wait", 0, 0, MAX_WAIT);
             return gm.onMain(() -> {
                 Areas.Lease lease = gm.areas().acquire(Dims.level(server, a), "area", from[0], from[1], to[0], to[1], ttl * 20L);
-                lease.owner("area №" + lease.id());
+                lease.owner("area #" + lease.id());
                 return lease;
             }).thenCompose(lease -> wait == 0
                     ? gm.onMain(lease::describe)
@@ -124,7 +124,7 @@ public final class Api {
             long id = a.integer("id", 1, Integer.MAX_VALUE);
             return gm.onMain(() -> {
                 Areas.Lease lease = gm.areas().get(id);
-                if (lease == null) throw RpcException.notFound("Нет района №" + id + " (его срок мог выйти)");
+                if (lease == null) throw RpcException.notFound("No area #" + id + " (its time may have run out)");
                 lease.release();
                 JsonObject out = new JsonObject();
                 out.addProperty("released", id);
@@ -143,7 +143,7 @@ public final class Api {
             String name = a.string("name");
             return gm.onMain(() -> {
                 Bot bot = gm.bots().get(name);
-                gm.bots().remove(bot, "убран ведущим");
+                gm.bots().remove(bot, "removed by the game master");
                 JsonObject out = new JsonObject();
                 out.addProperty("removed", bot.name());
                 return out;
@@ -172,7 +172,7 @@ public final class Api {
                 return CompletableFuture.completedFuture(gm.feed().read(after, limit, wait * 1000L));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw RpcException.unavailable("Мост останавливается");
+                throw RpcException.unavailable("The bridge is stopping");
             }
         });
         return m;
@@ -185,7 +185,7 @@ public final class Api {
     private static CompletableFuture<JsonElement> script(GmServer gm, Args a) throws RpcException {
         if (!GmConfig.SCRIPTS_ENABLED.get()) throw Rules.scriptsOff();
         String code = a.string("code");
-        if (code.length() > Rules.MAX_SCRIPT) throw RpcException.badRequest("code: не больше " + Rules.MAX_SCRIPT / 1024 + " КБ");
+        if (code.length() > Rules.MAX_SCRIPT) throw RpcException.badRequest("code: at most " + Rules.MAX_SCRIPT / 1024 + " KB");
         int timeout = a.integer("timeout_ms", 1000, 1, MAX_SCRIPT_MS);
         Object args = a.has("args") ? Json.toJava(a.raw().get("args")) : new LinkedHashMap<String, Object>();
         Scripts.Compiled compiled;
@@ -194,11 +194,11 @@ public final class Api {
         } catch (Scripts.CompileError e) {
             JsonObject out = new JsonObject();
             out.addProperty("ok", false);
-            out.addProperty("error", "Скрипт не разобран: " + e.getMessage());
+            out.addProperty("error", "Script failed to compile: " + e.getMessage());
             return CompletableFuture.completedFuture(out);
         }
         return gm.onMain(() -> {
-            LOG.info("Ведущий: скрипт\n{}", code);
+            LOG.info("GM: script\n{}", code);
             ScriptApi api = new ScriptApi(gm.server(), false, data -> {
                 JsonObject d = new JsonObject();
                 d.addProperty("script", true);
@@ -236,7 +236,7 @@ public final class Api {
         String name = a.string("name", null), uuid = a.string("uuid", null);
         double[] at = a.has("at") ? numbers(a, "at") : null;
         float yaw = (float) a.number("yaw", 0, -360, 360), pitch = (float) a.number("pitch", 0, -90, 90);
-        if ((name != null ? 1 : 0) + (uuid != null ? 1 : 0) + (at != null ? 1 : 0) != 1) throw RpcException.badRequest("see: name, uuid или at (одно)");
+        if ((name != null ? 1 : 0) + (uuid != null ? 1 : 0) + (at != null ? 1 : 0) != 1) throw RpcException.badRequest("see: exactly one of name, uuid or at");
         GmServer.MainCall<Object[]> look = () -> {
             Entity viewer = null;
             ServerLevel level;
@@ -248,7 +248,7 @@ public final class Api {
             } else {
                 if (name != null) {
                     viewer = server.getPlayerList().getPlayerByName(name);
-                    if (viewer == null) throw RpcException.notFound("Нет в игре: " + name);
+                    if (viewer == null) throw RpcException.notFound("Not online: " + name);
                 } else {
                     UUID id;
                     try {
@@ -257,7 +257,7 @@ public final class Api {
                         throw RpcException.badRequest("uuid: " + e.getMessage());
                     }
                     for (ServerLevel l : server.getAllLevels()) if (viewer == null) viewer = l.getEntity(id);
-                    if (viewer == null) throw RpcException.notFound("Нет загруженной сущности " + uuid);
+                    if (viewer == null) throw RpcException.notFound("No loaded entity " + uuid);
                 }
                 level = (ServerLevel) viewer.level();
                 eye = viewer.getEyePosition();
@@ -281,7 +281,7 @@ public final class Api {
         double[] out = new double[3];
         for (int i = 0; i < 3; i++) {
             JsonElement v = e.getAsJsonArray().get(i);
-            if (!v.isJsonPrimitive() || !v.getAsJsonPrimitive().isNumber()) throw RpcException.badRequest(name + ": [x, y, z] числами");
+            if (!v.isJsonPrimitive() || !v.getAsJsonPrimitive().isNumber()) throw RpcException.badRequest(name + ": [x, y, z] as numbers");
             out[i] = v.getAsDouble();
         }
         return out;
@@ -314,13 +314,13 @@ public final class Api {
             z0 = Math.min(from[1], to[1]);
             sx = Math.abs(from[0] - to[0]) + 1;
             sz = Math.abs(from[1] - to[1]) + 1;
-            if (sx > MapView.MAX_SIDE || sz > MapView.MAX_SIDE) throw RpcException.badRequest("Карта — не больше " + MapView.MAX_SIDE + " блоков по стороне");
+            if (sx > MapView.MAX_SIDE || sz > MapView.MAX_SIDE) throw RpcException.badRequest("Map: at most " + MapView.MAX_SIDE + " blocks per side");
         }
         Integer below = a.has("below") ? a.integer("below", -2048, 4096) : null;
         List<MapView.Mark> marks = new ArrayList<>();
         if (a.has("marks")) {
             for (JsonElement e : a.array("marks")) {
-                if (!e.isJsonObject()) throw RpcException.badRequest("marks: объекты {label, x, z}");
+                if (!e.isJsonObject()) throw RpcException.badRequest("marks: objects {label, x, z}");
                 Args mark = new Args(e.getAsJsonObject());
                 marks.add(new MapView.Mark(mark.string("label", "?"), mark.integer("x", -30_000_000, 30_000_000), mark.integer("z", -30_000_000, 30_000_000)));
             }
@@ -341,7 +341,7 @@ public final class Api {
                 BlockStateParser.BlockResult r = BlockStateParser.parseForBlock(blocks, s, true);
                 return new BlockInput(r.blockState(), r.properties().keySet(), r.nbt());
             } catch (CommandSyntaxException e) {
-                throw RpcException.badRequest("блок «" + s + "»: " + e.getMessage());
+                throw RpcException.badRequest("block \"" + s + "\": " + e.getMessage());
             }
         }, level.getMinBuildHeight(), level.getMaxBuildHeight() - 1, GmConfig.BUILD_MAX_BLOCKS.get());
         return gm.submit(() -> BuildJob.build(level, gm.areas(), plan, CHUNK_WAIT_TICKS), waitSeconds(a));

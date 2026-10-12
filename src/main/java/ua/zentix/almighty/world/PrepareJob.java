@@ -15,7 +15,7 @@ public final class PrepareJob extends Job {
 
     @Override
     protected void step(Budget budget) {
-        if (lease.released()) fail("Район №" + lease.id() + " отпущен раньше, чем загрузился");
+        if (lease.released()) fail("Area #" + lease.id() + " was released before it loaded");
         else if (lease.isReady()) finish();
         else if (lease.refusal() != null) fail(lease.refusal());
     }

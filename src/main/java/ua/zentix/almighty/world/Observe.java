@@ -92,7 +92,7 @@ public final class Observe {
     public static JsonElement player(MinecraftServer server, Args args) throws RpcException {
         String name = args.string("name");
         ServerPlayer p = server.getPlayerList().getPlayerByName(name);
-        if (p == null) throw RpcException.notFound("Нет в игре: " + name);
+        if (p == null) throw RpcException.notFound("Not online: " + name);
         return details(server, p);
     }
 
@@ -115,7 +115,7 @@ public final class Observe {
             items.add(item);
         }
         out.add("inventory", items);
-        out.addProperty("inventory_slots", "0–8 хотбар, 9–35 рюкзак, 36–39 броня (ноги…голова), 40 вторая рука");
+        out.addProperty("inventory_slots", "0–8 hotbar, 9–35 main inventory, 36–39 armor (feet…head), 40 offhand");
         JsonArray effects = new JsonArray();
         for (MobEffectInstance effect : p.getActiveEffects()) {
             JsonObject e = new JsonObject();
@@ -163,7 +163,7 @@ public final class Observe {
             int[] a = args.ints("from", 3), b = args.ints("to", 3);
             box = new AABB(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.min(a[2], b[2]),
                     Math.max(a[0], b[0]) + 1, Math.max(a[1], b[1]) + 1, Math.max(a[2], b[2]) + 1);
-            if (box.getXsize() > MAX_BOX || box.getZsize() > MAX_BOX) throw RpcException.badRequest("Рамка не шире " + MAX_BOX + " блоков");
+            if (box.getXsize() > MAX_BOX || box.getZsize() > MAX_BOX) throw RpcException.badRequest("Box: at most " + MAX_BOX + " blocks wide");
             centre = box.getCenter();
         }
         String type = args.string("type", null);

@@ -118,9 +118,9 @@ test('«ведущий думает…»: до ответа или конца х
 
 test('правило выключилось — ведущему сразу; ошибки правила — последней строкой со следующим сообщением', () => {
   const r = make()
-  assert.deepEqual(r.route({ type: 'rule.off', rule: 7, name: 'drone_ap', reason: '10 ошибок подряд' }),
-    { content: 'Правило drone_ap выключено: 10 ошибок подряд', meta: { kind: 'rule', state: 'off', rule: '7', name: 'drone_ap' } })
+  assert.deepEqual(r.route({ type: 'rule.off', rule: 7, name: 'drone_ap', reason: '10 errors in a row' }),
+    { content: 'Rule drone_ap turned off: 10 errors in a row', meta: { kind: 'rule', state: 'off', rule: '7', name: 'drone_ap' } })
   assert.equal(r.route({ type: 'rule.error', rule: 7, name: 'drone_ap', error: 'GroovyCastException', line: 3 }), null)
   assert.equal(r.route({ type: 'rule.error', rule: 7, name: 'drone_ap', error: 'NPE' }), null)
-  assert.equal(r.route({ type: 'gm', player: 'ZentixUA', text: 'дрон?' }).content, `дрон?\n\n${CONTEXT_HEADER}\nправило drone_ap: NPE`)
+  assert.equal(r.route({ type: 'gm', player: 'ZentixUA', text: 'дрон?' }).content, `дрон?\n\n${CONTEXT_HEADER}\nrule drone_ap: NPE`)
 })

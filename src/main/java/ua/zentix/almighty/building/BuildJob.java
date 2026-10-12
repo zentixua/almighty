@@ -91,11 +91,11 @@ public final class BuildJob extends Job {
 
     /** Откат постройки {@code of}: её снимок переходит в откат (второй откат той же постройки — ошибка). */
     public static BuildJob undo(BuildJob of, long timeoutTicks) throws RpcException {
-        if (!of.state().finished()) throw RpcException.conflict("Работа №" + of.id() + " ещё идёт: сначала cancel");
+        if (!of.state().finished()) throw RpcException.conflict("Job #" + of.id() + " is still running: cancel it first");
         if (of.snapshot == null) {
-            throw RpcException.conflict(of.undone ? "Работа №" + of.id() + " уже откачена" : "Снимок работы №" + of.id() + " выброшен (старые снимки уходят, когда их больше 4 млн мест)");
+            throw RpcException.conflict(of.undone ? "Job #" + of.id() + " is already undone" : "The snapshot of job #" + of.id() + " was dropped (old snapshots are dropped once all of them together exceed 4 million positions)");
         }
-        if (of.snapshot.size == 0) throw RpcException.conflict("Работа №" + of.id() + " ничего не изменила");
+        if (of.snapshot.size == 0) throw RpcException.conflict("Job #" + of.id() + " changed nothing");
         int[] b = {Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE};
         for (int i = 0; i < of.snapshot.size; i++) {
             long p = of.snapshot.pos[i];
@@ -118,7 +118,7 @@ public final class BuildJob extends Job {
 
     @Override
     protected void submitted() {
-        lease.owner(kind() + " №" + id());
+        lease.owner(kind() + " #" + id());
     }
 
     @Override
@@ -129,7 +129,7 @@ public final class BuildJob extends Job {
                 if (refusal != null) {
                     fail(refusal);
                 } else if (++waited > timeoutTicks) {
-                    fail("Чанки не загрузились за " + timeoutTicks + " тиков: готово " + lease.ready() + " из " + lease.chunks());
+                    fail("Chunks did not load within " + timeoutTicks + " ticks: " + lease.ready() + " of " + lease.chunks() + " ready");
                 }
                 return;
             }
@@ -171,7 +171,7 @@ public final class BuildJob extends Job {
     private boolean put(BlockPos pos) {
         done++;
         if (level.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4) == null) {
-            throw new IllegalStateException("чанк " + (pos.getX() >> 4) + ", " + (pos.getZ() >> 4) + " выгрузился под постройкой");
+            throw new IllegalStateException("chunk " + (pos.getX() >> 4) + ", " + (pos.getZ() >> 4) + " unloaded during the build");
         }
         BlockState old = level.getBlockState(pos);
         if (plan != null && cursor.keep && !old.isAir()) {
@@ -246,7 +246,7 @@ public final class BuildJob extends Job {
             out.addProperty("chunks", lease.chunks());
         }
         if (state().finished()) {
-            out.addProperty("undo", snapshot != null && snapshot.size > 0 ? "можно: undo {job: " + id() + "}" : undone ? "откачена" : "нет снимка");
+            out.addProperty("undo", snapshot != null && snapshot.size > 0 ? "available: undo {job: " + id() + "}" : undone ? "undone" : "no snapshot");
         }
     }
 }

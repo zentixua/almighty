@@ -97,7 +97,7 @@ public final class Json {
             int n = 0;
             for (Map.Entry<?, ?> e : m.entrySet()) {
                 if (n++ == MAX_ITEMS) {
-                    out.addProperty("…", "ещё " + (m.size() - MAX_ITEMS));
+                    out.addProperty("…", (m.size() - MAX_ITEMS) + " more");
                     break;
                 }
                 out.add(String.valueOf(e.getKey()), from(e.getValue(), depth - 1));
@@ -109,7 +109,7 @@ public final class Json {
             int n = 0;
             for (Object o : it) {
                 if (n++ == MAX_ITEMS) {
-                    out.add("… и дальше");
+                    out.add("… and more");
                     break;
                 }
                 out.add(from(o, depth - 1));
@@ -120,7 +120,7 @@ public final class Json {
             JsonArray out = new JsonArray();
             int length = Array.getLength(v);
             for (int i = 0; i < Math.min(length, MAX_ITEMS); i++) out.add(from(Array.get(v, i), depth - 1));
-            if (length > MAX_ITEMS) out.add("… ещё " + (length - MAX_ITEMS));
+            if (length > MAX_ITEMS) out.add("… " + (length - MAX_ITEMS) + " more");
             return out;
         }
         if (v instanceof Record r) {
@@ -131,7 +131,7 @@ public final class Json {
                     m.trySetAccessible();
                     out.add(c.getName(), from(m.invoke(r), depth - 1));
                 } catch (ReflectiveOperationException | RuntimeException e) {
-                    out.addProperty(c.getName(), "не прочитать: " + e);
+                    out.addProperty(c.getName(), "unreadable: " + e);
                 }
             }
             return out;
@@ -228,7 +228,7 @@ public final class Json {
     }
 
     private static JsonPrimitive text(String s) {
-        return new JsonPrimitive(s.length() > MAX_TEXT ? s.substring(0, MAX_TEXT) + "… (" + s.length() + " символов)" : s);
+        return new JsonPrimitive(s.length() > MAX_TEXT ? s.substring(0, MAX_TEXT) + "… (" + s.length() + " characters)" : s);
     }
 
     private static JsonArray numbers(Number... values) {

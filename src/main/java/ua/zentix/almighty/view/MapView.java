@@ -136,8 +136,8 @@ public final class MapView extends View {
         legend.add("top_left_block", origin);
         legend.addProperty("blocks_per_cell", step);
         legend.addProperty("cells", width + "×" + height);
-        legend.addProperty("axes", "север вверху, восток справа; клетка (i, j) — блок x = x0 + i·blocks_per_cell, z = z0 + j·blocks_per_cell");
-        legend.addProperty("unloaded", "шахматка серым — чанк не загружен (area.prepare загрузит)");
+        legend.addProperty("axes", "north up, east right; cell (i, j) is block x = x0 + i·blocks_per_cell, z = z0 + j·blocks_per_cell");
+        legend.addProperty("unloaded", "grey checkerboard: chunk not loaded (area.prepare loads it)");
         if (below != null) legend.addProperty("below", below);
         JsonArray markers = new JsonArray();
         int n = 0;
@@ -149,7 +149,7 @@ public final class MapView extends View {
         }
         legend.add("markers", markers);
         image(png, step == 1 ? 16 : 0, Math.floorMod(x0, 16), Math.floorMod(z0, 16));
-        if (step == 1 && upscale() >= 3) legend.addProperty("grid", "линии — границы чанков");
+        if (step == 1 && upscale() >= 3) legend.addProperty("grid", "lines: chunk borders");
         finish();
     }
 

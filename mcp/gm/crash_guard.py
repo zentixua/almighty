@@ -19,8 +19,8 @@ import re
 import sys
 
 NEVER = [
-    (r"^(stop|reload|save-off)\b|^save-all\s+flush\b", "останавливает или ломает сервер"),
-    (r"^forceload\s+add\b", "forceload add грузит чанки синхронно и навсегда: далёкое место — area prepare"),
+    (r"^(stop|reload|save-off)\b|^save-all\s+flush\b", "stops or breaks the server"),
+    (r"^forceload\s+add\b", "forceload add loads chunks synchronously and for good: for a distant place use area prepare"),
 ]
 OWNER = r"^(op|deop|whitelist|ban|ban-ip|pardon|pardon-ip|kick)\b"
 TICK_RATE = re.compile(r"^tick\s+rate\s+(\d+(?:\.\d+)?)")
@@ -28,22 +28,22 @@ TICK_RATE_MAX = 100
 
 SCRIPT_NEVER = [
     (r"\bTicketType\b|\baddRegionTicket\b|\baddTicket\b|\bforceChunk\b|\bsetChunkForced\b",
-     "тикеты чанков из скрипта уронили сервер 04.10: далёкое место — area prepare"),
+     "chunk tickets from a script crashed the server (2026-10-04): for a distant place use area prepare"),
     (r"\bgetChunk\s*\(|\bgetChunkAt\s*\(",
-     "getChunk грузит чанк синхронно (сервер встаёт): getChunkNow, а далёкое место — area prepare"),
+     "getChunk loads a chunk synchronously (the server freezes): use getChunkNow, and area prepare for a distant place"),
     (r"\bnew\s+Thread\b|\bThread\s*\.\s*start|\bExecutors\b|\bnew\s+Timer\b|\bCompletableFuture\b"
      r"|\.(execute|submit|schedule)\s*[({]",
-     "потоки, процессы и задачи на потом игре не отдавать: реакция на события — rule"),
-    (r"EVENT_BUS|\.addListener\s*\(|\.register\s*\(", "слушатели шины из скрипта — нельзя: реакция на события — rule"),
+     "do not hand threads, processes or deferred tasks to the game: react to events with rule"),
+    (r"EVENT_BUS|\.addListener\s*\(|\.register\s*\(", "no event bus listeners from a script: react to events with rule"),
     (r"\bThread\s*\.\s*sleep\b|(?<![\w.])sleep\s*\(|\.wait\s*\(\s*\)",
-     "сон на потоке сервера замораживает игру (05.10 — 8 с): ждать между вызовами, а в правиле — every"),
+     "sleeping on the server thread freezes the game (8 s on 2026-10-05): wait between calls, and use every in a rule"),
     (r"\bSystem\s*\.\s*exit\b|\bRuntime\s*\.\s*getRuntime\s*\(\s*\)\s*\.\s*(exec|exit|halt)\b|\bProcessBuilder\b",
-     "выход JVM и процессы из игры — нельзя: команды хоста — Bash"),
+     "no JVM exit or processes from the game: run host commands with Bash"),
 ]
 COMMAND_LITERAL = re.compile(r"""\bgm\s*\.\s*command(?:As)?\s*\((?:[^'"()]*,\s*)?(['"])((?:\\.|(?!\1).)*)\1""")
 
 CHAT = re.compile(r"^(say|tellraw|tell|msg|w|me|teammsg|tm|title)\b")
-ONE_VOICE = "игрокам пишет только главная сессия ведущего: верни ей итог, она скажет его сама"
+ONE_VOICE = "only the main game master session talks to players: return the result to it, and it will tell them"
 
 PLOT = 20_000_000
 FAR_COMMAND = re.compile(r"^(tp|teleport|spreadplayers|fill|clone|setblock|place|forceload)\b")
@@ -78,14 +78,14 @@ def check_command(cmd):
     for seg in segments(cmd):
         for pattern, why in NEVER:
             if re.search(pattern, seg, re.I):
-                return "deny", f"«{seg[:80]}» — {why}"
+                return "deny", f'"{seg[:80]}": {why}'
         m = TICK_RATE.match(seg)
         if m and float(m.group(1)) > TICK_RATE_MAX:
-            return "deny", f"/tick rate выше {TICK_RATE_MAX} роняет сервер (03.10)"
+            return "deny", f"/tick rate above {TICK_RATE_MAX} crashes the server (2026-10-03)"
         if FAR_COMMAND.match(seg) and on_plot(seg):
-            return "deny", "участки кораблей Sable (x или z от 20 000 000) не грузить: корабль — по его месту в мире"
+            return "deny", "do not load Sable ship plots (x or z from 20,000,000): reach a ship at its position in the world"
         if re.search(OWNER, seg, re.I):
-            return "ask", f"«{seg[:80]}» — только по слову владельца"
+            return "ask", f'"{seg[:80]}": needs the owner\'s approval'
     return None
 
 
@@ -146,9 +146,9 @@ def check_call(method, p, subagent=False):
     if method == "rule.add":
         return check_script(p.get("script"))
     if method in ("build", "area.prepare") and on_plot([p.get("ops"), p.get("from"), p.get("to")]):
-        return "deny", "постройка и загрузка района на участках Sable (x или z от 20 000 000) уронили сервер 04.10"
+        return "deny", "building and loading areas on Sable plots (x or z from 20,000,000) crashed the server (2026-10-04)"
     if method == "bot.spawn" and on_plot(p.get("pos")):
-        return "deny", "бот на участке Sable грузит там чанки: корабль — по его месту в мире"
+        return "deny", "a bot on a Sable plot loads chunks there: reach a ship at its position in the world"
     if method == "bot.act":
         return first(*(check_command(a["chat"]) for a in p.get("actions") or []
                        if isinstance(a, dict) and isinstance(a.get("chat"), str) and a["chat"].startswith("/")))
@@ -190,5 +190,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except Exception as e:  # noqa: BLE001 — сломалась сама охрана: отказ (код 2 блокирует вызов), а не пропуск
-        print(f"охрана ведущего упала: {type(e).__name__}: {e}", file=sys.stderr)
+        print(f"game master guard failed: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(2)

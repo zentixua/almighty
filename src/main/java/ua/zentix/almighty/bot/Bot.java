@@ -142,7 +142,7 @@ public final class Bot {
      * обработчик), в этом же потоке. Пакет только клиента к серверу; ошибка обработчика отключает бота, как клиента.
      */
     public void send(Packet<?> packet) {
-        if (packet.type().flow() != PacketFlow.SERVERBOUND) throw new IllegalArgumentException("боту — только пакеты клиента к серверу (Serverbound…), не " + packet.type());
+        if (packet.type().flow() != PacketFlow.SERVERBOUND) throw new IllegalArgumentException("a bot only takes client-to-server packets (Serverbound…), not " + packet.type());
         if (!channel.isOpen()) return;
         driven();
         channel.writeInbound(packet);
@@ -155,7 +155,7 @@ public final class Bot {
 
     /** То же; {@code replace} — снять идущую и ждущие программы (как {@code replace} у {@code bot.act}). */
     public long act(Object steps, boolean replace) throws RpcException {
-        if (!(Json.from(steps) instanceof com.google.gson.JsonArray array)) throw RpcException.badRequest("act: список шагов");
+        if (!(Json.from(steps) instanceof com.google.gson.JsonArray array)) throw RpcException.badRequest("act: expected a list of steps");
         List<Steps.Step> parsed = Steps.parse(array);
         driven();
         return start(parsed, replace).id;
@@ -187,7 +187,7 @@ public final class Bot {
      * {@code act(список, true)} скрипта выбрал бы этот метод со списком карт вместо шагов.
      */
     Program start(List<Steps.Step> steps, boolean replace) {
-        if (replace) cancelAll("заменена новой программой");
+        if (replace) cancelAll("replaced by a new program");
         Program program = new Program(++programIds, steps);
         programs.add(program);
         return program;
@@ -237,7 +237,7 @@ public final class Bot {
             drain();
         } catch (RuntimeException e) {
             // как сервер с клиентом, чей пакет упал в обработчике: игрок отключается, сервер живёт
-            LOG.warn("Бот {}: ошибка в тике, отключаю", name, e);
+            LOG.warn("Bot {}: error in tick, disconnecting", name, e);
             disconnect(Component.literal("Internal server error"));
         }
         return channel.isOpen();
@@ -264,7 +264,7 @@ public final class Bot {
                 if (d > 0) drop.setInt(listener, d - 1);
             } catch (RuntimeException | IllegalAccessException e) {
                 broken = true;
-                LOG.warn("Боты: счётчики спама обработчика недоступны ({}): частый чат бота отключит его за спам", e.toString());
+                LOG.warn("Bots: spam counters of the packet listener are unavailable ({}): frequent chat from a bot will get it kicked for spamming", e.toString());
             }
         }
     }
@@ -306,7 +306,7 @@ public final class Bot {
     /** Канал закрыт: если сервер ещё не разобрал отключение (выгнал сам — разобрал), разобрать. */
     void closed() {
         if (leftReason == null && connection.getDisconnectionDetails() != null) leftReason = connection.getDisconnectionDetails().reason().getString();
-        cancelAll("бот ушёл с сервера");
+        cancelAll("the bot left the server");
         if (connection.getPacketListener() instanceof ServerGamePacketListenerImpl listener && !listener.player.hasDisconnected()) {
             connection.handleDisconnection();
         }
@@ -371,7 +371,7 @@ public final class Bot {
                         EntityType.getKey(source.getType()).toString(), sound.getVolume());
             }
             // перенастройку соединения бот не проходит: молча он бы завис, а сервер ждал бы ответа
-            case ClientboundStartConfigurationPacket ignored -> connection.disconnect(Component.literal("бот не проходит перенастройку соединения"));
+            case ClientboundStartConfigurationPacket ignored -> connection.disconnect(Component.literal("bots do not support connection reconfiguration"));
             default -> {}
         }
     }
@@ -476,7 +476,7 @@ public final class Bot {
         JsonObject leases = new JsonObject();
         controls.leases().forEach((k, left) -> leases.addProperty(k.id(), left));
         if (!leases.isEmpty()) o.add("keys_ticks_left", leases);
-        if (teleportPending) o.addProperty("loading", "ждёт загрузки чанков места: стоит, пока они не готовы");
+        if (teleportPending) o.addProperty("loading", "waiting for the chunks at its position to load; stands still until they are ready");
         JsonObject vehicle = vehicles.describe(player());
         if (vehicle != null) o.add("vehicle", vehicle);
         o.add("menu", menu(player().containerMenu));
@@ -507,7 +507,7 @@ public final class Bot {
         }
         o.add("items", items);
         o.add("carried", Steps.item(menu.getCarried()));
-        if (menu.containerId == 0) o.addProperty("layout", "0 — результат крафта, 1–4 — сетка, 5–8 — броня (голова…ноги), 9–35 — рюкзак, 36–44 — хотбар, 45 — вторая рука");
+        if (menu.containerId == 0) o.addProperty("layout", "0 crafting result, 1–4 crafting grid, 5–8 armor (head…feet), 9–35 main inventory, 36–44 hotbar, 45 offhand");
         return o;
     }
 

@@ -33,8 +33,8 @@ public final class BlockText {
     public static JsonElement read(ServerLevel level, int[] from, int[] to, boolean properties) throws RpcException {
         int minX = Math.min(from[0], to[0]), minY = Math.min(from[1], to[1]), minZ = Math.min(from[2], to[2]);
         int sx = Math.abs(from[0] - to[0]) + 1, sy = Math.abs(from[1] - to[1]) + 1, sz = Math.abs(from[2] - to[2]) + 1;
-        if (sx > MAX_EDGE || sy > MAX_EDGE || sz > MAX_EDGE) throw RpcException.badRequest("Рамка — не больше " + MAX_EDGE + " блоков по каждой оси");
-        if ((long) sx * sy * sz > MAX_BLOCKS) throw RpcException.badRequest("Рамка — не больше " + MAX_BLOCKS + " блоков");
+        if (sx > MAX_EDGE || sy > MAX_EDGE || sz > MAX_EDGE) throw RpcException.badRequest("Box: at most " + MAX_EDGE + " blocks along each axis");
+        if ((long) sx * sy * sz > MAX_BLOCKS) throw RpcException.badRequest("Box: at most " + MAX_BLOCKS + " blocks");
         Map<String, Character> symbols = new LinkedHashMap<>();
         Map<BlockState, Character> cache = new HashMap<>();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -94,7 +94,7 @@ public final class BlockText {
         out.add("size", size);
         out.add("palette", palette);
         out.add("layers", layers);
-        out.addProperty("legend", "слои снизу вверх; строка — z с севера на юг; символ — x с запада на восток; '.' воздух, '?' не загружено");
+        out.addProperty("legend", "layers from bottom to top; rows are z from north to south; characters are x from west to east; '.' air, '?' not loaded");
         return out;
     }
 
@@ -109,6 +109,6 @@ public final class BlockText {
             char c = SYMBOLS.charAt(i);
             if (!taken.containsValue(c)) return c;
         }
-        throw RpcException.badRequest("В рамке больше " + SYMBOLS.length() + " разных блоков: взять рамку меньше или properties: false");
+        throw RpcException.badRequest("The box has more than " + SYMBOLS.length() + " different blocks: use a smaller box or properties: false");
     }
 }

@@ -1,0 +1,136 @@
+# Страницы Modrinth и CurseForge — только ручным запуском (Actions → publish → Run workflow), по шагам:
+#   draft   — Modrinth: черновик страницы (нет проекта — создаётся) или его обновление из docs/store, иконка и
+#             галерея, какие уже есть в репозитории, jar выпуска; всё видно только команде проекта. Повторять можно.
+#   submit  — Modrinth: черновик — на проверку; CurseForge: jar выпуска (первый файл отправляет проект на проверку).
+#   release — новый выпуск после проверки: страница Modrinth из docs/store, jar — на Modrinth и CurseForge.
+# Выпуск — v<version> на GitHub (workflow build с release=true), пусто — последний. Заметки — docs/releases/<version>.md
+# с ветки запуска, нет там — тело выпуска. Без секрета MODRINTH_TOKEN Modrinth пропускается, без CURSEFORGE_TOKEN
+# или переменной CURSEFORGE_ID (проект CurseForge создаётся руками на сайте) — CurseForge. Поля и картинки —
+# docs/store/modrinth.json, листинг — docs/store/listing.md («Publishing»).
+name: publish
+run-name: publish ${{ inputs.step }} ${{ inputs.version || '(последний выпуск)' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: "draft — черновик Modrinth; submit — на проверку (и CurseForge); release — новый выпуск"
+        type: choice
+        options: [draft, submit, release]
+        default: draft
+      version:
+        description: Выпуск на GitHub без «v» (0.4.0); пусто — последний
+        type: string
+        required: false
+
+# два запуска не создают проект дважды
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: ${{ inputs.step }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HAS_MODRINTH: ${{ secrets.MODRINTH_TOKEN != '' }}
+      HAS_CURSEFORGE: ${{ secrets.CURSEFORGE_TOKEN != '' && vars.CURSEFORGE_ID != '' }}
+      # необязательные (в mods.toml их нет); slug на обеих площадках проверены 12.10.2026
+      DEPENDENCIES: |
+        immersive-aircraft(optional){modrinth:immersive-aircraft}{curseforge:immersive-aircraft}
+        sable(optional){modrinth:sable}{curseforge:sable}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Выпуск
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+          STEP: ${{ inputs.step }}
+        run: |
+          v=${VERSION#v}
+          [ -n "$v" ] || v=$(gh release view --json tagName -q .tagName | sed 's/^v//')
+          case $v in ''|*[!0-9A-Za-z.+-]*) echo "::error::Версия «$v» — не номер выпуска"; exit 1 ;; esac
+          mkdir -p dist
+          gh release download "v$v" --pattern "almighty-$v.jar" --dir dist
+          if [ -f "docs/releases/$v.md" ]; then
+            cp "docs/releases/$v.md" dist/changelog.md
+            notes="docs/releases/$v.md ($GITHUB_REF_NAME)"
+          else
+            gh release view "v$v" --json body -q .body > dist/changelog.md
+            notes="тело выпуска v$v"
+          fi
+          # окружение версии для Modrinth и CurseForge — из client_side/server_side страницы
+          environment=$(jq -r '[(.client_side | {required: "client", optional: "client?"}[.] // empty),
+            (.server_side | {required: "server", optional: "server?"}[.] // empty)] | join(" | ")' docs/store/modrinth.json)
+          {
+            echo "version=$v"
+            echo "jar=dist/almighty-$v.jar"
+            echo "environment=$environment"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "Almighty $v, шаг $STEP; заметки — $notes"
+            [ "$HAS_MODRINTH" = true ] || echo "- Modrinth пропущен: нет секрета MODRINTH_TOKEN"
+            [ "$STEP" = draft ] || [ "$HAS_CURSEFORGE" = true ] ||
+              echo "- CurseForge пропущен: нет секрета CURSEFORGE_TOKEN или переменной CURSEFORGE_ID"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$HAS_MODRINTH" = true ] || echo "::notice::Modrinth пропущен: нет секрета MODRINTH_TOKEN"
+          [ "$STEP" = draft ] || [ "$HAS_CURSEFORGE" = true ] ||
+            echo "::notice::CurseForge пропущен: нет секрета CURSEFORGE_TOKEN или переменной CURSEFORGE_ID"
+
+      - name: "Modrinth: страница"
+        id: page
+        if: env.HAS_MODRINTH == 'true' && inputs.step != 'submit'
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          STEP: ${{ inputs.step }}
+          JAR: ${{ steps.rel.outputs.jar }}
+        run: bash .github/scripts/modrinth.sh page "$STEP" "$JAR"
+
+      # Kira-NT/mc-publish v3.3.1 (14.07.2026, коммит 52307b0): площадка без токена пропускается
+      - name: "Modrinth: версия"
+        if: steps.page.outputs.upload == 'true'
+        uses: Kira-NT/mc-publish@v3.3.1
+        with:
+          modrinth-id: ${{ steps.page.outputs.id }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          files: ${{ steps.rel.outputs.jar }}
+          name: Almighty ${{ steps.rel.outputs.version }}
+          version: ${{ steps.rel.outputs.version }}
+          version-type: release
+          changelog-file: dist/changelog.md
+          loaders: neoforge
+          game-versions: 1.21.1
+          java: 21
+          environment: ${{ steps.rel.outputs.environment }}
+          dependencies: ${{ env.DEPENDENCIES }}
+
+      - name: "Modrinth: на проверку"
+        if: env.HAS_MODRINTH == 'true' && inputs.step == 'submit'
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: bash .github/scripts/modrinth.sh submit
+
+      # после Modrinth: его сбой останавливает запуск до CurseForge, и повтор не выкладывает файл туда дважды
+      - name: CurseForge
+        if: env.HAS_CURSEFORGE == 'true' && inputs.step != 'draft'
+        uses: Kira-NT/mc-publish@v3.3.1
+        with:
+          curseforge-id: ${{ vars.CURSEFORGE_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          files: ${{ steps.rel.outputs.jar }}
+          name: Almighty ${{ steps.rel.outputs.version }}
+          version: ${{ steps.rel.outputs.version }}
+          version-type: release
+          changelog-file: dist/changelog.md
+          loaders: neoforge
+          game-versions: 1.21.1
+          java: 21
+          environment: ${{ steps.rel.outputs.environment }}
+          dependencies: ${{ env.DEPENDENCIES }}

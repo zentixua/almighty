@@ -1,0 +1,19 @@
+{
+  "slug": "almighty",
+  "title": "Almighty: AI Game Master",
+  "description": "Server-side NeoForge mod that lets an AI agent run your Minecraft server as game master: it sees the world, follows events, runs commands, builds with undo, adds rules on game events and spawns bot players.",
+  "categories": [
+    "management",
+    "utility"
+  ],
+  "additional_categories": [],
+  "client_side": "unsupported",
+  "server_side": "required",
+  "license_id": "GPL-3.0-only",
+  "source_url": "https://github.com/zentixua/almighty",
+  "issues_url": "https://github.com/zentixua/almighty/issues",
+  "wiki_url": null,
+  "discord_url": null,
+  "icon": "docs/media/icon.png",
+  "gallery": []
+}

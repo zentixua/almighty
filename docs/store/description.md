@@ -69,5 +69,3 @@ Groovy 4 under the Apache License 2.0.
 I design Almighty and run it on my own server, where an AI game master plays with my friends and me. The code is
 written with Claude Code. The icon is an in-game screenshot; the other images on this page are drawn by the mod on a
 server.
-
-— Zentix

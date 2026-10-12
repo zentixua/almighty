@@ -1,13 +1,15 @@
 # Almighty — мост ИИ-агента к серверу Minecraft (`almighty`)
 
-«Всемогущий ИИ для твоего сервера Minecraft» — так мод представляется игрокам (README.md).
+«Всемогущий ИИ для твоего сервера Minecraft» — так мод представляется игрокам (README.ru.md; в README.md, главном и
+английском, — «An AI game master for your Minecraft server»). Тексты для владельца и агента (README, настройки,
+ошибки моста, описания инструментов, лог) — по-английски; код, комментарии и этот файл — по-русски.
 
 Серверный мод NeoForge для Minecraft 1.21.1, через который ИИ-агент (ведущий) видит мир и действует на сервере:
 HTTP-мост на сервере и MCP-адаптер `mcp/almighty.py` у агента. Своих блоков, предметов, пакетов и записей в
 реестрах нет (своё в данных — только метка сущностей `almighty:driven_by_rider`) — клиентам ставить не нужно, от
 других модов мод не зависит: совместимость с модом (`compat/`) грузится, только когда тот стоит. Репозиторий
 https://github.com/zentixua/almighty (публичный) выделен из zentixua/airstrike вместе с историей: номера
-PR до переезда — `zentixua/airstrike#N`. Мост стоит на сервере сборки «Airstrike Pack» (zentixua/airstrike-pack,
+PR до переезда — `zentixua/airstrike#N`. Мост стоит на сервере сборки «Incoming Pack» (zentixua/airstrike-pack,
 `side = "server"`).
 
 ## Люди и правила
@@ -139,7 +141,7 @@ mcp/gm/tests` и `node --test` в `mcp/gm/almighty-chat/`.
 - Вызов метода из потока сервера (GameTest) выполняется сразу (`server.execute` в том же потоке не ставит в очередь);
   `join` на будущем, которое ждёт тика, в потоке сервера — вечная блокировка.
 - Свои команды ведущего проходят `CommandEvent` (лента их не пишет: в ней только команды игроков, без личных
-  сообщений) и пишутся строкой INFO «Ведущий: /…»; операторам в чат не уходят (`shouldInformAdmins` — нет).
+  сообщений) и пишутся строкой INFO «GM: /…»; операторам в чат не уходят (`shouldInformAdmins` — нет).
 - Функция — `CommandFunction.fromLines` + `ExecutionContext.queueInitialFunctionCall`, как `/function`, без файла и
   `/reload`. Параметры макроса из JSON: целые — `IntTag`/`LongTag` (через `NbtOps` число стало бы `5.0`).
 - PNG пишется своим кодом (`Png`, Deflater): в образе сервера может не быть AWT и шрифтов. Кодирует поток моста,
@@ -276,7 +278,8 @@ mcp/gm/tests` и `node --test` в `mcp/gm/almighty-chat/`.
 - Перенастройку соединения (`ClientboundStartConfigurationPacket`) бот не проходит — выходит.
 - Кэш профилей: вход пишет бота в `usercache.json`, `/op`, `/whitelist`, `/ban` по имени нашли бы его — запись
   возвращается (рефлексия `GameProfileCache`; в GameTest кэша нет — `NO_SERVICES`).
-- Пометка и защита: в табе и чате — `bots.marker` («[бот]») серым перед именем (`TabListNameFormat`, `NameFormat`).
+- Пометка и защита: в табе и чате — `bots.marker` («[bot]»; в файле настроек от версии 0.3.1 и раньше остаётся «[бот]»)
+  серым перед именем (`TabListNameFormat`, `NameFormat`).
   Без `bots.allow_disguise` (решает владелец, по умолчанию нет) бот не входит без пометки и не берёт имя или скин
   игрока сервера (в игре, белый список, операторы, кэш профилей; у скина свойством `textures` владелец — в его
   base64 JSON, `profileName`/`profileId`); UUID — свой всегда. Игрок с именем бота входит —

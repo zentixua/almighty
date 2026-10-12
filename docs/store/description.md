@@ -61,8 +61,8 @@ Almighty depends on no other mod.
 
 ## How it is made
 
-The mod is designed by its author and tested on the author's own server. The code is written with Claude Code. The
-pictures on this page are the bridge's own pictures from a server.
+The mod is designed by its author and tested on the author's own server. The code and the texts are written with
+Claude Code. The icon is a screenshot from the game; the gallery pictures are the bridge's own pictures from a server.
 
 ## Source and license
 

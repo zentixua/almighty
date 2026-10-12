@@ -36,8 +36,8 @@ sites rename categories from time to time.
 - **Issues:** https://github.com/zentixua/almighty/issues
 - **Wiki:** none; the README on GitHub is the documentation.
 - **Discord:** none.
-- **Content disclosure:** on Modrinth, "Contains AI-generated content": the code is written with Claude Code, and the
-  mod exists for AI agents. It is set by hand in the project's Settings → Disclosures. CurseForge has no such field.
+- **Content disclosure:** on Modrinth, "Contains AI-generated content": the code and the page texts are written with
+  Claude Code, and the mod exists for AI agents. It is set by hand in the project's Settings → Disclosures. CurseForge has no such field.
 
 ## Files
 
@@ -87,7 +87,7 @@ the latest GitHub release) and press Run workflow.
   repository, and the jar. Only the project members see a draft and its versions. Run it again after changing the
   images or the texts: it uploads only new images and skips a jar that is already uploaded.
 - `submit`: sends the Modrinth draft for review and uploads the jar to CurseForge. On CurseForge the first file sends
-  a new project for review.
+  a new project for review. Turn on the Modrinth content disclosure by hand before the first `submit`.
 - `release`: for later versions, after Modrinth has approved the project: updates the Modrinth page and uploads the
   jar to Modrinth and CurseForge.
 
@@ -96,5 +96,5 @@ removed from `gallery` is removed from the site on the next `draft` or `release`
 changed on the site. Running `submit` or `release` twice for the same version uploads the file to CurseForge twice.
 
 A CurseForge project can only be created on the site. Create it by hand first with the fields above (title, slug
-`almighty-game-master`, summary, CurseForge categories, license, links, and description.md as the description), then
-add its ID as `CURSEFORGE_ID`.
+`almighty-game-master`, summary, CurseForge categories, license, links, the avatar `docs/media/icon-400.png`, and
+description.md as the description), then add its ID as `CURSEFORGE_ID`.

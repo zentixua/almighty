@@ -15,5 +15,19 @@
   "wiki_url": null,
   "discord_url": null,
   "icon": "docs/media/icon.png",
-  "gallery": []
+  "gallery": [
+    {
+      "file": "docs/media/eye.png",
+      "title": "What a bot sees: the eye view of an airport, with the crosshair in the middle",
+      "featured": true
+    },
+    {
+      "file": "docs/media/map.png",
+      "title": "The map view: an airport from above, drawn like a vanilla map"
+    },
+    {
+      "file": "docs/media/look.png",
+      "title": "An airport terminal from the side in the box view; the checkerboard marks chunks that are not loaded"
+    }
+  ]
 }

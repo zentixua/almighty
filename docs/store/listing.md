@@ -47,18 +47,18 @@ sites rename categories from time to time.
 ## Gallery
 
 The icon is `docs/media/icon.png` (512×512), the same picture as the mod's logo `almighty.png` in the jar. The
-gallery is still empty. Missing:
+gallery shows the bridge's own pictures from a server, enlarged three times without smoothing. In this order (the first
+one is featured):
 
-- **Map view:** a top-down map from the bridge, for example
-  `uv run mcp/almighty.py call map '{"center": [0, 0], "size": 256}' --png map.png`.
-- **Box view:** a `look` picture of a building, front and top.
-- **Eye view:** a `see` picture through a bot's or player's eyes, with entity boxes and the crosshair.
-- **A bot in the game:** a client screenshot of a bot with the `[bot]` marker in the tab list or chat, ideally doing
-  something visible such as building or flying an Immersive Aircraft plane.
+| File | Caption |
+|---|---|
+| `docs/media/eye.png` | What a bot sees: the eye view of an airport, with the crosshair in the middle |
+| `docs/media/map.png` | The map view: an airport from above, drawn like a vanilla map |
+| `docs/media/look.png` | An airport terminal from the side in the box view; the checkerboard marks chunks that are not loaded |
 
-Put the images under `docs/media/` on `main` and reference them in the description only by absolute URLs of the
-form `https://raw.githubusercontent.com/zentixua/almighty/main/docs/media/<file>.png`. For the Modrinth gallery, add
-each image to `gallery` in [modrinth.json](modrinth.json) as `{"file": "docs/media/<file>.png", "title": "<caption>"}`.
+A new image goes under `docs/media/` and into `gallery` in [modrinth.json](modrinth.json) as
+`{"file": "docs/media/<file>.png", "title": "<caption>"}`. In the description, images are referenced only by absolute
+URLs of the form `https://raw.githubusercontent.com/zentixua/almighty/main/docs/media/<file>.png`.
 
 ## Publishing
 

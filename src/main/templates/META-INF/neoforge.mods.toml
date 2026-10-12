@@ -14,6 +14,7 @@ version = "${mod_version}"
 displayName = "Almighty"
 authors = "${mod_authors}"
 displayURL = "${mod_url}"
+logoFile = "almighty.png"
 description = '''An AI game master for your Minecraft server. A server-side bridge through which an AI agent sees the world, follows events and acts on the server: commands, builds with undo, Groovy scripts, rules on game events and bot players. Local HTTP API with a token, plus an MCP adapter. Clients need nothing.'''
 
 [[dependencies.almighty]]

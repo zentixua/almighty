@@ -29,7 +29,8 @@ uv run mcp/almighty.py call status       # один вызов моста (ад�
 CI (GitHub Actions) проверяет каждый PR и push в `main`: набор ведущего, сборка, юнит-тесты, GameTest; jar — артефакт
 `almighty-jar`. Релиз: поднять `mod_version` (`gradle.properties`), написать `docs/releases/<версия>.md`, влить в
 `main` и запустить `build` вручную на `main` с `release=true` — workflow выпускает `v<версия>` с jar. Потом — PR в
-airstrike-pack с jar выпуска.
+airstrike-pack с jar выпуска. Страницы Modrinth и CurseForge — workflow `publish`, только ручным запуском: `draft`
+(скрытый черновик Modrinth), `submit`, `release`; поля — `docs/store/modrinth.json`, порядок — `docs/store/listing.md`.
 
 ## Устройство (`ua.zentix.almighty`)
 - `Almighty` — подписки; `GmServer` — состояние одного запуска сервера (`ServerStartedEvent` … `ServerStoppedEvent`):

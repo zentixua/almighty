@@ -23,11 +23,11 @@ Fields to paste into the project forms. The long description is [description.md]
 | Loader | NeoForge | NeoForge |
 | Game version | 1.21.1 | 1.21.1 |
 | Environment | Client: unsupported. Server: required | Server |
-| Dependencies | none required; optional: Immersive Aircraft, Sable | none required; optional: Immersive Aircraft |
+| Dependencies | none required; optional: Immersive Aircraft, Sable | none required; optional: Immersive Aircraft, Sable |
 
-The mod has no blocks, items or network packets, so clients never need it. Sable is published on Modrinth; check
-whether it exists on CurseForge before linking it there. Check the category names against the forms: both sites
-rename categories from time to time.
+The mod has no blocks, items or network packets, so clients never need it. Sable is on both sites (on CurseForge
+with the slug `sable`, by the same authors, checked 2026-10-12). Check the category names against the forms: both
+sites rename categories from time to time.
 
 ## License and links
 
@@ -39,15 +39,16 @@ rename categories from time to time.
 
 ## Files
 
-- Upload `almighty-<version>.jar` from https://github.com/zentixua/almighty/releases (the first release after 0.3.1, the one with English texts).
-- Release type: Release or Beta, owner's choice. Changelog: the matching `docs/releases/<version>.md`, which is in
-  Russian; an English changelog has to be written for the first public upload.
+- Upload `almighty-<version>.jar` from https://github.com/zentixua/almighty/releases, 0.4.0 or later (the first release with English texts).
+- Release type: Release (the publish workflow uploads every version as Release). Changelog: the matching
+  `docs/releases/<version>.md`, in English from 0.4.0 (in Russian up to 0.3.1). The workflow reads this file from the
+  branch it runs on.
 
 ## Gallery
 
-No images exist yet. The repository has no icon, screenshot or banner, and the jar has no `logoFile`. Missing:
+The icon is `docs/media/icon.png` (512×512), the same picture as the mod's logo `almighty.png` in the jar. The
+gallery is still empty. Missing:
 
-- **Icon:** a square PNG, 512×512 or larger, for both sites.
 - **Map view:** a top-down map from the bridge, for example
   `uv run mcp/almighty.py call map '{"center": [0, 0], "size": 256}' --png map.png`.
 - **Box view:** a `look` picture of a building, front and top.
@@ -55,5 +56,42 @@ No images exist yet. The repository has no icon, screenshot or banner, and the j
 - **A bot in the game:** a client screenshot of a bot with the `[bot]` marker in the tab list or chat, ideally doing
   something visible such as building or flying an Immersive Aircraft plane.
 
-Put the images under `docs/store/img/` on `main` and reference them in the description only by absolute URLs of the
-form `https://raw.githubusercontent.com/zentixua/almighty/main/docs/store/img/<file>.png`.
+Put the images under `docs/media/` on `main` and reference them in the description only by absolute URLs of the
+form `https://raw.githubusercontent.com/zentixua/almighty/main/docs/media/<file>.png`. For the Modrinth gallery, add
+each image to `gallery` in [modrinth.json](modrinth.json) as `{"file": "docs/media/<file>.png", "title": "<caption>"}`.
+
+## Publishing
+
+The workflow `.github/workflows/publish.yml` creates the Modrinth page and uploads the jar of a GitHub release. It
+runs only when started by hand. [modrinth.json](modrinth.json) holds the Modrinth fields from this file, the icon
+path and the gallery with captions; change it together with this file.
+
+Secrets and variable, in Settings → Secrets and variables → Actions:
+
+- `MODRINTH_TOKEN`: New repository secret. A Modrinth personal access token with the scopes Create projects, Read
+  projects, Write projects, Create versions and Read versions.
+- `CURSEFORGE_TOKEN`: New repository secret. A CurseForge API token for file uploads.
+- `CURSEFORGE_ID`: Variables tab → New repository variable. The project ID shown on the CurseForge project page.
+
+Without `MODRINTH_TOKEN` the workflow skips Modrinth, and without `CURSEFORGE_TOKEN` or `CURSEFORGE_ID` it skips
+CurseForge. The run does not fail because of that.
+
+To start it: Actions → publish → Run workflow, choose the step, enter the version (for example `0.4.0`; empty means
+the latest GitHub release) and press Run workflow.
+
+- `draft`: creates the Modrinth project as a draft, or updates the draft: the fields, the page text from
+  [description.md](description.md), the icon and the gallery images from `modrinth.json` that exist in the
+  repository, and the jar. Only the project members see a draft and its versions. Run it again after changing the
+  images or the texts: it uploads only new images and skips a jar that is already uploaded.
+- `submit`: sends the Modrinth draft for review and uploads the jar to CurseForge. On CurseForge the first file sends
+  a new project for review.
+- `release`: for later versions, after Modrinth has approved the project: updates the Modrinth page and uploads the
+  jar to Modrinth and CurseForge.
+
+Each uploaded file is marked server-only and lists Immersive Aircraft and Sable as optional dependencies. An image
+removed from `gallery` is removed from the site on the next `draft` or `release`; captions of uploaded images are
+changed on the site. Running `submit` or `release` twice for the same version uploads the file to CurseForge twice.
+
+A CurseForge project can only be created on the site. Create it by hand first with the fields above (title, slug
+`almighty-game-master`, summary, CurseForge categories, license, links, and description.md as the description), then
+add its ID as `CURSEFORGE_ID`.

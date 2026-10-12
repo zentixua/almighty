@@ -37,7 +37,8 @@ sites rename categories from time to time.
 - **Wiki:** none; the README on GitHub is the documentation.
 - **Discord:** none.
 - **Content disclosure:** on Modrinth, "Contains AI-generated content": the code and the page texts are written with
-  Claude Code, and the mod exists for AI agents. It is set by hand in the project's Settings → Disclosures. CurseForge has no such field.
+  Claude Code, and the mod exists for AI agents. It is set by hand in the project's Settings → Disclosures. CurseForge
+  has no such field.
 
 ## Files
 

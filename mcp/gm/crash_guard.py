@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Хук PreToolUse ведущего: только то, что уже роняло сервер, дела владельца и один голос в чате.
+"""Хук PreToolUse ведущего: только то, что заведомо роняет сервер, дела владельца и один голос в чате.
 
 Хук Claude Code (https://code.claude.com/docs/en/hooks): JSON вызова на stdin, решение — JSON hookSpecificOutput
 с permissionDecision: deny — нельзя никогда (причину видит модель), ask — только с подтверждения владельца (запрос
 разрешения приходит ему в приложение и в игру через канал almighty-chat). Остальное ведущему можно.
 
-Откуда запреты (журналы игр 03–05.10.2026):
-- stop, reload, save-off, save-all flush, forceload add; /tick rate 9999 (MartinFrances, 03.10);
-- скрипты и правила: тикет чанка с замыканием (04.10), синхронная загрузка чанка, потоки и задачи на потом,
-  слушатели шины, сон на потоке сервера (Thread.sleep 8 с — фриз 05.10), выход JVM и процессы;
-- постройка, загрузка района и телепорт на участки Sable (x или z от 20 000 000): постройка там уронила сервер 04.10.
+Что запрещено — то, что роняет или замораживает сервер:
+- stop, reload, save-off, save-all flush, forceload add; /tick rate выше TICK_RATE_MAX;
+- скрипты и правила: тикет чанка с замыканием, синхронная загрузка чанка, потоки и задачи на потом,
+  слушатели шины, сон на потоке сервера (Thread.sleep замораживает игру), выход JVM и процессы;
+- постройка, загрузка района и телепорт на участки Sable (x или z от 20 000 000): постройка там роняет сервер.
 
 Один голос: игрокам пишет только главная сессия. Вызов из субагента хук узнаёт по agent_id во входе (доки hooks,
 Common input fields) и не пускает его слова в чат: say, команды чата, реплики ботов.
@@ -28,7 +28,7 @@ TICK_RATE_MAX = 100
 
 SCRIPT_NEVER = [
     (r"\bTicketType\b|\baddRegionTicket\b|\baddTicket\b|\bforceChunk\b|\bsetChunkForced\b",
-     "chunk tickets from a script crashed the server (2026-10-04): for a distant place use area prepare"),
+     "chunk tickets from a script crash the server: for a distant place use area prepare"),
     (r"\bgetChunk\s*\(|\bgetChunkAt\s*\(",
      "getChunk loads a chunk synchronously (the server freezes): use getChunkNow, and area prepare for a distant place"),
     (r"\bnew\s+Thread\b|\bThread\s*\.\s*start|\bExecutors\b|\bnew\s+Timer\b|\bCompletableFuture\b"
@@ -36,7 +36,7 @@ SCRIPT_NEVER = [
      "do not hand threads, processes or deferred tasks to the game: react to events with rule"),
     (r"EVENT_BUS|\.addListener\s*\(|\.register\s*\(", "no event bus listeners from a script: react to events with rule"),
     (r"\bThread\s*\.\s*sleep\b|(?<![\w.])sleep\s*\(|\.wait\s*\(\s*\)",
-     "sleeping on the server thread freezes the game (8 s on 2026-10-05): wait between calls, and use every in a rule"),
+     "sleeping on the server thread freezes the game: wait between calls, and use every in a rule"),
     (r"\bSystem\s*\.\s*exit\b|\bRuntime\s*\.\s*getRuntime\s*\(\s*\)\s*\.\s*(exec|exit|halt)\b|\bProcessBuilder\b",
      "no JVM exit or processes from the game: run host commands with Bash"),
 ]
@@ -81,7 +81,7 @@ def check_command(cmd):
                 return "deny", f'"{seg[:80]}": {why}'
         m = TICK_RATE.match(seg)
         if m and float(m.group(1)) > TICK_RATE_MAX:
-            return "deny", f"/tick rate above {TICK_RATE_MAX} crashes the server (2026-10-03)"
+            return "deny", f"/tick rate above {TICK_RATE_MAX} crashes the server"
         if FAR_COMMAND.match(seg) and on_plot(seg):
             return "deny", "do not load Sable ship plots (x or z from 20,000,000): reach a ship at its position in the world"
         if re.search(OWNER, seg, re.I):
@@ -146,7 +146,7 @@ def check_call(method, p, subagent=False):
     if method == "rule.add":
         return check_script(p.get("script"))
     if method in ("build", "area.prepare") and on_plot([p.get("ops"), p.get("from"), p.get("to")]):
-        return "deny", "building and loading areas on Sable plots (x or z from 20,000,000) crashed the server (2026-10-04)"
+        return "deny", "building and loading areas on Sable plots (x or z from 20,000,000) crashes the server"
     if method == "bot.spawn" and on_plot(p.get("pos")):
         return "deny", "a bot on a Sable plot loads chunks there: reach a ship at its position in the world"
     if method == "bot.act":

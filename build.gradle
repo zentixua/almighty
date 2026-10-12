@@ -25,7 +25,8 @@ configurations {
 
 repositories {
     mavenCentral()
-    // Immersive Aircraft: самолёты под ботом (bot/ImmersiveAircraft) — компиляция и GameTest; в jar и mods.toml его нет
+    // Immersive Aircraft: самолёты под ботом (compat/immersiveaircraft) — компиляция и GameTest;
+    // в jar и mods.toml его нет
     exclusiveContent {
         forRepository { maven { url = 'https://api.modrinth.com/maven' } }
         filter { includeGroup 'maven.modrinth' }

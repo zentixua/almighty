@@ -40,9 +40,9 @@ import static ua.zentix.almighty.gametest.GmGameTests.check;
 
 /**
  * Ведущий и корабли Sable (Create Aeronautics): блоки собранного корабля живут на его участке («плоте») далеко от мира
- * (x ≈ 20,48 млн блоков), чанки участка ведёт Sable, а не ванильная загрузка. 04.10.2026 постройка ведущего по
- * координатам участка лайнера поставила там ванильные тикеты — генерация чанка на участке, NPE в
- * {@code ChunkMap.acquireGeneration}, сервер встал.
+ * (x ≈ 20,48 млн блоков), чанки участка ведёт Sable, а не ванильная загрузка. Ванильные тикеты на участке (постройка
+ * ведущего по его координатам) запускают там генерацию чанка — NPE в {@code ChunkMap.acquireGeneration}, сервер
+ * встаёт.
  */
 @GameTestHolder(Almighty.ID)
 @PrefixGameTestTemplate(false)
@@ -56,8 +56,8 @@ public final class GmSableGameTests {
      * отказывает сразу, а не через 2 минуты ожидания. Отпуск аренды при живом корабле держатель его чанка не трогает:
      * снятие тикета, которого нет, пересчитало бы уровень чанка без тикетов (31 → 45), и ваниль выгрузила бы чанк
      * корабля. Потом корабль убирается при стоящей аренде — Sable снимает держатель его чанка, как при пробоине или
-     * ремонте, — и рядом берётся вторая аренда: с ванильными тикетами там шла генерация, и задача генерации не находила
-     * держатель соседа (NPE в {@code ChunkMap.acquireGeneration}, падение 04.10.2026).
+     * ремонте, — и рядом берётся вторая аренда: с ванильными тикетами там шла бы генерация, и задача генерации не нашла
+     * бы держатель соседа (NPE в {@code ChunkMap.acquireGeneration}).
      */
     @GameTest(template = "floor", batch = "gm_sable", timeoutTicks = 200, skyAccess = true)
     public static void leaseOnShipPlotLoadsNothing(GameTestHelper h) {
@@ -113,7 +113,7 @@ public final class GmSableGameTests {
                 .thenExecuteAfter(5, () -> container.removeSubLevel(ship.get(), SubLevelRemovalReason.REMOVED))
                 // ещё аренда рядом: новые чанки в радиусе генерации (8 чанков) от убранного держателя
                 .thenExecuteAfter(5, () -> next.set(acquire(gm, level, chunk.get(), 48)))
-                // генерация на участке роняла сервер в следующих тиках
+                // генерация на участке уронила бы сервер в следующих тиках
                 .thenIdle(40)
                 .thenExecute(() -> {
                     int left = GmTickets.count(level) - tickets;

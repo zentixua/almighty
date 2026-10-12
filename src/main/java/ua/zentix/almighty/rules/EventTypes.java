@@ -108,22 +108,22 @@ public final class EventTypes {
             if (d.endsWith("." + dotted)) hits.add(c);
         }
         if (hits.isEmpty()) {
-            throw RpcException.notFound("Нет события «" + name + "»" + similar(dotted, all) + "; поиск — event.types");
+            throw RpcException.notFound("No event \"" + name + "\"" + similar(dotted, all) + "; search with event.types");
         }
         if (hits.size() > 1) {
             List<String> names = hits.stream().map(c -> c.replace('$', '.')).limit(10).toList();
-            throw RpcException.badRequest("Событие «" + name + "» неоднозначно: " + String.join(", ", names));
+            throw RpcException.badRequest("Event \"" + name + "\" is ambiguous: " + String.join(", ", names));
         }
         String className = hits.get(0);
         Class<?> type;
         try {
             type = Class.forName(className, false, EventTypes.class.getClassLoader());
         } catch (ClassNotFoundException | LinkageError e) {
-            throw RpcException.notFound("Класс события " + className + " не загружается: " + e);
+            throw RpcException.notFound("Event class " + className + " failed to load: " + e);
         }
-        if (!Event.class.isAssignableFrom(type)) throw RpcException.badRequest(className + " — не событие");
+        if (!Event.class.isAssignableFrom(type)) throw RpcException.badRequest(className + " is not an event");
         if (IModBusEvent.class.isAssignableFrom(type)) {
-            throw RpcException.badRequest(shortName(className) + " — событие загрузки модов (шина мода), после запуска его не бывает");
+            throw RpcException.badRequest(shortName(className) + " is a mod loading event (mod bus); it does not fire after startup");
         }
         @SuppressWarnings("unchecked")
         Class<? extends Event> event = (Class<? extends Event>) type;
@@ -147,7 +147,7 @@ public final class EventTypes {
                 if (IModBusEvent.class.isAssignableFrom(type)) row.put("mod_bus", true);
                 if (java.lang.reflect.Modifier.isAbstract(type.getModifiers())) row.put("abstract", true);
             } catch (ClassNotFoundException | LinkageError ex) {
-                row.put("error", "не загружается");
+                row.put("error", "failed to load");
             }
             out.add(row);
         }
@@ -158,6 +158,6 @@ public final class EventTypes {
         String tail = dotted.substring(dotted.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
         List<String> like = all.keySet().stream().filter(c -> c.toLowerCase(Locale.ROOT).contains(tail))
                 .map(EventTypes::shortName).limit(8).toList();
-        return like.isEmpty() ? "" : " (похожие: " + String.join(", ", like) + ")";
+        return like.isEmpty() ? "" : " (similar: " + String.join(", ", like) + ")";
     }
 }

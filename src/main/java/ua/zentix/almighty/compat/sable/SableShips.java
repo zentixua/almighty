@@ -116,7 +116,7 @@ public final class SableShips implements Ships.Source {
         public BoundingBox plotBox() {
             AABB w = box();
             // рамку Sable считает в своём тике: у только что собранного корабля её ещё нет
-            if (w.getSize() == 0) throw new IllegalStateException("у корабля ещё нет рамки (только собран): подождать тик");
+            if (w.getSize() == 0) throw new IllegalStateException("the ship has no bounding box yet (just assembled): wait a tick");
             double[] min = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE};
             double[] max = {-Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
             for (int i = 0; i < 8; i++) {
@@ -157,7 +157,7 @@ public final class SableShips implements Ships.Source {
             BoundingBox box = plotBox();
             int x0 = box.minX() >> 4, z0 = box.minZ() >> 4, x1 = box.maxX() >> 4, z1 = box.maxZ() >> 4;
             if ((long) (x1 - x0 + 1) * (z1 - z0 + 1) > MAX_CHUNKS) {
-                throw new IllegalStateException("корабль на участке больше " + MAX_CHUNKS + " чанков: блок-сущности не ищу");
+                throw new IllegalStateException("the ship covers more than " + MAX_CHUNKS + " chunks of its plot: block entities are not listed");
             }
             UUID id = uuid();
             List<BlockEntity> out = new ArrayList<>();

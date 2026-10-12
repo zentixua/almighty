@@ -33,7 +33,7 @@ public final class Dims {
         if (level == null) {
             List<String> known = new ArrayList<>();
             for (ServerLevel l : server.getAllLevels()) known.add(l.dimension().location().toString());
-            throw RpcException.notFound("Нет измерения " + id + "; есть: " + String.join(", ", known));
+            throw RpcException.notFound("No dimension " + id + "; dimensions: " + String.join(", ", known));
         }
         return level;
     }

@@ -158,8 +158,8 @@ public final class GmBotGameTests {
         long after = feedEnd(h);
         Bot bot = spawn(h, "GmTestWalker", 10.5, 10.5, ",\"gamemode\":\"survival\"");
         ServerPlayer p = bot.player();
-        check(p.getTabListDisplayName() != null && p.getTabListDisplayName().getString().equals("[бот] GmTestWalker"), "таб: " + p.getTabListDisplayName());
-        check(p.getDisplayName().getString().contains("[бот]"), "имя в чате: " + p.getDisplayName().getString());
+        check(p.getTabListDisplayName() != null && p.getTabListDisplayName().getString().equals("[bot] GmTestWalker"), "таб: " + p.getTabListDisplayName());
+        check(p.getDisplayName().getString().contains("[bot]"), "имя в чате: " + p.getDisplayName().getString());
         check(p.getUUID().equals(Bots.uuid("GmTestWalker")) && !p.getUUID().equals(UUIDUtil.createOfflinePlayerUUID("GmTestWalker")), "UUID бота: " + p.getUUID());
         Vec3 start = p.position();
         CompletableFuture<JsonElement> walk = act(h, "GmTestWalker", "[{\"hold\":[\"forward\",\"sprint\"]},{\"wait\":20},{\"release\":\"all\"}]");
@@ -504,7 +504,7 @@ public final class GmBotGameTests {
                 .thenWaitUntil(() -> finished(out.get()))
                 .thenExecute(() -> {
                     JsonObject r = out.get().join().getAsJsonObject().getAsJsonArray("results").get(0).getAsJsonObject();
-                    check(r.get("result").getAsString().equals("высадка") && !bot.player().isPassenger(), "высадка: " + r + ", в самолёте " + bot.player().isPassenger());
+                    check(r.get("result").getAsString().equals("dismounted") && !bot.player().isPassenger(), "высадка: " + r + ", в самолёте " + bot.player().isPassenger());
                     leave(h, "GmTestPilot");
                 })
                 .thenSucceed();
@@ -529,8 +529,8 @@ public final class GmBotGameTests {
                 .thenWaitUntil(() -> finished(twice))
                 .thenExecute(() -> {
                     JsonArray results = twice.join().getAsJsonObject().getAsJsonArray("results");
-                    check(results.get(0).getAsJsonObject().get("result").getAsString().startsWith("в воздухе")
-                            && results.get(1).getAsJsonObject().get("result").getAsString().equals("высадка") && !bot.player().isPassenger(),
+                    check(results.get(0).getAsJsonObject().get("result").getAsString().startsWith("in the air")
+                            && results.get(1).getAsJsonObject().get("result").getAsString().equals("dismounted") && !bot.player().isPassenger(),
                             "два нажатия в воздухе: " + results + ", в самолёте " + bot.player().isPassenger());
                     second.set(h.spawn(type, new Vec3(20.5, GROUND + 8, 10.5)));
                     check(bot.player().startRiding(second.get(), true) && !second.get().onGround(), "не сел во второй самолёт в воздухе");
@@ -539,7 +539,7 @@ public final class GmBotGameTests {
                 .thenWaitUntil(() -> finished(once.get()))
                 .thenExecute(() -> {
                     JsonObject r = once.get().join().getAsJsonObject().getAsJsonArray("results").get(0).getAsJsonObject();
-                    check(r.get("result").getAsString().startsWith("в воздухе") && bot.player().getVehicle() == second.get(),
+                    check(r.get("result").getAsString().startsWith("in the air") && bot.player().getVehicle() == second.get(),
                             "первое нажатие в другом самолёте: " + r + ", в самолёте " + (bot.player().getVehicle() == second.get()));
                     leave(h, "GmTestJumper");
                 })
@@ -635,13 +635,13 @@ public final class GmBotGameTests {
                 .thenWaitUntil(() -> check(unknown.isDone(), "программа ещё идёт"))
                 .thenExecute(() -> {
                     JsonObject r = unknown.join().getAsJsonObject();
-                    check(r.get("state").getAsString().equals("failed") && r.get("error").getAsString().contains("нет пакета"), "незнакомый пакет: " + r);
+                    check(r.get("state").getAsString().equals("failed") && r.get("error").getAsString().contains("no client packet"), "незнакомый пакет: " + r);
                     extra.set(act(h, "GmTestCourier", "[{\"payload\":\"" + id + "\",\"data\":\"" + Base64.getEncoder().encodeToString(longer) + "\"}]"));
                 })
                 .thenWaitUntil(() -> check(extra.get().isDone(), "программа ещё идёт"))
                 .thenExecute(() -> {
                     JsonObject r = extra.get().join().getAsJsonObject();
-                    check(r.get("state").getAsString().equals("failed") && r.get("error").getAsString().contains("лишние байты"), "лишний байт: " + r);
+                    check(r.get("state").getAsString().equals("failed") && r.get("error").getAsString().contains("extra bytes"), "лишний байт: " + r);
                     check(bot.player().getVehicle() == plane, "пакет с лишним байтом дошёл до мода");
                     send.set(act(h, "GmTestCourier", "[{\"payload\":\"" + id + "\",\"data\":\"" + data + "\"}]"));
                 })

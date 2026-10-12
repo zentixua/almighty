@@ -303,9 +303,9 @@ public final class EyeView extends View {
         legend.addProperty("pixels", width + "×" + height);
         legend.addProperty("fov_vertical", cam.fov());
         legend.addProperty("distance", distance);
-        legend.addProperty("colours", "блоки — цвет карты, верх светлее, низ и бока темнее, свет — время суток и источники; вдали — дымка цвета неба; "
-                + "сущности рамками: красный — игрок, фиолетовый — враждебный моб, жёлтый — другое живое, белый — предмет, оранжевый — снаряд, голубой — прочее (транспорт); "
-                + "синева — вода, белёсый налёт — стекло, шахматка — чанк не загружен; перекрестье — центр взгляда");
+        legend.addProperty("colours", "blocks in map colours, tops lighter, bottoms and sides darker, lit by time of day and light sources; sky-coloured haze in the distance; "
+                + "entities as boxes: red player, purple hostile mob, yellow other living entity, white item, orange projectile, light blue anything else (vehicles); "
+                + "blue tint water, whitish film glass, checkerboard chunk not loaded; crosshair marks the centre of view");
         image(png, 0, 0, 0);
         finish();
     }

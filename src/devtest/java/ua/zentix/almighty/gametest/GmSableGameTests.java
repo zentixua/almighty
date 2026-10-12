@@ -100,7 +100,7 @@ public final class GmSableGameTests {
                     check(lease.get().ready() >= 1, "чанк корабля аренда не видит: " + lease.get().describe());
                     check(build.get().isDone(), "постройка на участке корабля ждёт чанки, которых не будет");
                     JsonObject job = build.get().join().getAsJsonObject();
-                    check(job.get("state").getAsString().equals("failed") && job.get("error").getAsString().contains("не принимают загрузку"),
+                    check(job.get("state").getAsString().equals("failed") && job.get("error").getAsString().contains("refuse loading"),
                             "постройка на участке корабля: " + job);
                     lease.get().release();
                 })

@@ -206,7 +206,7 @@ public final class GmGameTests {
                     try {
                         again.join();
                     } catch (CompletionException e) {
-                        check(e.getCause() instanceof RpcException rpc && rpc.getMessage().contains("откачена"), "второй откат: " + e.getCause());
+                        check(e.getCause() instanceof RpcException rpc && rpc.getMessage().contains("already undone"), "второй откат: " + e.getCause());
                     }
                     GmServer.clock = clock;
                 })

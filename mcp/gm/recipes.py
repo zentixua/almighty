@@ -115,14 +115,14 @@ def parse(path):
         text = f.read()
     m = re.match(r"^---\n(.*?)\n---\n(.*)$", text, re.S)
     if not m:
-        raise RecipeError(f"{os.path.basename(path)}: нет шапки --- … ---")
+        raise RecipeError(f"{os.path.basename(path)}: no header --- ... ---")
     meta = {}
     for line in m.group(1).splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         key, sep, value = line.partition(":")
         if not sep:
-            raise RecipeError(f"{os.path.basename(path)}: строка шапки без «:» — {line!r}")
+            raise RecipeError(f"{os.path.basename(path)}: header line without ':': {line!r}")
         meta[key.strip()] = _value(value)
     body = m.group(2)
     steps_m = re.search(r"```steps\n(.*?)\n```", body, re.S)
@@ -130,11 +130,11 @@ def parse(path):
     try:
         steps = json.loads(steps_m.group(1)) if steps_m else None
     except ValueError as e:
-        raise RecipeError(f"{os.path.basename(path)}: шаги — не JSON ({e})") from e
+        raise RecipeError(f"{os.path.basename(path)}: steps are not JSON ({e})") from e
     code = {}
     for name, text in re.findall(r"```groovy[ \t]+(\w+)[ \t]*\n(.*?)\n```", body, re.S):
         if name in code:
-            raise RecipeError(f"{os.path.basename(path)}: два блока groovy {name}")
+            raise RecipeError(f"{os.path.basename(path)}: two groovy blocks named {name}")
         code[name] = text
     return Recipe(path, meta, body, steps, check_m.group(1) if check_m else None, code)
 
@@ -144,38 +144,38 @@ def validate(recipe):
     errors = []
     stem = os.path.splitext(os.path.basename(recipe.path))[0]
     if recipe.name != stem or not re.fullmatch(r"[a-z0-9_]+", recipe.name or "-"):
-        errors.append(f"name {recipe.name!r} — латиница, цифры, _ и как имя файла ({stem})")
+        errors.append(f"name {recipe.name!r}: a-z, 0-9 and _, the same as the file name ({stem})")
     if not recipe.description:
-        errors.append("нет description")
+        errors.append("no description")
     if recipe.kind not in KINDS:
-        errors.append(f"kind — {', '.join(KINDS)}")
+        errors.append(f"kind is one of {', '.join(KINDS)}")
     if not isinstance(recipe.params, dict):
-        errors.append("params — объект JSON")
+        errors.append("params must be a JSON object")
     else:
         for k, p in recipe.params.items():
             t = p.get("type") if isinstance(p, dict) else p
             if t not in TYPES:
-                errors.append(f"параметр {k}: тип {t!r} — один из {', '.join(TYPES)}")
+                errors.append(f"parameter {k}: type {t!r} is not one of {', '.join(TYPES)}")
     if not isinstance(recipe.steps, list) or not recipe.steps:
-        errors.append("нет шагов (```steps со списком JSON)")
+        errors.append("no steps (```steps with a JSON list)")
     else:
         for i, s in enumerate(recipe.steps, 1):
             if not isinstance(s, dict) or not isinstance(s.get("params", {}), dict):
-                errors.append(f"шаг {i}: {{\"method\", \"params\"}}")
+                errors.append(f"step {i}: expected {{\"method\", \"params\"}}")
             elif s.get("method") not in ALLOWED:
-                errors.append(f"шаг {i}: метод {s.get('method')!r} нельзя (можно: {', '.join(sorted(ALLOWED))})")
+                errors.append(f"step {i}: method {s.get('method')!r} is not allowed (allowed: {', '.join(sorted(ALLOWED))})")
     steps_text = json.dumps(recipe.steps, ensure_ascii=False)
     for k in sorted(set(PARAM.findall(steps_text)) - set(recipe.params if isinstance(recipe.params, dict) else {})):
-        errors.append(f"${{{k}}} не объявлен в params")
+        errors.append(f"${{{k}}} is not declared in params")
     refs = set(CODE.findall(json.dumps(recipe.steps, ensure_ascii=False)))
     for k in sorted(refs - set(recipe.code)):
-        errors.append(f"${{code:{k}}}: нет блока ```groovy {k}")
+        errors.append(f"${{code:{k}}}: no ```groovy {k} block")
     for k in sorted(set(recipe.code) - refs):
-        errors.append(f"блок groovy {k} не взят ни одним шагом")
+        errors.append(f"groovy block {k} is not used by any step")
     if _code_inside(recipe.steps):
-        errors.append("${code:…} — только целой строкой (значение script или code)")
+        errors.append("${code:...} only as a whole string (the value of script or code)")
     if recipe.kind in ("task", "show") and not recipe.check:
-        errors.append("у task и show нужна проверка в мире (```check)")
+        errors.append("task and show need a check in the world (```check)")
     return errors
 
 
@@ -209,16 +209,16 @@ def bind(recipe, given):
         elif "default" in spec:
             v = spec["default"]
         else:
-            raise RecipeError(f"{recipe.name}: нет параметра {k}")
+            raise RecipeError(f"{recipe.name}: missing parameter {k}")
         if spec["type"] == "number" and isinstance(v, int) and not isinstance(v, bool):
             v = float(v)
         if not TYPES[spec["type"]](v):
-            raise RecipeError(f"{recipe.name}: {k}={v!r} — не {spec['type']}")
+            raise RecipeError(f"{recipe.name}: {k}={v!r} is not {spec['type']}")
         if "min" in spec and v < spec["min"] or "max" in spec and v > spec["max"]:
-            raise RecipeError(f"{recipe.name}: {k}={v} вне [{spec.get('min')}, {spec.get('max')}]")
+            raise RecipeError(f"{recipe.name}: {k}={v} is outside [{spec.get('min')}, {spec.get('max')}]")
         values[k] = v
     if given:
-        raise RecipeError(f"{recipe.name}: лишние параметры {', '.join(given)}")
+        raise RecipeError(f"{recipe.name}: unknown parameters {', '.join(given)}")
     return values
 
 
@@ -256,7 +256,7 @@ def groovy(text, values):
         v = values[m.group(1)]
         # из строки Groovy в одинарных кавычках текст не выйдет: кавычки в нём — не в код
         if isinstance(v, str) and "'" in v:
-            raise RecipeError(f"{m.group(1)}: текст с ' не подставляется в Groovy")
+            raise RecipeError(f"{m.group(1)}: text with ' cannot be put into Groovy")
         return _text(v)
     return PARAM.sub(put, text)
 
@@ -301,17 +301,17 @@ def run(recipe, given, call):
     for i, step in enumerate(steps, 1):
         reason = guard(step["method"], step.get("params") or {})
         if reason:
-            raise RecipeError(f"{recipe.name}, шаг {i}: хук — {reason}")
+            raise RecipeError(f"{recipe.name}, step {i}: refused by the hook: {reason}")
         result = call(step["method"], step.get("params") or {})
         failed = _failed(result)
         done.append({"method": step["method"], "result": _short(result)})
         if failed:
-            return {"ok": False, "steps": done, "error": f"шаг {i}: {failed}"}
+            return {"ok": False, "steps": done, "error": f"step {i}: {failed}"}
     if recipe.check:
         code = groovy(recipe.check, values)
         reason = guard("script", {"code": code})
         if reason:
-            raise RecipeError(f"{recipe.name}, проверка: хук — {reason}")
+            raise RecipeError(f"{recipe.name}, check: refused by the hook: {reason}")
         check = call("script", {"code": code, "args": values, "timeout_ms": 5000})
         ok = check.get("ok") and (check.get("value") is True
                                   or isinstance(check.get("value"), dict) and check["value"].get("ok") is True)
@@ -325,24 +325,24 @@ def _short(result, limit=1500):
 
 
 def main():
-    p = argparse.ArgumentParser(description="Рецепты ведущего: список и запуск")
+    p = argparse.ArgumentParser(description="Game master recipes: list and run")
     sub = p.add_subparsers(dest="cmd", required=True)
-    ls = sub.add_parser("list", help="рецепты каталога (и негодные — с ошибками)")
+    ls = sub.add_parser("list", help="recipes in the directory (invalid ones with their errors)")
     ls.add_argument("dir")
-    rn = sub.add_parser("run", help="выполнить рецепт")
+    rn = sub.add_parser("run", help="run a recipe")
     rn.add_argument("dir")
     rn.add_argument("name")
-    rn.add_argument("params", nargs="?", default="{}", help="параметры JSON")
+    rn.add_argument("params", nargs="?", default="{}", help="parameters as JSON")
     a = p.parse_args()
     found, errors = load_all(a.dir)
     if a.cmd == "list":
         for r in found.values():
             print(r.summary())
         for name, problems in errors.items():
-            print(f"НЕГОДЕН {name}: {'; '.join(problems)}")
+            print(f"INVALID {name}: {'; '.join(problems)}")
         return 0
     if a.name not in found:
-        print(f"рецепта {a.name} нет" + (f": {'; '.join(errors[a.name])}" if a.name in errors else ""), file=sys.stderr)
+        print(f"no recipe {a.name}" + (f": {'; '.join(errors[a.name])}" if a.name in errors else ""), file=sys.stderr)
         return 1
     # мост — вызов адаптера mcp/almighty.py, с его ALMIGHTY_URL и ALMIGHTY_TOKEN_FILE
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

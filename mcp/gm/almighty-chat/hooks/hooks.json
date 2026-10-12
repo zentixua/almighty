@@ -1,5 +1,5 @@
 {
-  "description": "Ответ ведущего в чат и конец его хода — каналу almighty-chat (порт — HOOK_PORT в almighty-chat.mjs)",
+  "description": "Tells the almighty-chat channel when the game master replies in chat and when its turn ends (port: HOOK_PORT in almighty-chat.mjs)",
   "hooks": {
     "PostToolUse": [
       {

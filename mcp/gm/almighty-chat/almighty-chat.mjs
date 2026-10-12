@@ -52,19 +52,20 @@ const mcp = new Server(
   {
     capabilities: { experimental: { 'claude/channel': {}, 'claude/channel/permission': {} } },
     instructions: [
-      'События сервера Minecraft приходят как <channel source="almighty-chat" kind="…" player="…">.',
-      'kind="gm" — игрок написал ведущему лично (/gm): ответь лично, mcp__almighty__say с to=[player].',
-      'kind="chat" — сообщение в общем чате: direct="yes" — ведущего назвали; direct="no" — разговор с ним идёт',
-      '(игрок недавно к нему обращался или получил ответ) или игрок в игре один (alone="yes"): может быть и не тебе,',
-      'тогда промолчи. Ответ — в общий чат, mcp__almighty__say без to.',
-      'Остальной общий чат и ошибки правил Almighty ведущему отдельно не пересылаются: последние строки приходят под',
-      `«${CONTEXT_HEADER}» вместе со следующим сообщением ведущему.`,
-      'kind="rule" state="off" — правило Almighty выключилось (rule — номер, name — имя, в тексте — причина).',
-      'Пока ведущий не ответил, игрок видит над хотбаром «ведущий думает…» (это делает канал).',
-      'kind="join", "leave", "death" — игрок вошёл, вышел, погиб (x y z dimension — где; killer — кто убил).',
-      'kind="lag" — сервер подвис на ms миллисекунд. kind="server" — мост или сервер перезапустился.',
-      'owner="yes" — владелец сервера. Игрок ждёт: сначала короткий ответ в игре, долгое — в фоне.',
-      'Запросы разрешений канал шлёт владельцу в игру; он отвечает «да <номер>» или «нет <номер>».'
+      'Minecraft server events arrive as <channel source="almighty-chat" kind="…" player="…">.',
+      'kind="gm": a player wrote to the game master privately (/gm); answer privately with mcp__almighty__say and to=[player].',
+      'kind="chat": a message in the public chat. direct="yes": the game master was named; direct="no": a conversation',
+      'with the game master is going on (the player addressed it or got an answer recently), or the player is alone in the',
+      'game (alone="yes"); the message may not be for you, and then stay silent. Answer in the public chat with',
+      'mcp__almighty__say without to.',
+      'The rest of the public chat and Almighty rule errors are not forwarded on their own: the latest lines arrive under',
+      `"${CONTEXT_HEADER}" together with the next message to the game master.`,
+      'kind="rule" state="off": an Almighty rule was turned off (rule is its number, name its name, the text gives the reason).',
+      'Until you answer, the player sees a "thinking" line above the hotbar (the channel shows it).',
+      'kind="join", "leave", "death": a player joined, left, died (x y z dimension: where; killer: who killed them).',
+      'kind="lag": the server stalled for ms milliseconds. kind="server": the bridge or the server restarted.',
+      'owner="yes": the server owner. The player is waiting: give a short answer in the game first, do long work in the background.',
+      'The channel sends permission requests to the owner in the game; the owner answers "yes <id>" or "no <id>" ("да"/"нет" also work).'
     ].join('\n')
   }
 )
@@ -79,7 +80,7 @@ mcp.setNotificationHandler(z.object({
   const text = `Ведущий просит разрешения: ${params.tool_name.replace(/^mcp__\w+?__/, '')} ${preview} ` +
     `— ответь /gm да ${params.request_id} или /gm нет ${params.request_id}`
   await Promise.all(owners.map(owner => bridge('say', { text, to: [owner], style: 'chat' })
-    .catch(e => log(`запрос разрешения ${owner}:`, e.message))))
+    .catch(e => log(`permission request to ${owner}:`, e.message))))
 })
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -94,7 +95,7 @@ async function push (content, meta) {
 // «ведущий думает…» над хотбаром: строка гаснет через 3 с, поэтому — каждые 2 с, пока игрок ждёт ответа
 function think (player) {
   if (!router.online.has(player)) return
-  bridge('say', { component: THINKING, to: [player], style: 'actionbar' }, 5_000).catch(e => log('думает:', e.message))
+  bridge('say', { component: THINKING, to: [player], style: 'actionbar' }, 5_000).catch(e => log('thinking line:', e.message))
 }
 setInterval(() => turns.waiting().forEach(think), 2_000)
 
@@ -128,11 +129,11 @@ createServer((req, res) => {
     try {
       onHook(JSON.parse(body))
     } catch (e) {
-      log('хук:', e.message)
+      log('hook:', e.message)
     }
     res.end()
   })
-}).on('error', e => log(`хуки на 127.0.0.1:${HOOK_PORT} не слушаются:`, e.message)).listen(HOOK_PORT, '127.0.0.1')
+}).on('error', e => log(`cannot listen for hooks on 127.0.0.1:${HOOK_PORT}:`, e.message)).listen(HOOK_PORT, '127.0.0.1')
 
 async function follow () {
   let after = 0
@@ -146,8 +147,8 @@ async function follow () {
       page = await bridge('events', { after, wait: first ? 0 : 25, limit: first ? 1000 : 500 }, 40_000)
     } catch (e) {
       if (!down) {
-        log('мост недоступен:', e.message)
-        await push('Мост Almighty недоступен: сервер выключен или перезапускается', { kind: 'server', state: 'down' })
+        log('bridge unreachable:', e.message)
+        await push('Almighty bridge unreachable: the server is off or restarting', { kind: 'server', state: 'down' })
         down = true
       }
       await sleep(pause)
@@ -155,12 +156,12 @@ async function follow () {
       continue
     }
     if (down) {
-      await push('Мост Almighty снова на связи', { kind: 'server', state: 'up' })
+      await push('Almighty bridge is reachable again', { kind: 'server', state: 'up' })
       down = false
       pause = 2_000
     }
-    if (boot !== null && page.boot !== boot) await push('Сервер перезапущен', { kind: 'server', state: 'restarted' })
-    if (page.boot !== boot) await syncOnline().catch(e => log('кто в игре:', e.message))
+    if (boot !== null && page.boot !== boot) await push('Server restarted', { kind: 'server', state: 'restarted' })
+    if (page.boot !== boot) await syncOnline().catch(e => log('online players:', e.message))
     boot = page.boot
     after = page.next
     if (first) { // старое не ново: события — с минуты запуска канала
@@ -177,5 +178,5 @@ async function follow () {
 }
 
 await mcp.connect(new StdioServerTransport())
-log(`мост ${URL}, владельцы: ${owners.join(', ') || 'нет'}`)
-follow().catch(e => { log('лента упала:', e); process.exit(1) })
+log(`bridge ${URL}, owners: ${owners.join(', ') || 'none'}`)
+follow().catch(e => { log('feed failed:', e); process.exit(1) })

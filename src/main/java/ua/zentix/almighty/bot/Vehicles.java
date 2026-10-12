@@ -170,7 +170,7 @@ final class Vehicles {
             DELTA_ROTATION.setFloat(boat, rotation / inv);
             boat.setPaddleState(right && !left || up, left && !right || up);
         } catch (IllegalAccessException | InvocationTargetException e) {
-            throw new IllegalStateException("руль лодки: " + e, e);
+            throw new IllegalStateException("boat steering: " + e, e);
         }
     }
 
@@ -193,13 +193,13 @@ final class Vehicles {
     /** Клавиша транспорта мода по имени в настройках управления (шаг {@code press}). Итог — что сделано. */
     String press(ServerPlayer p, String key) {
         Entity v = p.getVehicle();
-        if (v == null || v.getControllingPassenger() != p) throw new Steps.Failed("бот не ведёт транспорт: клавиш транспорта нет");
+        if (v == null || v.getControllingPassenger() != p) throw new Steps.Failed("the bot is not driving a vehicle: there are no vehicle keys");
         VehicleDriver driver = driver(v);
         String done = driver != null ? driver.press(p, v, key) : null;
         if (done != null) return done;
         List<String> keys = driver != null ? driver.keys() : List.of();
-        throw new Steps.Failed("у " + BuiltInRegistries.ENTITY_TYPE.getKey(v.getType()) + " нет клавиши «" + key + "»"
-                + (keys.isEmpty() ? ": клавиш мода у него нет" : "; есть: " + String.join(", ", keys)));
+        throw new Steps.Failed(BuiltInRegistries.ENTITY_TYPE.getKey(v.getType()) + " has no key \"" + key + "\""
+                + (keys.isEmpty() ? ": it has no mod keys" : "; keys: " + String.join(", ", keys)));
     }
 
     /** Транспорт под ботом для {@code bot}: кто его ведёт и клавиши мода. null — бот пешком. */
@@ -212,8 +212,8 @@ final class Vehicles {
         o.addProperty("driver", driving);
         if (driving) {
             VehicleDriver driver = driver(v);
-            o.addProperty("steering", driver != null || local(p) ? "клавиши бота"
-                    : "сервер этот транспорт не ведёт: нет метки almighty:driven_by_rider и привода мода");
+            o.addProperty("steering", driver != null || local(p) ? "bot keys"
+                    : "the server does not drive this vehicle: no almighty:driven_by_rider tag and no mod driver");
             JsonArray keys = new JsonArray();
             if (driver != null) driver.keys().forEach(keys::add);
             if (!keys.isEmpty()) o.add("keys", keys);

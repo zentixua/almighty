@@ -116,7 +116,7 @@ public final class CommandRunner {
     public static JsonElement commands(MinecraftServer server, Args args) throws RpcException {
         List<String> commands = args.strings("commands");
         if (commands.isEmpty() || commands.size() > MAX_COMMANDS) {
-            throw RpcException.badRequest("commands: от 1 до " + MAX_COMMANDS + " команд");
+            throw RpcException.badRequest("commands: 1 to " + MAX_COMMANDS + " commands");
         }
         ServerLevel level = Dims.level(server, args);
         return run(server, level, origin(level, args), null, commands, false);
@@ -132,8 +132,8 @@ public final class CommandRunner {
         for (String command : commands) {
             Capture capture = new Capture();
             String text = command.startsWith("/") ? command.substring(1) : command;
-            if (quiet) LOG.debug("Ведущий: /{}", text);
-            else LOG.info("Ведущий: /{}", text);
+            if (quiet) LOG.debug("GM: /{}", text);
+            else LOG.info("GM: /{}", text);
             CommandSourceStack source = source(server, level, pos, capture);
             if (as != null && as.level() instanceof ServerLevel own) {
                 source = source.withEntity(as).withLevel(own).withPosition(as.position()).withRotation(as.getRotationVector());
@@ -151,7 +151,7 @@ public final class CommandRunner {
      */
     public static JsonElement function(MinecraftServer server, Args args) throws RpcException {
         List<String> lines = args.strings("lines");
-        if (lines.size() > MAX_LINES) throw RpcException.badRequest("lines: не больше " + MAX_LINES + " строк");
+        if (lines.size() > MAX_LINES) throw RpcException.badRequest("lines: at most " + MAX_LINES + " lines");
         CompoundTag macro = args.has("args") ? macroArgs(args.raw().get("args")) : null;
         ServerLevel level = Dims.level(server, args);
         Vec3 pos = origin(level, args);
@@ -164,14 +164,14 @@ public final class CommandRunner {
             function = CommandFunction.fromLines(id, server.getCommands().getDispatcher(), source, lines);
             instance = function.instantiate(macro, server.getCommands().getDispatcher());
         } catch (IllegalArgumentException e) {
-            throw RpcException.badRequest("Функция не разобрана: " + e.getMessage());
+            throw RpcException.badRequest("Function failed to parse: " + e.getMessage());
         } catch (FunctionInstantiationException e) {
-            throw RpcException.badRequest("Макрос не подставлен: " + e.messageComponent().getString());
+            throw RpcException.badRequest("Macro substitution failed: " + e.messageComponent().getString());
         }
-        LOG.info("Ведущий: функция из {} строк", lines.size());
+        LOG.info("GM: function of {} lines", lines.size());
         outsideCurrentExecution(() -> Commands.executeCommandInContext(source,
                 context -> ExecutionContext.queueInitialFunctionCall(context, instance, source, capture.callback())));
-        return capture.describe("function", lines.size() + " строк");
+        return capture.describe("function", lines.size() + " lines");
     }
 
     private static void outsideCurrentExecution(Runnable run) {
@@ -193,7 +193,7 @@ public final class CommandRunner {
         try {
             return (ThreadLocal<Object>) ObfuscationReflectionHelper.findField(Commands.class, "CURRENT_EXECUTION_CONTEXT").get(null);
         } catch (RuntimeException | IllegalAccessException e) {
-            LOG.error("Ведущий: нет Commands.CURRENT_EXECUTION_CONTEXT — команды правил внутри чужих команд встанут в их очередь", e);
+            LOG.error("GM: Commands.CURRENT_EXECUTION_CONTEXT not found; commands of a rule that runs inside another command will join that command's queue", e);
             return null;
         }
     }
@@ -217,7 +217,7 @@ public final class CommandRunner {
                 throw RpcException.badRequest("args: " + e.getMessage());
             }
         }
-        if (!json.isJsonObject()) throw RpcException.badRequest("args: ожидается объект или строка SNBT");
+        if (!json.isJsonObject()) throw RpcException.badRequest("args: expected an object or an SNBT string");
         return (CompoundTag) tag(json);
     }
 
@@ -231,7 +231,7 @@ public final class CommandRunner {
         if (json.isJsonArray()) {
             ListTag out = new ListTag();
             for (JsonElement e : json.getAsJsonArray()) {
-                if (!out.addTag(out.size(), tag(e))) throw RpcException.badRequest("args: в списке NBT все элементы одного типа");
+                if (!out.addTag(out.size(), tag(e))) throw RpcException.badRequest("args: all elements of an NBT list must have the same type");
             }
             return out;
         }
@@ -246,7 +246,7 @@ public final class CommandRunner {
             }
             return DoubleTag.valueOf(d);
         }
-        throw RpcException.badRequest("args: null в NBT не бывает");
+        throw RpcException.badRequest("args: NBT has no null");
     }
 
     private static JsonArray strings(List<String> list) {

@@ -154,10 +154,10 @@ final class Controls {
     /** Щелчок левой кнопкой: удар по сущности, начало копания или взмах в пустоту. */
     JsonObject attack(ServerPlayer p) {
         JsonObject out = new JsonObject();
-        if (p.isDeadOrDying()) return note(out, "бот мёртв");
-        if (missTime > 0) return note(out, "пауза после промаха");
-        if (p.isUsingItem()) return note(out, "руки заняты: идёт использование предмета");
-        if (!p.getMainHandItem().isItemEnabled(p.level().enabledFeatures())) return note(out, "предмет выключен на сервере");
+        if (p.isDeadOrDying()) return note(out, "the bot is dead");
+        if (missTime > 0) return note(out, "cooldown after a miss");
+        if (p.isUsingItem()) return note(out, "hands busy: an item is in use");
+        if (!p.getMainHandItem().isItemEnabled(p.level().enabledFeatures())) return note(out, "the item is disabled on the server");
         HitResult hit = pick(p);
         describe(p, hit, out);
         switch (hit.getType()) {
@@ -185,10 +185,10 @@ final class Controls {
     /** Щелчок правой кнопкой: сущность, блок, предмет — основной рукой, потом второй, как у клиента. */
     JsonObject use(ServerPlayer p) {
         JsonObject out = new JsonObject();
-        if (p.isDeadOrDying()) return note(out, "бот мёртв");
-        if (destroying) return note(out, "идёт копание");
+        if (p.isDeadOrDying()) return note(out, "the bot is dead");
+        if (destroying) return note(out, "already breaking a block");
         rightClickDelay = 4;
-        if (p.isUsingItem()) return note(out, "руки заняты: идёт использование предмета");
+        if (p.isUsingItem()) return note(out, "hands busy: an item is in use");
         HitResult hit = pick(p);
         describe(p, hit, out);
         ServerLevel level = p.serverLevel();
@@ -497,7 +497,7 @@ final class Controls {
             t.addProperty("face", b.getDirection().getSerializedName());
             out.add("target", t);
         } else {
-            out.addProperty("target", "ничего в пределах досягаемости");
+            out.addProperty("target", "nothing within reach");
         }
     }
 

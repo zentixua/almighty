@@ -47,7 +47,7 @@ final class Program {
                 out.addProperty("step", index);
                 out.addProperty("error", e.getMessage());
                 results.add(out);
-                error = "шаг " + index + ": " + e.getMessage();
+                error = "step " + index + ": " + e.getMessage();
                 state = "failed";
                 return true;
             }
@@ -71,7 +71,7 @@ final class Program {
                 steps.get(index).cancel(bot, bot.player());
             } catch (RuntimeException e) {
                 // снимают и при отключении бота, где ошибка уронила бы тик сервера; клавиши отпустит cancelAll
-                error = why + " (шаг не отпустил своё: " + e + ")";
+                error = why + " (the step failed to release what it held: " + e + ")";
                 state = "cancelled";
                 return;
             }

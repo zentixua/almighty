@@ -118,7 +118,7 @@ public abstract class Job {
         try {
             step(budget);
         } catch (RuntimeException e) {
-            LOG.warn("Работа ведущего {} №{} упала", kind, id, e);
+            LOG.warn("GM job {} #{} failed", kind, id, e);
             fail(e.getClass().getSimpleName() + ": " + e.getMessage());
         }
     }

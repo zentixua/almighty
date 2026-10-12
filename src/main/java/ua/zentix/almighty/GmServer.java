@@ -73,9 +73,9 @@ public final class GmServer {
                 InetSocketAddress address = new InetSocketAddress(GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PORT.get());
                 gm.bridge = new Bridge(address, Token.load(tokenFile), Api.methods(gm));
                 gm.bridge.start();
-                LOG.info("Мост ведущего слушает {}; токен — в {}", gm.bridge.address(), tokenFile.toAbsolutePath());
+                LOG.info("Almighty bridge listening on {}; token in {}", gm.bridge.address(), tokenFile.toAbsolutePath());
             } catch (IOException | RuntimeException e) {
-                LOG.error("Мост ведущего не запустился", e);
+                LOG.error("Almighty bridge failed to start", e);
                 gm.bridge = null;
             }
         }

@@ -45,6 +45,8 @@ jobs:
         sable(optional){modrinth:sable}{curseforge:sable}
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Выпуск
         id: rel
@@ -93,10 +95,10 @@ jobs:
           JAR: ${{ steps.rel.outputs.jar }}
         run: bash .github/scripts/modrinth.sh page "$STEP" "$JAR"
 
-      # Kira-NT/mc-publish v3.3.1 (14.07.2026, коммит 52307b0): площадка без токена пропускается
+      # Kira-NT/mc-publish v3.3.1 (14.07.2026), закреплён коммитом: ему отдаются токены; площадка без токена пропускается
       - name: "Modrinth: версия"
         if: steps.page.outputs.upload == 'true'
-        uses: Kira-NT/mc-publish@v3.3.1
+        uses: Kira-NT/mc-publish@52307b03863581dec6b652b83e597aec02ebb075 # v3.3.1
         with:
           modrinth-id: ${{ steps.page.outputs.id }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
@@ -120,7 +122,7 @@ jobs:
       # после Modrinth: его сбой останавливает запуск до CurseForge, и повтор не выкладывает файл туда дважды
       - name: CurseForge
         if: env.HAS_CURSEFORGE == 'true' && inputs.step != 'draft'
-        uses: Kira-NT/mc-publish@v3.3.1
+        uses: Kira-NT/mc-publish@52307b03863581dec6b652b83e597aec02ebb075 # v3.3.1
         with:
           curseforge-id: ${{ vars.CURSEFORGE_ID }}
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}

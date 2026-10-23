@@ -58,7 +58,7 @@ Almighty такой мод не зависит: без него файл про�
 
 ## Установка
 
-1. Сервер Minecraft 1.21.1 на NeoForge 21.1.259 или новее. `almighty-<версия>.jar` из
+1. Сервер Minecraft 1.21.1 на NeoForge 21.1.264 или новее. `almighty-<версия>.jar` из
    [выпусков](https://github.com/zentixua/almighty/releases) — в папку `mods/` сервера.
 2. Запустить сервер один раз: появятся `config/almighty-common.toml` и `config/almighty/token`.
 3. На машине агента поставить [uv](https://docs.astral.sh/uv/), взять адаптер из репозитория с меткой выпуска и
@@ -121,7 +121,7 @@ uv run mcp/almighty.py follow                                           # лен
 Almighty не зависит ни от одного мода. Поддержка этих модов включается, только когда они стоят:
 
 - [Immersive Aircraft](https://modrinth.com/mod/immersive-aircraft): боты летают на его самолётах теми же рулями,
-  что игрок. Проверено на версиях 1.5.2 и 1.6.0 для Minecraft 1.21.1.
+  что игрок. Проверено на версиях 1.5.2, 1.6.0 и 1.7.0 для Minecraft 1.21.1.
 - Sable — физика кораблей Create Aeronautics: метод `ships` и `gm.ship(имя)` в скриптах отдают место корабля,
   поворот, скорость и рамки. Постройка и подготовка района на участке корабля отклоняются: этими чанками управляет
   Sable.

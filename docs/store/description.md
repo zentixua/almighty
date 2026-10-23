@@ -46,7 +46,7 @@ later. Nothing changes for players or servers without Almighty.
 
 ## Install
 
-1. Put the jar into the `mods/` folder of a Minecraft 1.21.1 server with NeoForge 21.1.259 or newer.
+1. Put the jar into the `mods/` folder of a Minecraft 1.21.1 server with NeoForge 21.1.264 or newer.
 2. Start the server once. It creates `config/almighty-common.toml` and the token file `config/almighty/token`.
 3. Connect the agent as described in the
    [README](https://github.com/zentixua/almighty#install), which also lists every setting.

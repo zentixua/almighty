@@ -58,7 +58,7 @@ an empty file removes the note. The mod does not depend on Almighty: without it,
 
 ## Install
 
-1. Use a Minecraft 1.21.1 server with NeoForge 21.1.259 or newer. Put `almighty-<version>.jar` from the
+1. Use a Minecraft 1.21.1 server with NeoForge 21.1.264 or newer. Put `almighty-<version>.jar` from the
    [releases](https://github.com/zentixua/almighty/releases) into the server's `mods/` folder.
 2. Start the server once. It creates `config/almighty-common.toml` and `config/almighty/token`.
 3. On the agent's machine, install [uv](https://docs.astral.sh/uv/), get the adapter from the repository at the
@@ -121,7 +121,7 @@ access to the bridge like shell access to the server machine.
 Almighty depends on no other mod. Its support for these mods loads only when they are installed:
 
 - [Immersive Aircraft](https://modrinth.com/mod/immersive-aircraft): bots fly its aircraft with the same controls as a
-  player. Checked with versions 1.5.2 and 1.6.0 for Minecraft 1.21.1.
+  player. Checked with versions 1.5.2, 1.6.0 and 1.7.0 for Minecraft 1.21.1.
 - Sable, the physics mod behind Create Aeronautics: the `ships` method and `gm.ship(name)` in scripts give a ship's
   position, rotation, velocity and bounds. A build or a prepared area on a ship plot is refused, because Sable
   manages those chunks.

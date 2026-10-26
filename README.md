@@ -132,7 +132,7 @@ Almighty depends on no other mod. Its support for these mods loads only when the
 With Java 21: `./gradlew build` compiles the mod and runs the unit tests; `./gradlew runGameTestServer` runs the
 GameTests on a headless server with Immersive Aircraft and Sable. The `mcp/gm` kit is tested with
 `python3 -m unittest discover -s mcp/gm/tests` and `node --test` in `mcp/gm/almighty-chat`. The developer guide with
-the internals, every bridge method and the known pitfalls is [CLAUDE.md](CLAUDE.md), in Russian.
+the internals, every bridge method and the known pitfalls is [AGENTS.md](AGENTS.md), in English.
 
 ## License
 

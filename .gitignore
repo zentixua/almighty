@@ -5,3 +5,9 @@ logs/
 __pycache__/
 *.pyc
 node_modules/
+
+# Local bridge credentials and environment overrides.
+.env
+.env.*
+!.env.example
+/config/almighty/token

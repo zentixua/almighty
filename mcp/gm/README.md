@@ -120,3 +120,4 @@ runs the adapter (`almighty.py mcp`) under the name `almighty`. The channel need
 
 `python3 -m unittest discover -s mcp/gm/tests` tests the hook and the recipes (CI runs it on every pull request).
 `node --test` in `almighty-chat/` tests who a chat message is addressed to and when the game master's turn ends.
+CI runs both suites and checks the syntax of `mcp/almighty.py` on every pull request.

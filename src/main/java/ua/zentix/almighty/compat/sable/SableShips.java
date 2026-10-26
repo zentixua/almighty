@@ -28,14 +28,15 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Корабли Sable (Create Aeronautics) через sable-companion — открытую библиотеку Sable для модов (MIT; её несёт сам
- * Sable, у нас — только {@code compileOnly}). Внутренние классы Sable не трогаем: их API не обещает стабильности, а
- * часть их на выделенном сервере не грузится (подписи с {@code ClientLevel}). Класс грузится, только когда Sable стоит.
- * Скорость — по физике Sable ({@code getVelocity} точки), угловая — из скоростей трёх точек рядом.
+ * Sable (Create Aeronautics) ships through sable-companion, Sable's public mod library (MIT; shipped by Sable,
+ * only {@code compileOnly} here). Do not access Sable internals: their API promises no stability, and some classes
+ * do not load on a dedicated server (signatures with {@code ClientLevel}). Load this class only when Sable is
+ * installed. Velocity comes from Sable physics ({@code getVelocity} at a point); angular velocity from velocities
+ * at three nearby points.
  */
 public final class SableShips implements Ships.Source {
     public static final String MOD_ID = "sable";
-    /** Больше стольких чанков участка блок-сущности не ищутся (корабль в 500 блоков — около 1000 чанков). */
+    /** Skip block entity searches above this many plot chunks (a 500-block ship is about 1000 chunks). */
     static final int MAX_CHUNKS = 1024;
     private static final BoundingBox3dc EVERYWHERE = new BoundingBox3d(-3.0e7, -1.0e4, -3.0e7, 3.0e7, 1.0e4, 3.0e7);
 
@@ -50,7 +51,7 @@ public final class SableShips implements Ships.Source {
         return out;
     }
 
-    /** Открытый класс: скрипты Groovy зовут его методы. */
+    /** Public class: Groovy scripts call its methods. */
     public record SableShip(ServerLevel level, SubLevelAccess sub) implements Ship {
         @Override
         public String name() {
@@ -89,13 +90,13 @@ public final class SableShips implements Ships.Source {
             return velocityAt(pos());
         }
 
-        /** {@code getVelocity} Sable берёт точку участка (сам переводит её в мир): мировая там — ошибка ω × 2·10^7 блоков. */
+        /** Sable's {@code getVelocity} takes a plot point (converts it to world itself): a world point causes an error of ω × 2·10^7 blocks. */
         @Override
         public Vec3 velocityAt(Vec3 world) {
             return companion().getVelocity(level, sub, (Position) toPlot(world));
         }
 
-        /** v(p + e) − v(p) = ω × e: по единичному шагу вдоль каждой оси. */
+        /** v(p + e) − v(p) = ω × e: a unit step along each axis. */
         @Override
         public Vec3 angularVelocity() {
             Vec3 p = pos();
@@ -115,7 +116,7 @@ public final class SableShips implements Ships.Source {
         @Override
         public BoundingBox plotBox() {
             AABB w = box();
-            // рамку Sable считает в своём тике: у только что собранного корабля её ещё нет
+            // Sable computes bounds in its tick: a newly assembled ship has none yet.
             if (w.getSize() == 0) throw new IllegalStateException("the ship has no bounding box yet (just assembled): wait a tick");
             double[] min = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE};
             double[] max = {-Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
@@ -149,8 +150,8 @@ public final class SableShips implements Ships.Source {
         }
 
         /**
-         * Только готовые чанки участка ({@code getChunkNow}: их держит Sable) и только этого корабля: рамка с запасом
-         * могла бы задеть соседний участок.
+         * Only ready plot chunks ({@code getChunkNow}, retained by Sable), and only this ship: bounds with a margin
+         * could overlap a neighboring plot.
          */
         @Override
         public List<BlockEntity> blockEntities(String type) {

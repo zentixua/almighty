@@ -1,6 +1,6 @@
 package ua.zentix.almighty.bridge;
 
-/** Ошибка вызова моста: код HTTP и короткое имя для клиента, текст — для ведущего. */
+/** Bridge call error: HTTP status and short name for the client, message for the game master. */
 public final class RpcException extends Exception {
     private final int status;
     private final String code;

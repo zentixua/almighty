@@ -27,41 +27,42 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Чанки, которые держит ведущий: под постройку, откат и подготовленные районы ({@code area.prepare}). Каждая аренда —
- * прямоугольник чанков и кольцо соседей в один чанк: запись блока читает соседей (форма по соседям, обновление соседей,
- * Sable — до двух блоков), и соседний чанк не в полной загрузке грузился бы синхронно.
+ * Chunks held by the game master for building, undo and prepared areas ({@code area.prepare}). Each lease is a
+ * chunk rectangle with a one-chunk neighbor ring: block writes read neighbors (neighbor shapes, neighbor updates,
+ * Sable up to two blocks away), and a neighboring chunk that is not full would load synchronously.
  *
- * <p>Тикет — свой на каждый чанк, ванильный тикет региона радиуса 0 ({@code ServerChunkCache.addRegionTicket}) уровня
- * 33: чанк становится полным ({@code getChunkNow}), но не тикает — ни блоки, ни блок-сущности, ни сущности (уровень 33 и
- * в счёте тика, {@code TickingTracker}, ниже тикающих); генерация и чтение с диска идут в фоне. Радиус больше 0 пустил
- * бы тик сразу, без готовых соседей. Вход — общий для тикетов модов: моды, которые ведут свои чанки сами, отказывают в
- * нём у себя (Sable не пускает тикеты на участки кораблей: держатели их чанков он сам ставит в карту чанков ванили и
- * убирает; ванильный тикет мимо этого входа, {@code DistanceManager.addTicket}, запускает там генерацию, и задача
- * генерации не находит держатель, который Sable убрал, — NPE в {@code ChunkMap.acquireGeneration}, сервер встаёт).
- * Встал ли тикет, видно только в очереди тикетов ванили ({@code DistanceManager.tickets}, чтение): чанк, где его нет,
- * аренда запоминает как отказанный и тикет там не снимает — снятие тикета, которого нет, всё равно пересчитывает уровень
- * чанка по тикетам ({@code DistanceManager.removeTicket}), и держатель чанка корабля, которого тикеты не держат, ушёл бы
- * в выгрузку. Отказанный неготовый чанк аренда не дождётся: работы с ним отказывают сразу ({@link Lease#refusal}).
- * {@code TicketController.forceChunk} NeoForge грузит чанк синхронно. Одинаковые ванильные тикеты сливаются в один,
- * поэтому аренды считаются здесь: тикет ставит первая аренда чанка, снимает очередь отпуска после последней.
+ * <p>Each chunk gets a vanilla radius-0 region ticket ({@code ServerChunkCache.addRegionTicket}) at level 33:
+ * the chunk becomes full ({@code getChunkNow}) without ticking blocks, block entities or entities (level 33 is also
+ * below ticking in {@code TickingTracker}); generation and disk reads run in the background. A radius above 0 would
+ * start ticking immediately without ready neighbors. The entry point is shared by mod tickets: mods managing their
+ * own chunks refuse tickets there (Sable rejects tickets on ship plots: it inserts and removes their holders in
+ * vanilla's chunk map itself; a vanilla ticket bypassing that entry point, {@code DistanceManager.addTicket}, starts
+ * generation there, and the generation task cannot find a holder removed by Sable: NPE in
+ * {@code ChunkMap.acquireGeneration}, stopping the server). Ticket acceptance is visible only in vanilla's ticket
+ * queue ({@code DistanceManager.tickets}, read-only): a lease remembers a chunk without its ticket as refused and
+ * does not remove the ticket there. Removing a nonexistent ticket still recalculates the chunk's ticket level
+ * ({@code DistanceManager.removeTicket}), which would unload the ship holder that tickets do not retain.
+ * A lease cannot await a refused, unready chunk: jobs refuse immediately ({@link Lease#refusal}).
+ * NeoForge's {@code TicketController.forceChunk} loads chunks synchronously. Identical vanilla tickets merge, so
+ * leases are counted here: the first lease adds the chunk ticket, and the release queue removes it after the last.
  *
- * <p>Отпуск — не больше {@value #RELEASE_PER_TICK} чанков за тик: ваниль выгружает больше 2000 держателей разом в одном
- * тике (отбой залпа Incoming — тик в 6,8 с). Остановка сервера снимает всё сразу ({@link #releaseAll}), в
- * {@code ServerStoppingEvent} до {@code StopDrain} Incoming: иначе он ждал бы генерацию по тикетам ведущего.
- * Только поток сервера.
+ * <p>Release at most {@value #RELEASE_PER_TICK} chunks per tick: vanilla unloads over 2000 holders at once in a
+ * single tick (Incoming salvo shutdown: a 6.8 s tick). Server shutdown removes everything immediately
+ * ({@link #releaseAll}) in {@code ServerStoppingEvent}, before Incoming's {@code StopDrain}; otherwise it would
+ * wait for generation under GM tickets. Server thread only.
  */
 public final class Areas {
     private static final TicketType<Long> TICKET = TicketType.create("almighty", Long::compare);
-    /** Радиус тикета региона: 0 — уровень 33, полный чанк без тика. */
+    /** Region ticket radius: 0 means level 33, a full chunk without ticking. */
     private static final int RADIUS = 0;
     private static final Logger LOG = LogUtils.getLogger();
-    /** Очередь тикетов ванили; нет поля — каждый тикет считается вставшим (отказы не проверяются). */
+    /** Vanilla ticket queue; if the field is unavailable, every ticket is considered accepted (refusals are not checked). */
     private static final Field TICKETS = ticketsField();
     static final int RELEASE_PER_TICK = 64;
-    /** Кольцо соседей вокруг прямоугольника аренды, чанков. */
+    /** Neighbor ring around the lease rectangle, in chunks. */
     static final int MARGIN = 1;
 
-    /** Аренда: прямоугольник чанков с кольцом. Срок — тик сервера, {@link Long#MAX_VALUE} — пока не отпустят. */
+    /** Lease: chunk rectangle with a ring. Expiry is a server tick; {@link Long#MAX_VALUE} means until released. */
     public final class Lease {
         private final long id;
         private final ServerLevel level;
@@ -89,7 +90,7 @@ public final class Areas {
             return (maxX - minX + 1) * (maxZ - minZ + 1);
         }
 
-        /** Сколько чанков аренды (с кольцом) уже полные. */
+        /** How many leased chunks (including the ring) are already full. */
         public int ready() {
             int n = 0;
             for (int x = minX; x <= maxX; x++) {
@@ -104,12 +105,12 @@ public final class Areas {
             return ready() == chunks();
         }
 
-        /** Сколько чанков аренды не приняли тикет (их ведёт другой мод). */
+        /** How many leased chunks refused the ticket (managed by another mod). */
         public int refused() {
             return count(false);
         }
 
-        /** Почему аренда не дождётся своих чанков (отказанные и не готовые), или {@code null}. */
+        /** Why the lease cannot await its chunks (refused and unready), or {@code null}. */
         public String refusal() {
             int n = count(true);
             if (n == 0) return null;
@@ -129,7 +130,7 @@ public final class Areas {
             return n;
         }
 
-        /** Чья аренда — в списке {@code areas}. */
+        /** Lease owner in the {@code areas} list. */
         public void owner(String owner) {
             this.owner = owner;
         }
@@ -168,9 +169,9 @@ public final class Areas {
 
     private final int maxChunks;
     private final Map<ServerLevel, Long2IntOpenHashMap> refs = new HashMap<>();
-    /** Чанки без аренд, чей тикет ещё стоит, — по порядку отпуска. */
+    /** Chunks without leases whose tickets remain, in release order. */
     private final Map<ServerLevel, LongLinkedOpenHashSet> releasing = new HashMap<>();
-    /** Чанки с арендой, где тикет не встал: их не снимать. */
+    /** Leased chunks where tickets were refused: do not remove them. */
     private final Map<ServerLevel, LongOpenHashSet> refused = new HashMap<>();
     private final Map<Long, Lease> leases = new LinkedHashMap<>();
     private long nextId = 1;
@@ -181,8 +182,8 @@ public final class Areas {
     }
 
     /**
-     * Взять чанки, на которые приходятся блоки {@code [x1..x2] × [z1..z2]}, с кольцом соседей. Срок — в тиках,
-     * {@code 0} — пока не отпустят.
+     * Acquire chunks containing blocks {@code [x1..x2] x [z1..z2]}, with a neighbor ring. Duration is in ticks;
+     * {@code 0} means until released.
      */
     public Lease acquire(ServerLevel level, String owner, int x1, int z1, int x2, int z2, long ttlTicks) throws RpcException {
         int minX = (Math.min(x1, x2) >> 4) - MARGIN, maxX = (Math.max(x1, x2) >> 4) + MARGIN;
@@ -207,7 +208,7 @@ public final class Areas {
             for (int z = minZ; z <= maxZ; z++) {
                 long chunk = ChunkPos.asLong(x, z);
                 int before = counts.addTo(chunk, 1);
-                // тикет ещё стоит, если чанк ждал отпуска
+                // The ticket still exists if the chunk was waiting for release.
                 if (before == 0 && !queue.remove(chunk)) {
                     chunks.addRegionTicket(TICKET, new ChunkPos(chunk), RADIUS, chunk);
                     if (tickets != null && !has(tickets.get(chunk))) no.add(chunk);
@@ -268,7 +269,7 @@ public final class Areas {
         }
     }
 
-    /** Конец тика сервера: сроки аренд, отпуск по очереди. */
+    /** Server tick end: lease expiry and queued release. */
     public void tick(long gameTick) {
         now = gameTick;
         List<Lease> expired = new ArrayList<>();
@@ -285,7 +286,7 @@ public final class Areas {
         }
     }
 
-    /** Остановка сервера: все тикеты — сразу, аренды — отпущены. */
+    /** Server shutdown: remove all tickets immediately and release all leases. */
     public void releaseAll() {
         for (Lease lease : leases.values()) lease.released = true;
         leases.clear();
@@ -305,14 +306,14 @@ public final class Areas {
         refused.clear();
     }
 
-    /** Чанки с арендой (и те, где тикет не встал). */
+    /** Leased chunks (including those where tickets were refused). */
     public int held() {
         int n = 0;
         for (Long2IntOpenHashMap counts : refs.values()) n += counts.size();
         return n;
     }
 
-    /** Тикеты, которые ещё стоят: с арендой и ждущие отпуска. */
+    /** Tickets still present: leased and awaiting release. */
     public int ticketed() {
         int n = held();
         for (LongOpenHashSet no : refused.values()) n -= no.size();

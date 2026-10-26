@@ -8,15 +8,15 @@ import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Работа ведущего под бюджетом тика (постройка, откат, снимок): шаги в потоке сервера, пока есть время, — не меньше
- * одной единицы за тик, единица ограничена (десятки мест). Конец — {@link #done()}: мост ждёт его, лента получает
- * событие {@code job} (кроме снимков: {@link #announce}).
+ * A GM job within the tick budget (build, undo, snapshot): steps on the server thread while time remains,
+ * at least one work unit per tick; each unit is bounded (tens of positions). Completion uses {@link #done()}:
+ * the bridge waits for it, and the feed receives a {@code job} event (except snapshots: {@link #announce}).
  */
 public abstract class Job {
     private static final Logger LOG = LogUtils.getLogger();
 
     public enum State {
-        /** Ждёт загрузки своих чанков. */
+        /** Waiting for its chunks to load. */
         WAITING,
         RUNNING,
         DONE,
@@ -47,7 +47,7 @@ public abstract class Job {
         submitted();
     }
 
-    /** Работа получила номер и встала в очередь (поток сервера). */
+    /** The job has received an id and entered the queue (server thread). */
     protected void submitted() {}
 
     public long id() {
@@ -62,40 +62,37 @@ public abstract class Job {
         return state;
     }
 
-    /** Будущее с описанием работы, когда она кончилась (удачно или нет). */
+    /** Future with the job description on completion (successful or otherwise). */
     public CompletableFuture<JsonObject> done() {
         return done;
     }
 
-    /**
-     * Работать, пока есть время (хотя бы одну единицу). Состояние меняют {@link #running}, {@link #finish},
-     * {@link #fail}.
-     */
+    /** Work while time remains (at least one work unit). State changes use {@link #running}, {@link #finish}, {@link #fail}. */
     protected abstract void step(Budget budget);
 
-    /** Отпустить то, что держит работа (тикеты чанков); зовётся один раз при любом конце. */
+    /** Release resources held by the job (chunk tickets); called once on any completion. */
     protected abstract void release();
 
-    /** Подробности для описания: прогресс, итог. */
+    /** Description details: progress and result. */
     protected abstract void details(JsonObject out);
 
     /**
-     * Итог, который получает только ждущий вызов, а не список работ и лента (картинка снимка): зовётся один раз при
-     * конце; работа может тут же его забыть.
+     * A result delivered only to the waiting call, not to the job list or feed (snapshot image): called once
+     * on completion; the job can discard it immediately.
      */
     protected void payload(JsonObject out) {}
 
-    /** Сколько мест работа держит в памяти (снимки отката); 0 — ничего. После конца — только то, что нужно для отката. */
+    /** How many positions the job retains in memory (undo snapshots); 0 means none. After completion, only data needed for undo. */
     public long retained() {
         return 0;
     }
 
-    /** Сообщать ли конец работы в ленту (событие {@code job}). */
+    /** Whether to announce job completion in the feed (a {@code job} event). */
     public boolean announce() {
         return true;
     }
 
-    /** Выбросить то, что держится после конца (старые снимки при нехватке места). */
+    /** Discard resources retained after completion (old snapshots when space runs out). */
     public void dropRetained() {}
 
     protected final void running() {

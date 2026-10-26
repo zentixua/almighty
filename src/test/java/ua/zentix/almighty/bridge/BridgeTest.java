@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Мост по настоящему HTTP на петле: токен, разбор запроса, ошибки методов. */
+/** Bridge over real loopback HTTP: token, request parsing, method errors. Unicode payloads below exercise UTF-8 round trips. */
 class BridgeTest {
     private Bridge bridge;
     private final HttpClient http = HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY).build();
@@ -29,10 +29,10 @@ class BridgeTest {
         Map<String, Method> methods = Map.of(
                 "echo", a -> CompletableFuture.completedFuture(a.raw()),
                 "need", a -> CompletableFuture.completedFuture(new JsonPrimitive(a.integer("n", 1, 10))),
-                "boom", a -> CompletableFuture.failedFuture(new IllegalStateException("сломалось")),
-                "late", a -> CompletableFuture.failedFuture(RpcException.conflict("занято")),
+                "boom", a -> CompletableFuture.failedFuture(new IllegalStateException("broken")),
+                "late", a -> CompletableFuture.failedFuture(RpcException.conflict("busy")),
                 "throws", a -> {
-                    throw new IllegalArgumentException("сразу");
+                    throw new IllegalArgumentException("immediate");
                 });
         bridge = new Bridge(new InetSocketAddress("127.0.0.1", 0), Token.of("secret-abc"), methods);
         bridge.start();
@@ -85,7 +85,7 @@ class BridgeTest {
         assertEquals(400, post("secret-abc", "{\"method\":\"echo\",\"params\":[1]}").statusCode());
         HttpResponse<String> missing = post("secret-abc", "{\"method\":\"нет\"}");
         assertEquals(404, missing.statusCode());
-        assertTrue(json(missing).getAsJsonObject("error").get("message").getAsString().contains("echo"), "список методов");
+        assertTrue(json(missing).getAsJsonObject("error").get("message").getAsString().contains("echo"), "method list");
         HttpResponse<String> range = post("secret-abc", "{\"method\":\"need\",\"params\":{\"n\":11}}");
         assertEquals(400, range.statusCode());
         assertFalse(json(range).get("ok").getAsBoolean());
@@ -97,6 +97,6 @@ class BridgeTest {
         assertEquals(500, post("secret-abc", "{\"method\":\"throws\"}").statusCode());
         HttpResponse<String> late = post("secret-abc", "{\"method\":\"late\"}");
         assertEquals(409, late.statusCode());
-        assertEquals("занято", json(late).getAsJsonObject("error").get("message").getAsString());
+        assertEquals("busy", json(late).getAsJsonObject("error").get("message").getAsString());
     }
 }

@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Страница Modrinth из файлов репозитория (зовёт .github/workflows/publish.yml):
-#   modrinth.sh page draft <jar>    нет проекта — черновик (is_draft, без версий); есть — поля, иконка, галерея;
-#                                   только пока проект скрыт (draft, rejected, processing)
-#   modrinth.sh page release <jar>  то же для проекта после проверки (не draft и не rejected); новый не создаёт
-#   modrinth.sh submit              черновик (или отклонённый) — на проверку: status processing
-# page пишет в GITHUB_OUTPUT id проекта и upload=true, если этого jar (по sha1) в проекте ещё нет.
-# Поля — docs/store/modrinth.json (ключа нет — поле на сайте не трогаем, null — очищаем), текст страницы —
-# docs/store/description.md. Иконка и картинки галереи, которых ещё нет в репозитории, пропускаются, уже выложенные
-# (sha1 файла есть в их адресе на CDN Modrinth) — тоже: повторный запуск дописывает только новое, а картинки на
-# сайте, которых в списке больше нет, убирает.
-# Проект ищется по slug с токеном: черновик виден только его команде.
-# Окружение: MODRINTH_TOKEN; MODRINTH_API (по умолчанию https://api.modrinth.com/v2; для проверки — заглушка);
-# STORE_JSON, BODY_MD — другие пути к полям и тексту.
+# Modrinth page from repository files (called by .github/workflows/publish.yml):
+#   modrinth.sh page draft <jar>    absent project: draft (is_draft, no versions); existing: fields, icon, gallery;
+#                                   only while hidden (draft, rejected, processing)
+#   modrinth.sh page release <jar>  same for a reviewed project (not draft or rejected); never creates a project
+#   modrinth.sh submit              submit a draft (or rejected project) for review: status processing
+# page writes the project id and upload=true to GITHUB_OUTPUT if the jar (by sha1) is not already in the project.
+# Fields: docs/store/modrinth.json (missing key leaves the site field untouched; null clears it); page text:
+# docs/store/description.md. Skip icon/gallery files absent from the repository and already-uploaded images
+# (their file sha1 appears in the Modrinth CDN URL): reruns add only new images and remove site images
+# no longer listed.
+# Look up the project by slug using the token: only the team can see a draft.
+# Environment: MODRINTH_TOKEN; MODRINTH_API (default https://api.modrinth.com/v2; a stub for tests);
+# STORE_JSON, BODY_MD override the fields and text paths.
 set -euo pipefail
 
 API=${MODRINTH_API:-https://api.modrinth.com/v2}
@@ -20,14 +20,14 @@ BODY_MD=${BODY_MD:-docs/store/description.md}
 OUT=${GITHUB_OUTPUT:-/dev/null}
 SUMMARY=${GITHUB_STEP_SUMMARY:-/dev/null}
 
-: "${MODRINTH_TOKEN:?MODRINTH_TOKEN не задан}"
+: "${MODRINTH_TOKEN:?MODRINTH_TOKEN is not set}"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-# токен — заголовком из файла, не в аргументах curl
+# Token header comes from a file, not curl arguments.
 (umask 077 && printf 'Authorization: %s\n' "$MODRINTH_TOKEN" > "$tmp/auth")
 UA="User-Agent: github.com/${GITHUB_REPOSITORY:-local} publish workflow"
 
-# call МЕТОД ПУТЬ "КОДЫ" [аргументы curl] — ответ в $tmp/body, код в $code; код не из списка — ошибка с ответом
+# call METHOD PATH "CODES" [curl arguments]: response in $tmp/body, status in $code; unlisted status fails with the response.
 call() {
   local method=$1 path=$2 ok=$3
   shift 3
@@ -39,7 +39,7 @@ call() {
   exit 1
 }
 
-# image ФАЙЛ ПРЕДЕЛ — проверка картинки; ext и ctype — для загрузки
+# image FILE LIMIT: validate an image; ext and ctype are used for upload.
 image() {
   ext=${1##*.}
   ext=${ext,,}
@@ -48,10 +48,10 @@ image() {
     jpg|jpeg) ctype=image/jpeg ;;
     webp) ctype=image/webp ;;
     gif) ctype=image/gif ;;
-    *) echo "::error::$1: нужен png, jpg, webp или gif"; exit 1 ;;
+    *) echo "::error::$1: expected png, jpg, webp or gif"; exit 1 ;;
   esac
   if [ "$(stat -c %s "$1")" -gt "$2" ]; then
-    echo "::error::$1 больше $(($2 / 1024)) КиБ — предел Modrinth"
+    echo "::error::$1 exceeds $(($2 / 1024)) KiB — Modrinth limit"
     exit 1
   fi
 }
@@ -66,33 +66,33 @@ fi
 
 submit() {
   case $status in
-    none) echo "::error::На Modrinth нет проекта $slug — сначала шаг draft"; exit 1 ;;
+    none) echo "::error::Modrinth has no project $slug — run draft first"; exit 1 ;;
     draft|rejected) ;;
-    processing) echo "::notice::Modrinth: $slug уже на проверке"; return ;;
-    *) echo "::notice::Modrinth: $slug — $status, отправлять нечего"; return ;;
+    processing) echo "::notice::Modrinth: $slug is already under review"; return ;;
+    *) echo "::notice::Modrinth: $slug — $status, nothing to submit"; return ;;
   esac
   if [ "$(jq '.versions | length' "$tmp/project.json")" = 0 ]; then
-    echo "::error::Modrinth: у черновика $slug нет версий — сначала шаг draft"
+    echo "::error::Modrinth: draft $slug has no versions — run draft first"
     exit 1
   fi
-  # 400 — проверка Modrinth нашла, что поправить на странице: список — в ответе
+  # 400 means Modrinth validation found page issues, listed in the response.
   call PATCH "/project/$(jq -r .id "$tmp/project.json")" 204 -H 'Content-Type: application/json' \
     --data '{"status":"processing"}'
-  echo "Modrinth: [$slug](https://modrinth.com/mod/$slug) отправлен на проверку" >> "$SUMMARY"
+  echo "Modrinth: [$slug](https://modrinth.com/mod/$slug) submitted for review" >> "$SUMMARY"
 }
 
 page() {
   local step=$1 jar=$2 id sha file i n q
   case "$step:$status" in
     draft:none)
-      # новый — только черновиком: без версий Modrinth иначе не создаёт, и до проверки его видит лишь команда
+      # New projects must be drafts: Modrinth otherwise requires versions, and only the team sees them before review.
       jq --rawfile body "$BODY_MD" '{slug, title, description, body: $body, categories,
           additional_categories: (.additional_categories // []), client_side, server_side, license_id,
           source_url, issues_url, wiki_url, discord_url, project_type: "mod", is_draft: true, initial_versions: []}
         | with_entries(select(.value != null))' "$STORE_JSON" > "$tmp/data.json"
       call POST /project 200 -F "data=<$tmp/data.json;type=application/json"
       cp "$tmp/body" "$tmp/project.json"
-      echo "::notice::Modrinth: создан черновик $slug"
+      echo "::notice::Modrinth: created draft $slug"
       ;;
     draft:draft | draft:rejected | draft:processing | release:approved | release:unlisted | release:private | \
       release:archived | release:processing)
@@ -103,39 +103,39 @@ page() {
       call PATCH "/project/$(jq -r .id "$tmp/project.json")" 204 -H 'Content-Type: application/json' \
         --data-binary @"$tmp/edit.json"
       ;;
-    release:none) echo "::error::На Modrinth нет проекта $slug — сначала шаги draft и submit"; exit 1 ;;
-    release:*) echo "::error::Modrinth: $slug — $status; выпуск — после шага submit и проверки"; exit 1 ;;
-    *) echo "::error::Modrinth: $slug — $status; шаг draft — только пока проект скрыт, выпуск — шаг release"; exit 1 ;;
+    release:none) echo "::error::Modrinth has no project $slug — run draft and submit first"; exit 1 ;;
+    release:*) echo "::error::Modrinth: $slug — $status; release follows submit and review"; exit 1 ;;
+    *) echo "::error::Modrinth: $slug — $status; draft is only for hidden projects; publish with release"; exit 1 ;;
   esac
   id=$(jq -r .id "$tmp/project.json")
 
-  # иконка: файла ещё нет — позже; тот же файл уже на сайте — не трогаем
+  # Icon: if absent, upload later; if the same file is already on the site, leave it unchanged.
   file=$(jq -r '.icon // empty' "$STORE_JSON")
   if [ -n "$file" ] && [ -f "$file" ]; then
     sha=$(sha1sum "$file" | cut -d' ' -f1)
     if jq -e --arg s "$sha" '(.icon_url // "") | contains($s)' "$tmp/project.json" > /dev/null; then
-      echo "иконка: без изменений"
+      echo "icon: unchanged"
     else
       image "$file" 524288
       call PATCH "/project/$id/icon?ext=$ext" 204 -H "Content-Type: $ctype" --data-binary @"$file"
-      echo "иконка: $file"
+      echo "icon: $file"
     fi
   elif [ -n "$file" ]; then
-    echo "::notice::Modrinth: иконки $file в репозитории ещё нет"
+    echo "::notice::Modrinth: icon $file is not in the repository yet"
   fi
 
-  # галерея: только новые картинки (одну и ту же Modrinth дважды не берёт); подписи выложенных — на сайте
+  # Gallery: new images only (Modrinth rejects duplicates); captions for uploaded images are on the site.
   n=$(jq '.gallery // [] | length' "$STORE_JSON")
   for ((i = 0; i < n; i++)); do
     file=$(jq -r ".gallery[$i].file" "$STORE_JSON")
     if [ ! -f "$file" ]; then
-      echo "::notice::Modrinth: картинки $file в репозитории ещё нет"
+      echo "::notice::Modrinth: image $file is not in the repository yet"
       continue
     fi
     sha=$(sha1sum "$file" | cut -d' ' -f1)
     if jq -e --arg s "$sha" 'any(.gallery[]?; ((.url // "") + " " + (.raw_url // "")) | contains($s))' \
         "$tmp/project.json" > /dev/null; then
-      echo "галерея: $file уже есть"
+      echo "gallery: $file already exists"
       continue
     fi
     image "$file" 5242880
@@ -143,10 +143,10 @@ page() {
       + (if .title then "&title=\(.title | @uri)" else "" end)
       + (if .description then "&description=\(.description | @uri)" else "" end)' "$STORE_JSON")
     call POST "/project/$id/gallery?ext=$ext&ordering=$i&$q" 204 -H "Content-Type: $ctype" --data-binary @"$file"
-    echo "галерея: $file"
+    echo "gallery: $file"
   done
 
-  # галерея на сайте — ровно список modrinth.json: картинку, чьего sha1 нет среди его файлов, убираем
+  # Site gallery must match modrinth.json: remove images whose sha1 is absent from its files.
   local keep=() url k found
   for ((i = 0; i < n; i++)); do
     file=$(jq -r ".gallery[$i].file" "$STORE_JSON")
@@ -159,29 +159,29 @@ page() {
     done
     if [ "$found" = false ]; then
       call DELETE "/project/$id/gallery?url=$(jq -rn --arg u "$url" '$u | @uri')" 204
-      echo "галерея: убрана $url"
+      echo "gallery: removed $url"
     fi
   done < <(jq -r '.gallery[]?.url // empty' "$tmp/project.json")
 
-  # версия: этот jar в проекте уже есть — второй раз не выкладываем (повторный запуск после сбоя)
+  # Version: if the jar is already in the project, do not upload it again (retry after a failure).
   sha=$(sha1sum "$jar" | cut -d' ' -f1)
   call GET "/version_file/$sha?algorithm=sha1" "200 404"
   local upload=true
   if [ "$code" = 200 ]; then
     if [ "$(jq -r .project_id "$tmp/body")" != "$id" ]; then
-      echo "::error::$(basename "$jar") уже выложен на Modrinth в другом проекте: $(jq -r .project_id "$tmp/body")"
+      echo "::error::$(basename "$jar") is already uploaded to Modrinth in another project: $(jq -r .project_id "$tmp/body")"
       exit 1
     fi
     upload=false
-    echo "::notice::Modrinth: $(basename "$jar") уже выложен — версия $(jq -r .version_number "$tmp/body")"
+    echo "::notice::Modrinth: $(basename "$jar") is already uploaded — version $(jq -r .version_number "$tmp/body")"
   fi
 
   { echo "id=$id"; echo "upload=$upload"; } >> "$OUT"
-  echo "Modrinth: [$slug](https://modrinth.com/mod/$slug), $(jq -r .status "$tmp/project.json"), шаг $step" >> "$SUMMARY"
+  echo "Modrinth: [$slug](https://modrinth.com/mod/$slug), $(jq -r .status "$tmp/project.json"), step $step" >> "$SUMMARY"
 }
 
 case ${1:-} in
-  page) page "${2:?draft или release}" "${3:?jar}" ;;
+  page) page "${2:?draft or release}" "${3:?jar}" ;;
   submit) submit ;;
-  *) echo "использование: $0 page draft|release <jar> | submit" >&2; exit 2 ;;
+  *) echo "usage: $0 page draft|release <jar> | submit" >&2; exit 2 ;;
 esac

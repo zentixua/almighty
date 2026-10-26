@@ -8,7 +8,7 @@ import net.minecraft.util.SortedArraySet;
 
 import java.lang.reflect.Field;
 
-/** Тикеты ведущего в очереди ванили ({@code DistanceManager.tickets}, только чтение). */
+/** GM tickets in vanilla's queue ({@code DistanceManager.tickets}, read-only). */
 final class GmTickets {
     private static final Field TICKETS;
 

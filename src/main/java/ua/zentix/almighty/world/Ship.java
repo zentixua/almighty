@@ -12,57 +12,58 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Корабль мода физики (сейчас — Sable, на нём аппараты Create Aeronautics): его блоки живут на далёком участке
- * («плоте») того же мира, а в мире — их проекция с местом, поворотом и скоростью. Значения — на момент вызова, поток
- * сервера. Скриптам — {@code gm.ship(имя)}, мосту — метод {@code ships}; источник — {@code Compat.ships()}.
+ * A physics-mod ship (currently Sable, used by Create Aeronautics craft): its blocks live on a distant plot
+ * in the same world, with a projection into the world carrying position, rotation and velocity. Values are current
+ * at call time; server thread. Scripts use {@code gm.ship(name)}, the bridge uses {@code ships};
+ * the source is {@code Compat.ships()}.
  */
 public interface Ship {
-    /** Имя, которое дал кораблю игрок; null — без имени. */
+    /** Player-assigned ship name; null if unnamed. */
     String name();
 
     UUID uuid();
 
     ServerLevel level();
 
-    /** Где в мире сейчас точка поворота корабля (на участке это {@link #pivot()}). */
+    /** Current world position of the ship's pivot ({@link #pivot()} on the plot). */
     Vec3 pos();
 
-    /** Точка поворота на участке. */
+    /** Pivot on the plot. */
     Vec3 pivot();
 
-    /** Поворот от сборки: направление на участке → направление в мире. */
+    /** Rotation since assembly: plot direction to world direction. */
     Quaterniond orientation();
 
-    /** Скорость точки поворота в мире, блоков в секунду. */
+    /** World velocity of the pivot, in blocks per second. */
     Vec3 velocity();
 
-    /** Скорость точки мира, которая движется с кораблём, блоков в секунду. */
+    /** Velocity of a world point moving with the ship, in blocks per second. */
     Vec3 velocityAt(Vec3 world);
 
-    /** Угловая скорость, радиан в секунду, по осям мира (по правилу правой руки). */
+    /** Angular velocity, in radians per second, along world axes (right-hand rule). */
     Vec3 angularVelocity();
 
-    /** Рамка корабля в мире. */
+    /** Ship bounds in the world. */
     AABB box();
 
-    /** Рамка его блоков на участке (с запасом: из рамки в мире). */
+    /** Bounds of its blocks on the plot (with a margin: derived from world bounds). */
     BoundingBox plotBox();
 
-    /** Точка участка → где она в мире. */
+    /** Plot point to its world position. */
     Vec3 toWorld(Vec3 plot);
 
-    /** Точка мира → какое место участка в ней сейчас. */
+    /** World point to the plot position currently occupying it. */
     Vec3 toPlot(Vec3 world);
 
-    /** Направление на участке (нос корабля, как его строили) → направление в мире. */
+    /** Plot direction (the bow as built) to world direction. */
     Vec3 toWorldDir(Vec3 plotDir);
 
     /**
-     * Блок-сущности корабля в готовых чанках его участка (моторы, горелки, рули): тип — id
-     * ({@code create:propeller_bearing}); null — все.
+     * Ship block entities in ready chunks of its plot (engines, burners, rudders): type is an id
+     * ({@code create:propeller_bearing}); null means all types.
      */
     List<BlockEntity> blockEntities(String type);
 
-    /** Для ответа моста: имя, место, поворот, скорости, рамки. */
+    /** For the bridge response: name, position, rotation, velocities and bounds. */
     JsonObject describe();
 }

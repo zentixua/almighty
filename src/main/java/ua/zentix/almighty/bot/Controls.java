@@ -42,11 +42,12 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Клавиатура и мышь бота — как у клиента: удерживаемые клавиши, щелчки, копание, использование, ходьба. Логика —
- * та же, что у {@code Minecraft.handleKeybinds}, {@code MultiPlayerGameMode} и {@code LocalPlayer.aiStep}; в сервер
- * идут те же пакеты, что шлёт клиент, а где клиенту нужен итог (взаимодействие перешло на вторую руку или нет) — тот же
- * путь сервера, что у обработчика пакета, с его проверками (дальность, граница мира, право строить). Физику игрока
- * сервер считает сам ({@code doTick}): клиентом её считает только настоящий клиент. Поток сервера.
+ * Bot keyboard and mouse, as on the client: held keys, clicks, mining, use and walking. The same logic as
+ * {@code Minecraft.handleKeybinds}, {@code MultiPlayerGameMode} and {@code LocalPlayer.aiStep}; sends the same
+ * packets as a client. Where the client needs a result (whether interaction moved to the offhand), use the same
+ * server path as the packet handler, including its checks (reach, world border, building permission).
+ * The server computes player physics itself ({@code doTick}); only real clients compute it on the client.
+ * Server thread.
  */
 final class Controls {
     enum Key {
@@ -65,15 +66,15 @@ final class Controls {
         }
     }
 
-    /** Что прицел клиента может выбрать ({@code GameRenderer.pick}): не наблюдатели, «подбираемые» лучом. */
+    /** What the client crosshair can pick ({@code GameRenderer.pick}): nonspectators that are pickable by a ray. */
     static final java.util.function.Predicate<Entity> PICKABLE = e -> !e.isSpectator() && e.isPickable();
 
     private final Bot bot;
     private final Set<Key> held = EnumSet.noneOf(Key.class);
     /**
-     * Клавиши «на срок»: тик, с которого клавиша отпускается сама. Автопилот правилом держит клавиши так и продлевает
-     * их каждым запуском: правило упало или выключилось — рули сами встают в ноль, а не держат последний ввод. Шаг
-     * правила идёт в следующем тике бота, после {@link #begin}: продлевать каждый тик — срок не меньше 2.
+     * Timed keys: the tick from which a key releases itself. Rule autopilots hold keys this way and renew them
+     * each run: if the rule fails or turns off, controls return to zero instead of holding the last input.
+     * A rule's step runs on the next bot tick, after {@link #begin}: renewal every tick needs a duration of at least 2.
      */
     private final EnumMap<Key, Long> until = new EnumMap<>(Key.class);
     private int missTime, rightClickDelay;
@@ -84,9 +85,9 @@ final class Controls {
     private int destroyDelay;
     private int sequence;
     private boolean shiftSent, attackedThisTick;
-    /** Пакеты движения, которые клиент послал бы после своих тиков: на них сервер пересчитывает, кого игрок видит. */
+    /** Movement packets the client would send after its ticks: the server recalculates visible entities for each. */
     private final MovePackets movePackets = new MovePackets();
-    /** Сколько блоков доломано удержанием атаки с прошлого чтения (итог шага). */
+    /** Blocks finished by holding attack since the last read (step result). */
     private int broken;
 
     Controls(Bot bot) {
@@ -97,7 +98,7 @@ final class Controls {
         return held;
     }
 
-    /** Сколько тиков ещё держится клавиша на срок; клавиши без срока — нет в списке. */
+    /** Remaining ticks for timed keys; indefinite keys are omitted. */
     EnumMap<Key, Long> leases() {
         EnumMap<Key, Long> left = new EnumMap<>(Key.class);
         long now = bot.tickNow();
@@ -111,7 +112,7 @@ final class Controls {
         return b;
     }
 
-    /** Начало тика клиента: счётчики, отпущенная кнопка использования прекращает использование (натянутый лук — выстрел). */
+    /** Client tick start: counters; releasing use stops item use (a drawn bow fires). */
     void begin(ServerPlayer p) {
         long now = bot.tickNow();
         for (Key key : Key.values()) {
@@ -125,8 +126,8 @@ final class Controls {
     }
 
     /**
-     * Держать клавишу {@code ticks} тиков (0 — пока не отпустят): клавиша на срок отпускается сама в начале тика
-     * {@code ticks} после этого. Уже нажатая — продлевается (или держится без срока), без нового щелчка.
+     * Hold a key for {@code ticks} ticks (0 means until released): a timed key releases itself at the start of
+     * the tick {@code ticks} later. An already held key is extended (or held indefinitely) without another click.
      */
     void hold(ServerPlayer p, Key key, int ticks, JsonObject out) {
         press(p, key, out);
@@ -134,7 +135,7 @@ final class Controls {
         else until.remove(key);
     }
 
-    /** Нажать клавишу. Нажатие кнопки мыши — сразу щелчок, как у клиента; итог щелчка — в {@code out}. */
+    /** Press a key. A mouse button press clicks immediately, as on the client; click result goes in {@code out}. */
     void press(ServerPlayer p, Key key, JsonObject out) {
         if (!held.add(key)) return;
         if (key == Key.ATTACK) out.add("attack", attack(p));
@@ -151,7 +152,7 @@ final class Controls {
         for (Key key : Key.values()) release(p, key);
     }
 
-    /** Щелчок левой кнопкой: удар по сущности, начало копания или взмах в пустоту. */
+    /** Left click: attack an entity, start mining, or swing at air. */
     JsonObject attack(ServerPlayer p) {
         JsonObject out = new JsonObject();
         if (p.isDeadOrDying()) return note(out, "the bot is dead");
@@ -182,7 +183,7 @@ final class Controls {
         if (p.gameMode.getGameModeForPlayer().isSurvival()) missTime = 10;
     }
 
-    /** Щелчок правой кнопкой: сущность, блок, предмет — основной рукой, потом второй, как у клиента. */
+    /** Right click: entity, block, item; main hand, then offhand, as on the client. */
     JsonObject use(ServerPlayer p) {
         JsonObject out = new JsonObject();
         if (p.isDeadOrDying()) return note(out, "the bot is dead");
@@ -217,7 +218,7 @@ final class Controls {
         return out;
     }
 
-    /** Конец тика клиента: удержание кнопок (повтор использования, копание) и ходьба; затем физика игрока. */
+    /** Client tick end: held buttons (repeat use, mining) and walking; then player physics. */
     void end(ServerPlayer p) {
         if (held.contains(Key.USE) && rightClickDelay == 0 && !p.isUsingItem()) use(p);
         continueAttack(p, !attackedThisTick && held.contains(Key.ATTACK));
@@ -244,7 +245,7 @@ final class Controls {
         } else if (!destroying || !sameTarget(p, pos)) {
             if (destroying) bot.send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK, destroyPos, face));
             BlockState state = p.level().getBlockState(pos);
-            // как клиент: скорость — до пакета, сервер на START может сломать блок сразу
+            // Like the client: compute speed before the packet; the server may break a block immediately on START.
             boolean instant = !state.isAir() && state.getDestroyProgress(p, p.level(), pos) >= 1.0F;
             action(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, pos, face);
             if (!instant) {
@@ -301,8 +302,8 @@ final class Controls {
     }
 
     /**
-     * Взаимодействие с сущностью — путь {@code handleInteract}: граница мира, дальность, событие NeoForge, сама
-     * сущность, критерий достижений, взмах. {@code at} — точка на сущности (как у клиента сначала), null — без точки.
+     * Entity interaction follows {@code handleInteract}: world border, reach, NeoForge event, entity itself,
+     * advancement criterion, swing. {@code at} is a point on the entity (as tried first by the client); null means no point.
      */
     private static InteractionResult interact(ServerPlayer p, Entity entity, InteractionHand hand, Vec3 at) {
         ServerLevel level = p.serverLevel();
@@ -324,7 +325,7 @@ final class Controls {
         return r;
     }
 
-    /** Использование на блоке — путь {@code handleUseItemOn}: дальность, точка в блоке, высота, право строить. */
+    /** Use on a block follows {@code handleUseItemOn}: reach, point within the block, height, building permission. */
     private static InteractionResult useOn(ServerPlayer p, InteractionHand hand, BlockHitResult hit) {
         ServerLevel level = p.serverLevel();
         ItemStack stack = p.getItemInHand(hand);
@@ -349,7 +350,7 @@ final class Controls {
         return r;
     }
 
-    /** Использование предмета в руке — путь {@code handleUseItem}. */
+    /** Use an item in hand follows {@code handleUseItem}. */
     private static InteractionResult useItem(ServerPlayer p, InteractionHand hand) {
         ItemStack stack = p.getItemInHand(hand);
         if (stack.isEmpty() || !stack.isItemEnabled(p.level().enabledFeatures())) return InteractionResult.PASS;
@@ -359,12 +360,12 @@ final class Controls {
     }
 
     /**
-     * Ходьба — как {@code LocalPlayer.aiStep}: толчки от клавиш (присед и использование предмета замедляют), бег,
-     * присед, полёт вверх-вниз; верхом — пакет ввода транспорту и то, что клиент делает с ним сам ({@link Vehicles}).
-     * Потом физика игрока сервером ({@code doTick}) и то,
-     * что сервер делает после пакета движения: чанки вокруг и кого игрок видит — когда клиент послал бы пакет
-     * ({@link MovePackets}), урон от падения, движение игрока (его берут снаряды — {@code getKnownMovement}), статистика
-     * и голод от ходьбы. Седока физика не сдвигает: его место — в транспорте.
+     * Walking as in {@code LocalPlayer.aiStep}: key impulses (sneaking and item use slow movement), sprinting,
+     * sneaking, flying up/down; when riding, vehicle input packets and client-side vehicle actions ({@link Vehicles}).
+     * Then server player physics ({@code doTick}) and server movement-packet handling: surrounding chunks and visible
+     * entities when a client would send a packet ({@link MovePackets}), fall damage, player movement (used by
+     * projectiles: {@code getKnownMovement}), walking statistics and hunger. Physics does not move a rider:
+     * its position belongs to the vehicle.
      */
     private void move(ServerPlayer p) {
         float forward = impulse(Key.FORWARD, Key.BACK), strafe = impulse(Key.LEFT, Key.RIGHT);
@@ -383,10 +384,10 @@ final class Controls {
             shiftSent = sneak;
         }
         sprint(p, forward);
-        // клиент не тикает игрока, пока чанк под ним не пришёл (LocalPlayer.tick); бот — пока не готовы чанки, которых
-        // коснётся его тик: физика игрока читает блоки и жидкость под ногами, и неготовый чанк грузился бы в тике сразу
+        // A client does not tick the player until the chunk below arrives (LocalPlayer.tick); the bot waits for chunks
+        // its tick will touch: player physics reads blocks and fluids underfoot, and an unready chunk would load synchronously.
         if (!p.isPassenger() && !ready(p)) {
-            // место после телепорта сервер узнаёт первым же пакетом (сдвиг), дальше — раз в 20 тиков, как у клиента
+            // The server learns the teleported position from the first movement packet, then every 20 ticks, as on the client.
             if (movePackets.tick(p.getX(), p.getY(), p.getZ(), p.getYRot(), p.getXRot(), p.onGround())) {
                 p.serverLevel().getChunkSource().move(p);
             }
@@ -404,17 +405,17 @@ final class Controls {
             }
         }
         boolean riding = p.isPassenger();
-        // седок: клиент начинает его тик с нулевой скоростью и сажает на место (rideTick), сервер после физики игрока
-        // возвращает его туда, где тик начался (absMoveTo к firstGood…). Иначе бот, чей транспорт мир не тикнул (чанк
-        // вне дальности симуляции), падал бы с места, оставаясь седоком
+        // Rider: the client starts its tick with zero velocity and seats it (rideTick); after player physics, the server
+        // restores its tick-start position (absMoveTo to firstGood...). Otherwise a bot whose vehicle the world did not tick
+        // (chunk outside simulation distance) would fall out of place while still riding.
         if (riding) p.setDeltaMovement(Vec3.ZERO);
         Vec3 before = p.position();
         p.doTick();
         if (p.isRemoved()) return;
         if (riding && p.isPassenger()) p.absMoveTo(before.x, before.y, before.z, p.getYRot(), p.getXRot());
         Vec3 d = p.position().subtract(before);
-        // седок шлёт пакет каждый тик, пеший — когда сдвинулся, повернулся, встал на землю или оторвался от неё,
-        // а стоя — раз в 20 тиков
+        // A rider sends a packet every tick; a player on foot sends one after movement, rotation, landing or leaving ground,
+        // and every 20 ticks when stationary.
         if (riding || movePackets.tick(p.getX(), p.getY(), p.getZ(), p.getYRot(), p.getXRot(), p.onGround())) {
             p.serverLevel().getChunkSource().move(p);
         }
@@ -425,7 +426,7 @@ final class Controls {
         }
     }
 
-    /** Готовы все чанки вокруг рамки бота (транспорта) с запасом в блок и его скоростью за тик ({@code getChunkNow}). */
+    /** All chunks around the bot's (vehicle's) box are ready, with a one-block margin and per-tick velocity ({@code getChunkNow}). */
     static boolean ready(Entity p) {
         AABB box = p.getBoundingBox().expandTowards(p.getDeltaMovement()).inflate(1.0);
         ServerChunkCache chunks = ((ServerLevel) p.level()).getChunkSource();
@@ -442,7 +443,7 @@ final class Controls {
         return a == b ? 0 : a ? 1 : -1;
     }
 
-    /** Бег: держится, пока держат клавишу и идут вперёд, хватает еды, не слепы и не упёрлись в стену. */
+    /** Sprinting: held while the key is pressed and moving forward, with enough food, no blindness and no wall collision. */
     private void sprint(ServerPlayer p, float forward) {
         boolean able = (p.getFoodData().getFoodLevel() > 6 || p.mayFly()) && !p.isUsingItem()
                 && !p.hasEffect(MobEffects.BLINDNESS) && !p.isFallFlying() && !p.isPassenger();
@@ -455,8 +456,8 @@ final class Controls {
     }
 
     /**
-     * Что под прицелом — как {@code GameRenderer.pick}: блок (форма, жидкость насквозь) в дальности взаимодействия с
-     * блоками, сущность — в дальности для сущностей, ближнее; дальше дальности — промах. Чанки не грузятся.
+     * Crosshair target as in {@code GameRenderer.pick}: block (shape, ignoring fluids) within block interaction
+     * reach, entity within entity reach, whichever is nearer; beyond reach is a miss. No chunk loading.
      */
     static HitResult pick(ServerPlayer p) {
         double blockRange = p.blockInteractionRange(), entityRange = p.entityInteractionRange();
@@ -482,7 +483,7 @@ final class Controls {
         return BlockHitResult.miss(at, Direction.getNearest(at.x - eye.x, at.y - eye.y, at.z - eye.z), BlockPos.containing(at));
     }
 
-    /** Цель щелчка для итога шага. */
+    /** Click target for the step result. */
     static void describe(ServerPlayer p, HitResult hit, JsonObject out) {
         if (hit instanceof EntityHitResult e) {
             JsonObject t = new JsonObject();

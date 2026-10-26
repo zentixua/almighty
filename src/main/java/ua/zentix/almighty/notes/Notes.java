@@ -13,10 +13,10 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 /**
- * Памятки агенту от модов и датапаков: {@code data/<namespace>/almighty/notes/<имя>.md}, id памятки —
- * {@code <namespace>:<имя>}. Мод пишет там, как с ним работать (команды, правила, подводные камни), и от Almighty не
- * зависит: без моста файл просто лежит в данных. Датапак перекрывает памятку мода тем же путём, как любой ресурс данных,
- * а пустой файл её убирает. Читаются текущие данные сервера: после {@code /reload} — новые.
+ * Agent notes from mods and datapacks: {@code data/<namespace>/almighty/notes/<name>.md}, note id
+ * {@code <namespace>:<name>}. A mod describes its use (commands, rules, pitfalls) without depending on Almighty:
+ * without the bridge, the file simply remains in data. A datapack overrides a mod note at the same path, like
+ * any data resource; an empty file removes it. Read current server data, refreshed after {@code /reload}.
  */
 public final class Notes {
     static final String DIR = "almighty/notes";

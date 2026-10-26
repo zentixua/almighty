@@ -11,9 +11,9 @@ import ua.zentix.almighty.compat.Compat;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Корабли модов физики ({@link Ship}): источник — совместимость с модом, без мода — кораблей нет. Поток сервера. */
+/** Physics-mod ships ({@link Ship}): supplied by mod compatibility; unavailable without the mod. Server thread. */
 public final class Ships {
-    /** Корабли мода в одном измерении. */
+    /** The mod's ships in one dimension. */
     public interface Source {
         List<Ship> all(ServerLevel level);
     }
@@ -39,20 +39,20 @@ public final class Ships {
         return source().all(level);
     }
 
-    /** Все корабли всех измерений. */
+    /** All ships in all dimensions. */
     public static List<Ship> all(MinecraftServer server) {
         List<Ship> out = new ArrayList<>();
         for (ServerLevel level : server.getAllLevels()) out.addAll(all(level));
         return out;
     }
 
-    /** Корабль по имени (верхний мир — первым); нет — null. */
+    /** Ship by name (Overworld first); null if absent. */
     public static Ship find(MinecraftServer server, String name) {
         for (Ship s : all(server)) if (name.equals(s.name())) return s;
         return null;
     }
 
-    /** Метод {@code ships}: {@code name} — один по имени; {@code center} + {@code radius} — рамкой рядом; измерение. */
+    /** The {@code ships} method: {@code name} selects one by name; {@code center} + {@code radius} selects nearby bounds; dimension. */
     public static JsonArray describe(MinecraftServer server, Args a) throws RpcException {
         if (!available()) throw RpcException.unavailable("No ships: the ship mod (Sable) is not installed");
         ServerLevel level = Dims.level(server, a);

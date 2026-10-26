@@ -51,15 +51,15 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Методы моста. Параметры разбираются в потоке моста; мир читается и меняется в потоке сервера ({@link GmServer#onMain})
- * или работой под бюджетом тика. Методы с {@code wait} ждут конца работы не дольше стольких секунд и иначе отдают её
- * текущее описание: дальше — {@code job}.
+ * Bridge methods. Parameters are parsed on the bridge thread; the world is read and changed on the server thread
+ * ({@link GmServer#onMain}) or by a job within the tick budget. Methods with {@code wait} wait up to that many seconds
+ * for job completion, then return its current description; continue with {@code job}.
  */
 public final class Api {
     static final int MAX_WAIT = 50;
-    /** Сколько тиков постройка ждёт загрузки своих чанков: 2 минуты при 20 тиках в секунду. */
+    /** How many ticks a build waits for its chunks to load: 2 minutes at 20 ticks per second. */
     static final long CHUNK_WAIT_TICKS = 2400;
-    /** Самый долгий разовый скрипт: столько стоит поток сервера. */
+    /** The longest one-shot script: the server thread is blocked for that duration. */
     static final int MAX_SCRIPT_MS = 10_000;
     private static final Logger LOG = LogUtils.getLogger();
 
@@ -179,8 +179,9 @@ public final class Api {
     }
 
     /**
-     * Скрипт Groovy в потоке сервера между тиками: компиляция — здесь, в потоке моста; значение — JSON, вывод
-     * {@code println} — строкой; ошибка — {@code ok: false} с текстом и строкой скрипта. Код целиком — в лог INFO.
+     * Groovy script on the server thread between ticks: compilation happens here on the bridge thread; the value
+     * is JSON, {@code println} output is a string; errors return {@code ok: false} with text and script line.
+     * The full code is logged at INFO.
      */
     private static CompletableFuture<JsonElement> script(GmServer gm, Args a) throws RpcException {
         if (!GmConfig.SCRIPTS_ENABLED.get()) throw Rules.scriptsOff();
@@ -222,8 +223,8 @@ public final class Api {
     }
 
     /**
-     * Зрение: глаз бота или игрока ({@code name}), любой сущности ({@code uuid}) или свободная камера ({@code at} +
-     * {@code yaw}/{@code pitch}). Без картинки ({@code image: false}) — сразу; с картинкой — снимок работой.
+     * Vision: a bot or player's eyes ({@code name}), any entity ({@code uuid}), or a free camera ({@code at} +
+     * {@code yaw}/{@code pitch}). Without an image ({@code image: false}), return immediately; with one, use a snapshot job.
      */
     private static CompletableFuture<JsonElement> see(GmServer gm, Args a) throws RpcException {
         MinecraftServer server = gm.server();
@@ -291,14 +292,14 @@ public final class Api {
         return a.integer("wait", 30, 0, MAX_WAIT);
     }
 
-    /** Снимок работой; картинка кодируется в PNG вне потока сервера. */
+    /** Snapshot job; the image is encoded as PNG off the server thread. */
     private static CompletableFuture<JsonElement> view(GmServer gm, Args a, GmServer.MainCall<View> factory) throws RpcException {
         int wait = waitSeconds(a);
         CompletableFuture<View> started = gm.onMain(() -> gm.jobs().submit(factory.run()));
         return started.thenCompose(view -> gm.await(view, wait).thenApplyAsync(result -> view.attach(result.getAsJsonObject())));
     }
 
-    /** {@code center} [x, z] и {@code size} (по умолчанию 128) или {@code from}/{@code to} [x, z]. */
+    /** {@code center} [x, z] and {@code size} (default 128), or {@code from}/{@code to} [x, z]. */
     private static MapView map(MinecraftServer server, Args a) throws RpcException {
         ServerLevel level = Dims.level(server, a);
         int x0, z0, sx, sz;
@@ -329,8 +330,8 @@ public final class Api {
     }
 
     /**
-     * Постройка: план разбирается в потоке моста (реестры после запуска только читаются), чанки берутся и работа
-     * ставится — в потоке сервера.
+     * Building: parse the plan on the bridge thread (registries are read-only after startup); acquire chunks
+     * and submit the job on the server thread.
      */
     private static CompletableFuture<JsonElement> build(GmServer gm, Args a) throws RpcException {
         MinecraftServer server = gm.server();

@@ -27,23 +27,23 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Скрипты ведущего на Groovy. В начале каждого цикла, метода и замыкания скрипта — проверка срока
- * ({@link ConditionalInterrupt} с {@link #expired}): срок идёт, только пока идёт сам вызов {@link #run} в этом потоке.
- * Замыкание или объект скрипта, отданный игре и вызванный ею потом (сравнение тикетов, задача на потом, слушатель),
- * срока не видит: {@code @TimedInterrupt} считает срок от создания экземпляра и бросил бы в таком замыкании
- * {@link TimeoutException} посреди тика мира — сервер упал бы. Код Java, который скрипт зовёт (ожидание, синхронная
- * загрузка чанка), срок не прерывает.
+ * GM Groovy scripts. Check the deadline at each loop, method and closure entry ({@link ConditionalInterrupt}
+ * with {@link #expired}): the deadline applies only while {@link #run} executes on this thread. A script closure
+ * or object handed to the game and called later (ticket comparison, deferred task, listener) sees no deadline:
+ * {@code @TimedInterrupt} measures from instance creation and would throw {@link TimeoutException} in such a
+ * closure during a world tick, crashing the server. The deadline cannot interrupt Java code called by a script
+ * (waiting, synchronous chunk loading).
  *
- * <p>Каждый скрипт — свой {@link GroovyClassLoader} поверх загрузчика мода: видит классы игры и всех модов, а после
- * {@link Compiled#close} его классы выгружаются.
+ * <p>Each script has its own {@link GroovyClassLoader} over the mod's loader: it sees game and all mod classes,
+ * and its classes unload after {@link Compiled#close}.
  */
 public final class Scripts {
-    /** Вывод {@code println} — не больше, дальше отрезается. */
+    /** Maximum {@code println} output; truncate anything beyond it. */
     static final int MAX_OUTPUT = 64 * 1024;
     private static final AtomicLong NEXT = new AtomicLong(1);
-    /** Срок идущего в этом потоке вызова ({@link System#nanoTime}); вне вызова — нет. */
+    /** Deadline of the call running on this thread ({@link System#nanoTime}); absent outside a call. */
     private static final ThreadLocal<long[]> DEADLINE = ThreadLocal.withInitial(() -> new long[1]);
-    /** Частые классы — без {@code import} в самом скрипте. */
+    /** Common classes available without an {@code import} in the script. */
     private static final String[] IMPORTS = {
             "net.minecraft.core.BlockPos", "net.minecraft.core.Direction", "net.minecraft.core.registries.BuiltInRegistries",
             "net.minecraft.nbt.CompoundTag", "net.minecraft.network.chat.Component", "net.minecraft.resources.ResourceLocation",
@@ -56,9 +56,9 @@ public final class Scripts {
 
     private Scripts() {}
 
-    /** Скомпилированный скрипт: класс в своём загрузчике и срок одного запуска. */
+    /** Compiled script: a class in its own loader and a deadline for one run. */
     public record Compiled(Class<? extends Script> type, GroovyClassLoader loader, String file, long timeoutMs) implements AutoCloseable {
-        /** Выгрузить классы скрипта (после последнего запуска). */
+        /** Unload script classes (after the final run). */
         @Override
         public void close() {
             InvokerHelper.removeClass(type);
@@ -66,19 +66,19 @@ public final class Scripts {
             try {
                 loader.close();
             } catch (IOException e) {
-                // загрузчик без файлов: закрывать нечего
+                // The loader has no files: nothing to close.
             }
         }
     }
 
-    /** Ошибка разбора: текст компилятора без заголовка «startup failed». */
+    /** Parse error: compiler message without the "startup failed" header. */
     public static final class CompileError extends Exception {
         CompileError(String message) {
             super(message);
         }
     }
 
-    /** Итог запуска: значение или ошибка с номером строки скрипта, вывод {@code println}, время. */
+    /** Run result: value or error with script line number, {@code println} output and elapsed time. */
     public record Result(Object value, Throwable error, String message, int line, String output, long nanos) {
         public boolean ok() {
             return error == null;
@@ -89,7 +89,7 @@ public final class Scripts {
         }
     }
 
-    /** {@code name} — имя в стеке ошибок (буквы и цифры). */
+    /** {@code name} is the name in error stacks (letters and digits). */
     public static Compiled compile(String name, String code, long timeoutMs) throws CompileError {
         CompilerConfiguration config = new CompilerConfiguration();
         ImportCustomizer imports = new ImportCustomizer();
@@ -113,7 +113,7 @@ public final class Scripts {
         }
     }
 
-    /** Условие проверки в коде скрипта: {@code { Scripts.expired() }}. */
+    /** Check condition in script code: {@code { Scripts.expired() }}. */
     private static ClosureExpression expiredCondition() {
         ClosureExpression condition = new ClosureExpression(Parameter.EMPTY_ARRAY, new ExpressionStatement(
                 new StaticMethodCallExpression(ClassHelper.make(Scripts.class), "expired", ArgumentListExpression.EMPTY_ARGUMENTS)));
@@ -121,16 +121,16 @@ public final class Scripts {
         return condition;
     }
 
-    /** Вышел ли срок вызова, идущего в этом потоке. Вне вызова {@link #run} — нет. Зовёт код скриптов. */
+    /** Whether the call on this thread has expired. False outside {@link #run}. Called by script code. */
     public static boolean expired() {
         long deadline = DEADLINE.get()[0];
         return deadline != 0 && System.nanoTime() - deadline > 0;
     }
 
     /**
-     * Запуск в текущем потоке: переменные {@code vars} и {@code out} (вывод {@code println}). Ошибка скрипта — в
-     * итоге, не исключением; нехватка памяти и прочие ошибки машины — дальше. Вложенный запуск (правило, которое
-     * сработало от команды скрипта) идёт со своим сроком, после него снова действует срок внешнего.
+     * Run on the current thread: {@code vars} variables and {@code out} ({@code println} output). Script errors go
+     * in the result, not as exceptions; out-of-memory and other VM errors propagate. A nested run (a rule triggered
+     * by a script command) has its own deadline, then restores the outer deadline.
      */
     public static Result run(Compiled script, Map<String, Object> vars) {
         Output text = new Output();
@@ -140,7 +140,7 @@ public final class Scripts {
         long start = System.nanoTime();
         long[] deadline = DEADLINE.get();
         long outer = deadline[0];
-        // 0 — «срока нет»: настоящий срок, совпавший с нулём, сдвигается на 1 нс
+        // 0 means "no deadline": shift an actual deadline equal to zero by 1 ns.
         long own = start + script.timeoutMs() * 1_000_000L;
         deadline[0] = own == 0 ? 1 : own;
         try {
@@ -176,11 +176,11 @@ public final class Scripts {
         try {
             loader.close();
         } catch (IOException e) {
-            // загрузчик без файлов
+            // The loader has no files.
         }
     }
 
-    /** Вывод скрипта с пределом {@link #MAX_OUTPUT}. */
+    /** Script output bounded by {@link #MAX_OUTPUT}. */
     private static final class Output extends Writer {
         private final StringBuilder text = new StringBuilder();
         private boolean cut;

@@ -29,8 +29,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Взгляд на сервер без картинок: темп тика, игроки, сущности. Только то, что уже в памяти: сущности — из загруженных
- * секций ({@code getEntities} по рамке), чанки не грузятся. Поток сервера.
+ * A view of the server without images: tick rate, players and entities. Only data already in memory:
+ * entities from loaded sections ({@code getEntities} by bounding box); no chunk loading. Server thread.
  */
 public final class Observe {
     static final int MAX_ENTITIES = 200;
@@ -96,7 +96,7 @@ public final class Observe {
         return details(server, p);
     }
 
-    /** Игрок подробно: кратко, опыт, хотбар, инвентарь, эффекты, точка возрождения, блок под взглядом. */
+    /** Detailed player data: summary, experience, hotbar, inventory, effects, respawn point and block under the crosshair. */
     public static JsonObject details(MinecraftServer server, ServerPlayer p) {
         JsonObject out = brief(server, p);
         out.addProperty("xp_level", p.experienceLevel);
@@ -132,7 +132,7 @@ public final class Observe {
             r.add("pos", pos(respawn));
             out.add("respawn", r);
         }
-        // по готовым чанкам: только что перенесённый игрок (бот, /tp) ещё не держит чанки вокруг себя
+        // Use ready chunks: a newly teleported player (bot, /tp) does not yet retain the surrounding chunks.
         Vec3 eye = p.getEyePosition();
         Rays.Hit ray = Rays.clip(p.serverLevel(), eye, eye.add(p.getViewVector(1.0F).scale(20)), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, p);
         if (ray.hit()) {
@@ -147,8 +147,8 @@ public final class Observe {
     }
 
     /**
-     * Сущности в рамке: {@code from}/{@code to} ([x, y, z]) или {@code center} + {@code radius}; {@code type} — фильтр
-     * по типу; ближние к центру первыми, не больше {@code limit}; счёт по типам — по всем.
+     * Entities in a box: {@code from}/{@code to} ([x, y, z]) or {@code center} + {@code radius}; {@code type} filters
+     * by type; nearest to the center first, at most {@code limit}; type counts include all matches.
      */
     public static JsonElement entities(MinecraftServer server, Args args) throws RpcException {
         ServerLevel level = Dims.level(server, args);

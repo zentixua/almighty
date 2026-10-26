@@ -27,9 +27,10 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Зрение без картинки: откуда и куда смотрит глаз, что под прицелом (в досягаемости рук и дальше по лучу), какие
- * сущности рядом — с расстоянием, направлением от взгляда, в кадре ли и не закрыты ли блоками, — и что бот слышал.
- * Только загруженное: лучи по готовым чанкам ({@link Rays}), сущности — из загруженных секций. Поток сервера.
+ * Vision without an image: eye position and direction, crosshair target (within hand reach and farther along
+ * the ray), nearby entities with distance, direction from view, whether in frame or hidden by blocks, and
+ * what the bot heard. Loaded data only: rays through ready chunks ({@link Rays}), entities from loaded sections.
+ * Server thread.
  */
 public final class Eye {
     public static final int MAX_ENTITIES = 40;
@@ -37,8 +38,8 @@ public final class Eye {
     private Eye() {}
 
     /**
-     * Камера: точка глаза, поворот (yaw по часовой сверху, 0 — на юг; pitch вниз положительный), вертикальный угол
-     * обзора и соотношение сторон кадра; базис — вперёд, вправо, вверх.
+     * Camera: eye point, rotation (yaw clockwise from above, 0 south; pitch positive downward), vertical field
+     * of view and frame aspect ratio; basis is forward, right, up.
      */
     public record Camera(Vec3 eye, float yaw, float pitch, double fov, double aspect, Vec3 forward, Vec3 right, Vec3 up) {
         public static Camera of(Vec3 eye, float yaw, float pitch, double fov, double aspect) {
@@ -56,7 +57,7 @@ public final class Eye {
             return tanV() * aspect;
         }
 
-        /** Сколько градусов вправо (+) и вниз (+) от взгляда до точки. */
+        /** Degrees right (+) and down (+) from the view direction to a point. */
         double[] offset(Vec3 at) {
             Vec3 d = at.subtract(eye);
             double horizontal = Math.sqrt(d.x * d.x + d.z * d.z);
@@ -65,7 +66,7 @@ public final class Eye {
             return new double[] {Mth.wrapDegrees(yawTo - yaw), pitchTo - pitch};
         }
 
-        /** Точка в кадре (перед глазом и внутри угла обзора). */
+        /** Point is in frame (in front of the eye and within the field of view). */
         boolean inView(Vec3 at) {
             Vec3 d = at.subtract(eye);
             double z = d.dot(forward);
@@ -75,8 +76,8 @@ public final class Eye {
     }
 
     /**
-     * Что видит глаз: {@code viewer} — чей (null — свободная камера), {@code bot} — его слух (null — нет).
-     * {@code radius} — сущности в шаре, {@code distance} — дальний луч прицела.
+     * What the eye sees: {@code viewer} is its owner (null for a free camera), {@code bot} supplies its hearing
+     * (null for none). {@code radius} selects entities in a sphere; {@code distance} is the far crosshair ray.
      */
     public static JsonObject observe(ServerLevel level, Camera cam, Entity viewer, Bot bot, int radius, double distance, int soundTicks) {
         JsonObject out = new JsonObject();
@@ -111,7 +112,7 @@ public final class Eye {
         return sides[Math.floorMod(Math.round(Mth.wrapDegrees(yaw) / 45.0F), 8)];
     }
 
-    /** Первое на луче взгляда до {@code distance}: блок (жидкость тоже) или сущность. */
+    /** First object on the view ray up to {@code distance}: block (including fluid) or entity. */
     private static JsonObject far(ServerLevel level, Camera cam, Entity viewer, double distance) {
         Vec3 end = cam.eye().add(cam.forward().scale(distance));
         Rays.Hit ray = Rays.clip(level, cam.eye(), end, ClipContext.Block.OUTLINE, ClipContext.Fluid.ANY, viewer);
@@ -163,7 +164,7 @@ public final class Eye {
         return out;
     }
 
-    /** Виден ли кусок рамки сущности: середина, верх, низ — хоть один без заслона. */
+    /** Whether part of the entity box is visible: center, top, bottom; at least one unobstructed. */
     private static boolean visible(ServerLevel level, Vec3 eye, AABB b) {
         Vec3 c = b.getCenter();
         return Rays.clear(level, eye, c) || Rays.clear(level, eye, new Vec3(c.x, b.maxY - 0.1, c.z)) || Rays.clear(level, eye, new Vec3(c.x, b.minY + 0.1, c.z));
@@ -202,7 +203,7 @@ public final class Eye {
         return out;
     }
 
-    /** Цвет сущности на картинке — по роду. */
+    /** Entity color in the image, by kind. */
     public static int colour(Entity e) {
         if (e instanceof net.minecraft.world.entity.player.Player) return 0xE8473C;
         if (e instanceof Enemy) return 0xB02CC9;

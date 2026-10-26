@@ -54,22 +54,23 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Бот — игрок, чей клиент живёт в памяти сервера: соединение без сети ({@link BotSink} вместо сокета), вход через
- * {@code PlayerList.placeNewPlayer}, как у настоящего. Для всех остальных — обычный игрок (таб, чат, сущность,
- * инвентарь, смерть и возрождение, сохранение под своим UUID). Ведущий управляет им как клиент: клавиши и мышь
- * ({@link Controls}), программы шагов ({@link Program}), любой пакет клиента ({@link #send}). Что сервер шлёт клиенту,
- * бот читает: телепорт подтверждает, чат и заголовки — в «почту», звуки — в слух.
+ * A bot is a player whose client lives in server memory: a networkless connection ({@link BotSink} instead of a
+ * socket), login through {@code PlayerList.placeNewPlayer} like a real player. To everyone else, an ordinary
+ * player (tab, chat, entity, inventory, death and respawn, saving under its own UUID). The GM controls it as a
+ * client: keys and mouse ({@link Controls}), step programs ({@link Program}), any client packet ({@link #send}).
+ * The bot reads what the server sends to the client: acknowledges teleports, puts chat and titles in its inbox,
+ * and sounds in hearing.
  * <p>
- * Ванильное соединение тикает {@code ServerConnectionListener}; наше в его списке нет, поэтому тик игрока
- * ({@code doTick}) и разбор отключения делает бот сам, в конце тика сервера. Слушатель пакетов не тикает: проверки
- * поддержания связи, простоя и «полёта» — для сети, а возврат на позицию из пакета движения отменил бы физику бота.
- * Ключ всего — соединение, не сущность: при возрождении сервер ставит в него нового {@code ServerPlayer}.
+ * {@code ServerConnectionListener} ticks vanilla connections; ours is absent from its list, so the bot handles
+ * player ticking ({@code doTick}) and disconnection itself at server tick end. The packet listener does not tick:
+ * keepalive, idle and "flying" checks concern networking, and resetting to the movement packet position would
+ * undo bot physics. The connection is the key, not the entity: respawn puts a new {@code ServerPlayer} into it.
  */
 public final class Bot {
     private static final Logger LOG = LogUtils.getLogger();
     static final int INBOX = 200;
     static final int SOUNDS = 64;
-    /** Клиент подтверждает подписанные сообщения чата, когда их больше стольких (иначе сервер отключит на 4096). */
+    /** The client acknowledges signed chat messages above this count (otherwise the server disconnects at 4096). */
     static final int CHAT_ACK_AFTER = 64;
 
     final String name;
@@ -90,21 +91,21 @@ public final class Bot {
     private long inboxSeq;
     private final ArrayDeque<Heard> heard = new ArrayDeque<>();
     private int chatAcks, deadTicks;
-    /** Телепорт, который бот ещё не подтвердил: ждёт готового чанка места ({@link #acceptTeleport}). */
+    /** A teleport not yet acknowledged by the bot: waits for the destination chunk ({@link #acceptTeleport}). */
     private int teleportId;
     private boolean teleportPending;
     private Instant lastChat = Instant.EPOCH;
     private String leftReason;
-    /** Остановка, которую просили вне тика бота (выключилось правило, что его вело): в начале следующего тика. */
+    /** A stop requested outside the bot tick (its controlling rule turned off): apply at the next tick start. */
     private String stopReason;
 
     /**
-     * Боты, которых ведёт идущий скрипт правила ({@link #act}, {@link #send}): правило выключилось — они
-     * останавливаются ({@link #stop}), а не держат последний ввод. Ставит и снимает {@code Rules} вокруг запуска.
+     * Bots controlled by the running rule script ({@link #act}, {@link #send}): when the rule turns off, they stop
+     * ({@link #stop}) instead of holding their last input. {@code Rules} sets and clears this around execution.
      */
     private static final ThreadLocal<Set<Bot>> DRIVEN = new ThreadLocal<>();
 
-    /** Звук, который пришёл боту пакетом. */
+    /** A sound delivered to the bot in a packet. */
     record Heard(long tick, String sound, String source, Vec3 pos, String entity, float volume) {}
 
     Bot(Bots bots, GameProfile profile, boolean marked, boolean autoRespawn) {
@@ -114,9 +115,9 @@ public final class Bot {
         this.marked = marked;
         this.autoRespawn = autoRespawn;
         this.connection = new Connection(PacketFlow.SERVERBOUND);
-        // канал регистрируется сразу: Connection получает channelActive, адрес «embedded»
+        // Register the channel immediately: Connection receives channelActive with the "embedded" address.
         this.channel = new EmbeddedChannel(sink, connection);
-        // как в GameTest NeoForge: оба конца — NeoForge со всеми каналами модов, иначе пакеты модов бот не примет
+        // Like NeoForge GameTest: both ends are NeoForge with all mod channels; otherwise the bot cannot receive mod packets.
         NetworkRegistry.configureMockConnection(connection);
     }
 
@@ -128,7 +129,7 @@ public final class Bot {
         return name;
     }
 
-    /** Сущность бота сейчас: после возрождения — новая. */
+    /** The bot's current entity; a new one after respawn. */
     public ServerPlayer player() {
         return ((ServerGamePacketListenerImpl) connection.getPacketListener()).player;
     }
@@ -138,8 +139,9 @@ public final class Bot {
     }
 
     /**
-     * Пакет от «клиента» бота — серверу, тем же путём, что пакет из сети ({@code Connection.channelRead0} →
-     * обработчик), в этом же потоке. Пакет только клиента к серверу; ошибка обработчика отключает бота, как клиента.
+     * Packet from the bot's "client" to the server, through the same path as a network packet
+     * ({@code Connection.channelRead0} to handler), on this thread. Client-to-server packets only;
+     * a handler error disconnects the bot like a client.
      */
     public void send(Packet<?> packet) {
         if (packet.type().flow() != PacketFlow.SERVERBOUND) throw new IllegalArgumentException("a bot only takes client-to-server packets (Serverbound…), not " + packet.type());
@@ -148,12 +150,12 @@ public final class Bot {
         channel.writeInbound(packet);
     }
 
-    /** Программа шагов из значения скрипта (список карт, как {@code actions} у {@code bot.act}); номер программы. */
+    /** A step program from a script value (list of maps, like {@code actions} in {@code bot.act}); returns the program id. */
     public long act(Object steps) throws RpcException {
         return act(steps, false);
     }
 
-    /** То же; {@code replace} — снять идущую и ждущие программы (как {@code replace} у {@code bot.act}). */
+    /** The same; {@code replace} removes running and queued programs (like {@code replace} in {@code bot.act}). */
     public long act(Object steps, boolean replace) throws RpcException {
         if (!(Json.from(steps) instanceof com.google.gson.JsonArray array)) throw RpcException.badRequest("act: expected a list of steps");
         List<Steps.Step> parsed = Steps.parse(array);
@@ -166,7 +168,7 @@ public final class Bot {
         if (set != null) set.add(this);
     }
 
-    /** Кто ведёт ботов в этом потоке (правило на время запуска): прежнее значение — чтобы вернуть его после. */
+    /** Who controls bots on this thread (a rule during execution); returns the previous value for restoration. */
     public static Set<Bot> driving(Set<Bot> set) {
         Set<Bot> previous = DRIVEN.get();
         if (set == null) DRIVEN.remove();
@@ -175,16 +177,16 @@ public final class Bot {
     }
 
     /**
-     * Остановить: программы снять, клавиши отпустить — в начале следующего тика бота (просят из правила посреди тика,
-     * может быть, посреди шага этого же бота), в ленту — {@code bot_stopped}.
+     * Stop: remove programs and release keys at the next bot tick start (requested from a rule mid-tick,
+     * possibly in this same bot's step); emit {@code bot_stopped} to the feed.
      */
     public void stop(String reason) {
         if (stopReason == null) stopReason = reason;
     }
 
     /**
-     * Поставить программу (разобранные шаги). Имя — не {@code act}: Groovy не смотрит на доступ и из
-     * {@code act(список, true)} скрипта выбрал бы этот метод со списком карт вместо шагов.
+     * Submit a program (parsed steps). Not named {@code act}: Groovy ignores access restrictions and would select
+     * this method from a script's {@code act(list, true)}, passing a list of maps instead of steps.
      */
     Program start(List<Steps.Step> steps, boolean replace) {
         if (replace) cancelAll("replaced by a new program");
@@ -206,7 +208,7 @@ public final class Bot {
         if (online()) controls.releaseAll(player());
     }
 
-    /** Тик бота в конце тика сервера; false — бот ушёл (выгнали, ошибка, остановка). */
+    /** Bot tick at server tick end; false means the bot left (kicked, error, shutdown). */
     boolean tick() {
         if (!channel.isOpen()) return false;
         try {
@@ -236,7 +238,7 @@ public final class Bot {
             if (channel.isOpen()) controls.end(player());
             drain();
         } catch (RuntimeException e) {
-            // как сервер с клиентом, чей пакет упал в обработчике: игрок отключается, сервер живёт
+            // Like a server handling a client packet failure: disconnect the player and keep the server alive.
             LOG.warn("Bot {}: error in tick, disconnecting", name, e);
             disconnect(Component.literal("Internal server error"));
         }
@@ -244,9 +246,9 @@ public final class Bot {
     }
 
     /**
-     * Счётчики спама обработчика (чат и команды, выброс в творческом): ваниль снимает их по единице в тике
-     * обработчика, которого у бота нет, — иначе 11-е сообщение за всё время отключало бы бота за спам. Открытого API нет —
-     * рефлексия; не вышло — предупреждение в лог, бот живёт как есть.
+     * Handler spam counters (chat, commands, creative dropping): vanilla decrements them once per handler tick,
+     * which bots lack; otherwise their 11th message over their lifetime would disconnect them for spam.
+     * No public API, so use reflection; on failure, log a warning and leave the bot running as is.
      */
     private static final class Spam {
         private static Field chat, drop;
@@ -277,7 +279,7 @@ public final class Bot {
             }
             Program program = current;
             if (!program.tick(this)) return;
-            // шаг мог вызвать правило, а оно — act(…, true) этого же бота: снятая программа уже кончилась
+            // A step may trigger a rule that calls act(..., true) on this same bot: the removed program has already ended.
             if (current != program) continue;
             finished(program);
             current = null;
@@ -294,7 +296,7 @@ public final class Bot {
         }
     }
 
-    /** Отключить бота так, как сервер отключает игрока: выход в чат и ленту, сохранение, снятие из списка. */
+    /** Disconnect the bot as the server disconnects a player: chat and feed leave events, saving, removal from the list. */
     void disconnect(Component reason) {
         if (channel.isOpen()) {
             leftReason = reason.getString();
@@ -303,7 +305,7 @@ public final class Bot {
         closed();
     }
 
-    /** Канал закрыт: если сервер ещё не разобрал отключение (выгнал сам — разобрал), разобрать. */
+    /** Channel closed: handle disconnection if the server has not done so already (it does when kicking). */
     void closed() {
         if (leftReason == null && connection.getDisconnectionDetails() != null) leftReason = connection.getDisconnectionDetails().reason().getString();
         cancelAll("the bot left the server");
@@ -320,12 +322,12 @@ public final class Bot {
         return leftReason;
     }
 
-    /** Сразу после входа или телепорта: подтвердить телепорт, не дожидаясь тика. */
+    /** Immediately after login or teleport: acknowledge the teleport without waiting for a tick. */
     void settle() {
         drain();
     }
 
-    /** Всё, что сервер успел написать «клиенту». */
+    /** Everything the server has written to the "client" so far. */
     private void drain() {
         for (Packet<?> p; (p = sink.poll()) != null; ) receive(p);
     }
@@ -334,7 +336,7 @@ public final class Bot {
         switch (packet) {
             case BundlePacket<?> bundle -> bundle.subPackets().forEach(this::receive);
             case ClientboundPlayerPositionPacket pos -> {
-                // сервер ждёт только последний номер
+                // The server waits only for the last id.
                 teleportId = pos.getId();
                 teleportPending = true;
                 acceptTeleport();
@@ -370,16 +372,17 @@ public final class Bot {
                 if (source != null) hear(sound.getSound().getRegisteredName(), sound.getSource().getName(), source.position(),
                         EntityType.getKey(source.getType()).toString(), sound.getVolume());
             }
-            // перенастройку соединения бот не проходит: молча он бы завис, а сервер ждал бы ответа
+            // The bot cannot reconfigure its connection: silently ignoring it would hang the bot while the server awaited a reply.
             case ClientboundStartConfigurationPacket ignored -> connection.disconnect(Component.literal("bots do not support connection reconfiguration"));
             default -> {}
         }
     }
 
     /**
-     * Подтвердить телепорт, когда чанк места готов: подтверждение переносит игрока ({@code absMoveTo}), а перенос в
-     * NeoForge грузит чанк назначения сразу. Так бывает со входом бота на сохранённое место вдали (телепорт входа
-     * подтверждается после добавления в мир) — клиент на загрузке мира тоже отвечает позже. Чанк грузит тикет игрока.
+     * Acknowledge a teleport once the destination chunk is ready: acknowledgment moves the player
+     * ({@code absMoveTo}), and NeoForge teleports load the destination chunk immediately. This occurs when a bot
+     * logs in at a distant saved position (login teleport is acknowledged after adding it to the world);
+     * a client loading the world also replies later. The player ticket loads the chunk.
      */
     private void acceptTeleport() {
         if (!teleportPending) return;
@@ -393,7 +396,7 @@ public final class Bot {
         String kind = type.chatType().unwrapKey().map(k -> k.location().getPath()).orElse("chat");
         JsonObject m = mail(kind.startsWith("msg_command") || kind.startsWith("team_msg") ? "whisper" : "chat", text, type.name().getString());
         m.addProperty("chat_type", kind);
-        // шёпот боту — ведущему: лента иначе личных сообщений не показывает
+        // A whisper to the bot goes to the GM: otherwise the feed hides private messages.
         if (kind.equals("msg_command_incoming") || kind.equals("team_msg_command_incoming")) {
             JsonObject d = new JsonObject();
             d.addProperty("bot", name);
@@ -420,7 +423,7 @@ public final class Bot {
         while (heard.size() > SOUNDS) heard.removeFirst();
     }
 
-    /** Звуки за последние {@code ticks} тиков, новые первыми. */
+    /** Sounds from the last {@code ticks} ticks, newest first. */
     List<Heard> heard(int ticks) {
         long since = bots.tickNow() - ticks;
         List<Heard> out = new ArrayList<>();
@@ -430,7 +433,7 @@ public final class Bot {
         return out;
     }
 
-    /** Время сообщения чата: не раньше прошлого (часы могли отойти назад). */
+    /** Chat message time: never earlier than the previous one (the clock may have moved backward). */
     Instant chatTime() {
         Instant now = Instant.now();
         if (now.isBefore(lastChat)) now = lastChat;
@@ -444,7 +447,7 @@ public final class Bot {
         return n;
     }
 
-    /** Коротко: для списка ботов. */
+    /** Summary for the bot list. */
     JsonObject brief() {
         JsonObject o = new JsonObject();
         o.addProperty("name", name);
@@ -464,7 +467,7 @@ public final class Bot {
         return o;
     }
 
-    /** Подробно: тело (как {@code player}), открытое меню, клавиши, программы, почта после {@code after}. */
+    /** Details: body (like {@code player}), open menu, keys, programs and inbox after {@code after}. */
     public JsonObject describe(long after) {
         JsonObject o = Observe.details(player().server, player());
         o.addProperty("bot", true);
@@ -490,7 +493,7 @@ public final class Bot {
         return o;
     }
 
-    /** Открытое меню: тип, номер, непустые ячейки по номерам для шага {@code menu}, предмет «в руке» мыши. */
+    /** Open menu: type, id, nonempty slots by index for the {@code menu} step, and item held by the mouse. */
     static JsonObject menu(AbstractContainerMenu menu) {
         JsonObject o = new JsonObject();
         o.addProperty("container_id", menu.containerId);

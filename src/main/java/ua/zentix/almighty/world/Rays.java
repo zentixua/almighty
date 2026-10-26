@@ -16,14 +16,14 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
- * Лучи по блокам, которые не грузят чанки: то же, что {@code BlockGetter.clip} (форма блока, форма взаимодействия,
- * жидкость — ближнее), но чанк берётся только готовым ({@code getChunkNow}). Незагруженный чанк на пути — стена:
- * луч кончается на входе в него, {@link Hit#unloaded()}. Поток сервера.
+ * Block rays without chunk loading: like {@code BlockGetter.clip} (block shape, interaction shape, fluid;
+ * nearest hit), but only ready chunks are read ({@code getChunkNow}). An unloaded chunk is a wall:
+ * the ray ends at its entrance, {@link Hit#unloaded()}. Server thread.
  */
 public final class Rays {
     private Rays() {}
 
-    /** Итог луча: попадание или промах в конце; {@code unloaded} — упёрся в незагруженный чанк. */
+    /** Ray result: a hit or a miss at the end; {@code unloaded} means an unloaded chunk blocked the ray. */
     public record Hit(BlockHitResult block, boolean unloaded) {
         public boolean hit() {
             return !unloaded && block.getType() != BlockHitResult.Type.MISS;
@@ -63,13 +63,13 @@ public final class Rays {
         return new Hit(result, unloaded[0]);
     }
 
-    /** Между точками нет того, что заслоняет вид (видимая форма блока; стекло и прочее без неё — насквозь). */
+    /** Nothing between the points blocks vision (visual block shape; glass and other blocks without one are transparent). */
     public static boolean clear(ServerLevel level, Vec3 from, Vec3 to) {
         Hit hit = clip(level, from, to, ClipContext.Block.VISUAL, ClipContext.Fluid.NONE, null);
         return !hit.unloaded() && hit.block().getType() == BlockHitResult.Type.MISS;
     }
 
-    /** Чанки подряд идущих точек: тот же чанк — без поиска; только готовые. */
+    /** Chunks for consecutive points: reuse the same chunk without lookup; ready chunks only. */
     public static final class Chunks {
         private final ServerLevel level;
         private int cx = Integer.MIN_VALUE, cz = Integer.MIN_VALUE;

@@ -31,7 +31,7 @@ class FeedTest {
         assertEquals(feed.boot(), page.get("boot").getAsString());
         JsonObject limited = feed.read(0, 2, 0);
         assertEquals(2, limited.getAsJsonArray("events").size());
-        assertEquals(2, limited.get("next").getAsLong(), "следующая страница — после второго");
+        assertEquals(2, limited.get("next").getAsLong(), "next page starts after the second event");
     }
 
     @Test
@@ -74,6 +74,6 @@ class FeedTest {
         feed.add("t", data(0));
         JsonObject page = feed.read(1, 10, 50);
         assertEquals(0, page.getAsJsonArray("events").size());
-        assertEquals(1, page.get("next").getAsLong(), "следующий запрос — с того же номера");
+        assertEquals(1, page.get("next").getAsLong(), "next request uses the same sequence number");
     }
 }

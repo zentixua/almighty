@@ -15,8 +15,8 @@ import ua.zentix.almighty.feed.FeedListeners;
 import ua.zentix.almighty.feed.GmCommand;
 
 /**
- * Мод ведущего: мост, через который ИИ-агент видит мир и действует на сервере. Только сервер: своих блоков, предметов и
- * пакетов нет, клиентам ставить не нужно.
+ * Game master mod: a bridge through which an AI agent sees the world and acts on the server.
+ * Server only: no custom blocks, items or packets; clients need not install it.
  */
 @Mod(Almighty.ID)
 public final class Almighty {
@@ -49,7 +49,7 @@ public final class Almighty {
         if (gm != null) gm.tickEnd();
     }
 
-    /** Обычный приоритет: тикеты ведущего сняты раньше, чем {@code StopDrain} Incoming ({@code LOWEST}) ждёт генерацию. */
+    /** Normal priority: GM tickets are removed before Incoming's {@code StopDrain} ({@code LOWEST}) waits for generation. */
     private static void onStopping(ServerStoppingEvent e) {
         GmServer gm = GmServer.of(e.getServer());
         if (gm != null) gm.stop();

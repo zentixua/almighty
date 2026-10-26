@@ -1,29 +1,29 @@
-# Страницы Modrinth и CurseForge — только ручным запуском (Actions → publish → Run workflow), по шагам:
-#   draft   — Modrinth: черновик страницы (нет проекта — создаётся) или его обновление из docs/store, иконка и
-#             галерея, какие уже есть в репозитории, jar выпуска; всё видно только команде проекта. Повторять можно.
-#   submit  — Modrinth: черновик — на проверку; CurseForge: jar выпуска (первый файл отправляет проект на проверку).
-#   release — новый выпуск после проверки: страница Modrinth из docs/store, jar — на Modrinth и CurseForge.
-# Выпуск — v<version> на GitHub (workflow build с release=true), пусто — последний. Заметки — docs/releases/<version>.md
-# с ветки запуска, нет там — тело выпуска. Без секрета MODRINTH_TOKEN Modrinth пропускается, без CURSEFORGE_TOKEN
-# или переменной CURSEFORGE_ID (проект CurseForge создаётся руками на сайте) — CurseForge. Поля и картинки —
-# docs/store/modrinth.json, листинг — docs/store/listing.md («Publishing»).
+# Modrinth and CurseForge pages: manual runs only (Actions → publish → Run workflow), in steps:
+#   draft   — Modrinth: create a draft page if absent, or update it from docs/store, with the repository's existing
+#             icon and gallery, and the release jar; visible only to the project team. Safe to repeat.
+#   submit  — Modrinth: submit the draft for review; CurseForge: release jar (the first file submits the project for review).
+#   release — a new release after review: Modrinth page from docs/store, jar to Modrinth and CurseForge.
+# Release: v<version> on GitHub (build workflow with release=true); empty means latest. Notes: docs/releases/<version>.md
+# from the run's branch, or the release body if absent. Skip Modrinth without MODRINTH_TOKEN; skip CurseForge without
+# CURSEFORGE_TOKEN or the CURSEFORGE_ID variable (create the CurseForge project manually on the site).
+# Fields and images: docs/store/modrinth.json; listing: docs/store/listing.md ("Publishing").
 name: publish
-run-name: publish ${{ inputs.step }} ${{ inputs.version || '(последний выпуск)' }}
+run-name: publish ${{ inputs.step }} ${{ inputs.version || '(latest release)' }}
 
 on:
   workflow_dispatch:
     inputs:
       step:
-        description: "draft — черновик Modrinth; submit — на проверку (и CurseForge); release — новый выпуск"
+        description: "draft — Modrinth draft; submit — send for review (and CurseForge); release — new release"
         type: choice
         options: [draft, submit, release]
         default: draft
       version:
-        description: Выпуск на GitHub без «v» (0.4.0); пусто — последний
+        description: GitHub release without "v" (0.4.0); empty means latest
         type: string
         required: false
 
-# два запуска не создают проект дважды
+# Concurrent runs must not create the project twice.
 concurrency:
   group: publish
   cancel-in-progress: false
@@ -39,7 +39,7 @@ jobs:
     env:
       HAS_MODRINTH: ${{ secrets.MODRINTH_TOKEN != '' }}
       HAS_CURSEFORGE: ${{ secrets.CURSEFORGE_TOKEN != '' && vars.CURSEFORGE_ID != '' }}
-      # необязательные (в mods.toml их нет)
+      # Optional dependencies (absent from mods.toml).
       DEPENDENCIES: |
         immersive-aircraft(optional){modrinth:immersive-aircraft}{curseforge:immersive-aircraft}
         sable(optional){modrinth:sable}{curseforge:sable}
@@ -48,7 +48,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Выпуск
+      - name: Release
         id: rel
         env:
           GH_TOKEN: ${{ github.token }}
@@ -58,7 +58,7 @@ jobs:
         run: |
           v=${VERSION#v}
           [ -n "$v" ] || v=$(gh release view --json tagName -q .tagName | sed 's/^v//')
-          case $v in ''|*[!0-9A-Za-z.+-]*) echo "::error::Версия «$v» — не номер выпуска"; exit 1 ;; esac
+          case $v in ''|*[!0-9A-Za-z.+-]*) echo "::error::Version $v is not a release number"; exit 1 ;; esac
           mkdir -p dist
           gh release download "v$v" --pattern "almighty-$v.jar" --dir dist
           if [ -f "docs/releases/$v.md" ]; then
@@ -66,9 +66,9 @@ jobs:
             notes="docs/releases/$v.md ($GITHUB_REF_NAME)"
           else
             gh release view "v$v" --json body -q .body > dist/changelog.md
-            notes="тело выпуска v$v"
+            notes="release body v$v"
           fi
-          # окружение версии для Modrinth и CurseForge — из client_side/server_side страницы
+          # Version environment for Modrinth and CurseForge from the page's client_side/server_side.
           environment=$(jq -r '[(.client_side | {required: "client", optional: "client?"}[.] // empty),
             (.server_side | {required: "server", optional: "server?"}[.] // empty)] | join(" | ")' docs/store/modrinth.json)
           {
@@ -77,16 +77,16 @@ jobs:
             echo "environment=$environment"
           } >> "$GITHUB_OUTPUT"
           {
-            echo "Almighty $v, шаг $STEP; заметки — $notes"
-            [ "$HAS_MODRINTH" = true ] || echo "- Modrinth пропущен: нет секрета MODRINTH_TOKEN"
+            echo "Almighty $v, step $STEP; notes — $notes"
+            [ "$HAS_MODRINTH" = true ] || echo "- Modrinth skipped: missing MODRINTH_TOKEN secret"
             [ "$STEP" = draft ] || [ "$HAS_CURSEFORGE" = true ] ||
-              echo "- CurseForge пропущен: нет секрета CURSEFORGE_TOKEN или переменной CURSEFORGE_ID"
+              echo "- CurseForge skipped: missing CURSEFORGE_TOKEN secret or CURSEFORGE_ID variable"
           } >> "$GITHUB_STEP_SUMMARY"
-          [ "$HAS_MODRINTH" = true ] || echo "::notice::Modrinth пропущен: нет секрета MODRINTH_TOKEN"
+          [ "$HAS_MODRINTH" = true ] || echo "::notice::Modrinth skipped: missing MODRINTH_TOKEN secret"
           [ "$STEP" = draft ] || [ "$HAS_CURSEFORGE" = true ] ||
-            echo "::notice::CurseForge пропущен: нет секрета CURSEFORGE_TOKEN или переменной CURSEFORGE_ID"
+            echo "::notice::CurseForge skipped: missing CURSEFORGE_TOKEN secret or CURSEFORGE_ID variable"
 
-      - name: "Modrinth: страница"
+      - name: "Modrinth: page"
         id: page
         if: env.HAS_MODRINTH == 'true' && inputs.step != 'submit'
         env:
@@ -95,8 +95,8 @@ jobs:
           JAR: ${{ steps.rel.outputs.jar }}
         run: bash .github/scripts/modrinth.sh page "$STEP" "$JAR"
 
-      # Kira-NT/mc-publish v3.3.1, закреплён коммитом: ему отдаются токены; площадка без токена пропускается
-      - name: "Modrinth: версия"
+      # Kira-NT/mc-publish v3.3.1, pinned by commit: it receives tokens; skip a platform without its token.
+      - name: "Modrinth: version"
         if: steps.page.outputs.upload == 'true'
         uses: Kira-NT/mc-publish@52307b03863581dec6b652b83e597aec02ebb075 # v3.3.1
         with:
@@ -113,13 +113,13 @@ jobs:
           environment: ${{ steps.rel.outputs.environment }}
           dependencies: ${{ env.DEPENDENCIES }}
 
-      - name: "Modrinth: на проверку"
+      - name: "Modrinth: submit for review"
         if: env.HAS_MODRINTH == 'true' && inputs.step == 'submit'
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
         run: bash .github/scripts/modrinth.sh submit
 
-      # после Modrinth: его сбой останавливает запуск до CurseForge, и повтор не выкладывает файл туда дважды
+      # After Modrinth: its failure stops the run before CurseForge, so a retry does not upload the file there twice.
       - name: CurseForge
         if: env.HAS_CURSEFORGE == 'true' && inputs.step != 'draft'
         uses: Kira-NT/mc-publish@52307b03863581dec6b652b83e597aec02ebb075 # v3.3.1

@@ -3,8 +3,8 @@ package ua.zentix.almighty;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
- * Настройки моста ведущего: {@code config/almighty-common.toml} в каталоге сервера (у каждого сервера Crafty свой).
- * Токен моста — отдельным файлом рядом ({@link ua.zentix.almighty.bridge.Token}).
+ * Game master bridge settings: {@code config/almighty-common.toml} in the server directory (each Crafty server has its own).
+ * The bridge token is a separate file alongside it ({@link ua.zentix.almighty.bridge.Token}).
  */
 public final class GmConfig {
     public static final ModConfigSpec SPEC;

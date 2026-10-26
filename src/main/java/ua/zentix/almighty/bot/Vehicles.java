@@ -25,18 +25,18 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Транспорт под ботом — то, что делает с ним клиент водителя. Общий путь — ввод игрока: транспорт с меткой
- * {@link #DRIVEN_BY_RIDER} (ванильный — лошади, лодки, свинья, страйдер, верблюд; моды и датапаки добавляют свой) сервер
- * двигает сам ({@link BotPlayer}) по пакету ввода, а то, что ванильный клиент делает сверх него, бот повторяет по коду
- * клиента — руль лодки ({@code Boat.controlBoat}) и прыжок верхом ({@code LocalPlayer.aiStep}). Транспорт мода, который
- * клиент ведёт своим кодом, — привод из совместимости с модом ({@link VehicleDriver}, {@code Compat}); его клавиши
- * сверх ванильных — шаг {@code press} по имени клавиши в настройках управления. Поток сервера.
+ * A bot's vehicle: what the driver's client does with it. The common path is player input: the server moves
+ * vehicles tagged {@link #DRIVEN_BY_RIDER} (vanilla horses, boats, pigs, striders, camels; mods and datapacks can
+ * add theirs) itself ({@link BotPlayer}) from the input packet. The bot reproduces extra vanilla client actions
+ * from client code: boat controls ({@code Boat.controlBoat}) and riding jumps ({@code LocalPlayer.aiStep}).
+ * A mod vehicle driven by its own client code uses a mod compatibility driver ({@link VehicleDriver},
+ * {@code Compat}); extra mod keys use {@code press} with the key's control-settings name. Server thread.
  */
 final class Vehicles {
     /**
-     * Транспорт, который ведёт ввод водителя ({@code xxa}/{@code zza}, прыжок, присед), а не клавиши клиента: его бот
-     * ведёт «местным», движение считает сервер. Код мода за проверкой «водитель местный» может читать классы клиента —
-     * транспорт мода в метку только после проверки, что он ведёт себя как ванильный.
+     * Vehicles driven by rider input ({@code xxa}/{@code zza}, jump, sneak), rather than client keys: the bot drives
+     * as "local", and the server computes movement. Mod code behind the local-driver check may read client classes:
+     * add a mod vehicle to the tag only after checking that it behaves like vanilla.
      */
     static final TagKey<EntityType<?>> DRIVEN_BY_RIDER = TagKey.create(Registries.ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath(Almighty.ID, "driven_by_rider"));
     private static final Method BOAT_STATUS = ObfuscationReflectionHelper.findMethod(Boat.class, "getStatus");
@@ -45,9 +45,9 @@ final class Vehicles {
     private static final Field LAND_FRICTION = ObfuscationReflectionHelper.findField(Boat.class, "landFriction");
 
     private final Bot bot;
-    /** Приводы транспорта модов, которые стоят (совместимость), — свои у каждого бота. */
+    /** Drivers for installed vehicle mods (compatibility), separate for each bot. */
     private final List<VehicleDriver> drivers = Compat.vehicleDrivers();
-    /** Прыжок верхом, как у клиента: тики удержания, сила и было ли нажато в прошлом тике. */
+    /** Riding jump, like the client: hold ticks, power and whether pressed last tick. */
     private int jumpTicks;
     private float jumpScale;
     private boolean jumpWas;
@@ -56,26 +56,26 @@ final class Vehicles {
         this.bot = bot;
     }
 
-    /** Ведёт ли игрок транспорт, который ведёт ввод водителя: его движение тогда считает сервер. */
+    /** Whether the player drives a vehicle controlled by rider input; the server then computes its movement. */
     static boolean local(ServerPlayer p) {
         Entity v = p.getVehicle();
         return v != null && v.getControllingPassenger() == p && v.getType().is(DRIVEN_BY_RIDER);
     }
 
-    /** Привод транспорта мода под ботом; null — нет. */
+    /** Driver for the bot's mod vehicle; null if none. */
     private VehicleDriver driver(Entity v) {
         for (VehicleDriver d : drivers) if (d.drives(v)) return d;
         return null;
     }
 
-    /** Тик бота, после пакета ввода: руль, прыжок верхом, привод транспорта мода. */
+    /** Bot tick after the input packet: steering, riding jump, mod vehicle driver. */
     void tick(ServerPlayer p, Set<Controls.Key> held) {
         boolean jump = held.contains(Controls.Key.JUMP);
         Entity v = p.getVehicle();
         if (v != null && v.getControllingPassenger() == p) {
             VehicleDriver driver = driver(v);
             if (driver != null) {
-                // клиент не двигает транспорт в чанках, которых у него нет; бот — пока они не готовы на сервере
+                // A client does not move a vehicle in chunks it lacks; a bot waits until they are ready on the server.
                 if (Controls.ready(v)) {
                     Vec3 from = v.position();
                     driver.tick(p, v, axis(held, Controls.Key.LEFT, Controls.Key.RIGHT), axis(held, Controls.Key.JUMP, Controls.Key.SNEAK),
@@ -100,15 +100,15 @@ final class Vehicles {
     }
 
     /**
-     * Ход транспорта от клиента водителя сервер принимает так ({@code handleMoveVehicle}): водитель садится на своё
-     * место в сдвинутом транспорте ({@code positionRider}; взгляд и прошлое место — свои:
-     * {@code resyncPlayerWithVehicle} NeoForge), движение и статистика езды — по ходу транспорта; чанки за ним — в конце
-     * тика бота ({@link Controls}). Иначе место седоку давал бы только тик транспорта в мире, а мир не тикает транспорт
-     * вне дальности симуляции: шаг пилота уводил бы самолёт туда, бот оставался бы, с ним — его чанки, и самолёт
-     * переставал бы тикать.
+     * The server accepts driver-client vehicle movement as follows ({@code handleMoveVehicle}): seat the driver in
+     * the moved vehicle ({@code positionRider}; retain its own view and previous position:
+     * NeoForge's {@code resyncPlayerWithVehicle}), with movement and riding statistics from vehicle displacement;
+     * update chunks at bot tick end ({@link Controls}). Otherwise only the world's vehicle tick would seat the rider,
+     * and the world does not tick vehicles outside simulation distance: the pilot step would take the aircraft
+     * there, leaving the bot and its chunks behind, and the aircraft would stop ticking.
      */
     private static void moved(ServerPlayer p, Entity v, Vec3 from) {
-        // удар о препятствие мог разбить транспорт и высадить бота
+        // A collision may have destroyed the vehicle and dismounted the bot.
         if (p.getVehicle() != v) return;
         Vec3 old = p.position();
         float yRot = p.getYRot(), xRot = p.getXRot(), head = p.getYHeadRot();
@@ -125,8 +125,8 @@ final class Vehicles {
     }
 
     /**
-     * Прыжок верхом — как {@code LocalPlayer.aiStep}: удержание копит силу, отпускание прыгает. Прыжок считает
-     * транспорт ({@code onPlayerJump}, у живого игрока — его клиент), сервер получает тот же пакет, что от клиента.
+     * Riding jump as in {@code LocalPlayer.aiStep}: holding charges power; releasing jumps. The vehicle computes
+     * the jump ({@code onPlayerJump}, on a real player's client); the server receives the same packet as from a client.
      */
     private void ridingJump(ServerPlayer p, Entity v, boolean jump) {
         if (!(v instanceof PlayerRideableJumping jumping) || !jumping.canJump() || jumping.getJumpCooldown() != 0) {
@@ -149,10 +149,10 @@ final class Vehicles {
     }
 
     /**
-     * Руль лодки — {@code Boat.controlBoat}, который игра зовёт только на клиенте: в тике лодки между торможением
-     * ({@code floatBoat}) и движением. Бот правит после тика лодки: следующий тик сперва тормозит, потом двигает,
-     * поэтому толчок и доворот делятся на торможение следующего тика ({@link #nextFriction}) — после него скорость,
-     * доворот и курс ровно те, что у клиента.
+     * Boat controls from {@code Boat.controlBoat}, called by the game only on the client: during the boat tick,
+     * between drag ({@code floatBoat}) and movement. The bot controls after the boat tick; the next tick applies
+     * drag before movement, so divide thrust and turn by next tick's drag ({@link #nextFriction}). After that,
+     * speed, turn and heading exactly match the client.
      */
     static void steer(Boat boat, boolean left, boolean right, boolean up, boolean down) {
         boat.setInput(left, right, up, down);
@@ -176,9 +176,9 @@ final class Vehicles {
     }
 
     /**
-     * Торможение, которое посчитает {@code floatBoat} в следующем тике лодки: состояние лодки — {@code getStatus} (тик
-     * начнёт с него же, на том же месте), множитель — как в {@code floatBoat}; приводнение скорость по горизонтали не
-     * гасит.
+     * Drag {@code floatBoat} will compute on the next boat tick: boat status from {@code getStatus} (the tick
+     * starts with the same status at the same position), multiplier as in {@code floatBoat}; entering water
+     * does not reduce horizontal velocity.
      */
     private static float nextFriction(Boat boat) throws IllegalAccessException, InvocationTargetException {
         Boat.Status old = (Boat.Status) STATUS.get(boat);
@@ -191,7 +191,7 @@ final class Vehicles {
         };
     }
 
-    /** Клавиша транспорта мода по имени в настройках управления (шаг {@code press}). Итог — что сделано. */
+    /** Mod vehicle key by its control-settings name ({@code press} step). Returns what was done. */
     String press(ServerPlayer p, String key) {
         Entity v = p.getVehicle();
         if (v == null || v.getControllingPassenger() != p) throw new Steps.Failed("the bot is not driving a vehicle: there are no vehicle keys");
@@ -203,7 +203,7 @@ final class Vehicles {
                 + (keys.isEmpty() ? ": it has no mod keys" : "; keys: " + String.join(", ", keys)));
     }
 
-    /** Транспорт под ботом для {@code bot}: кто его ведёт и клавиши мода. null — бот пешком. */
+    /** The bot's vehicle for {@code bot}: its driver and mod keys. Null means the bot is on foot. */
     JsonObject describe(ServerPlayer p) {
         Entity v = p.getVehicle();
         if (v == null) return null;

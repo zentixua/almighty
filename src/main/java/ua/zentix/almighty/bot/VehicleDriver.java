@@ -6,23 +6,23 @@ import net.minecraft.world.entity.Entity;
 import java.util.List;
 
 /**
- * Привод транспорта мода, который ведёт клиент водителя своим кодом (читает клавиши клиента, считает полёт у пилота),
- * — то, чего общим путём (ввод игрока, метка {@code almighty:driven_by_rider}) не сделать. Только в совместимости с
- * модом ({@code compat/}), приводы бот берёт у {@code Compat}. Экземпляр — на бота, поток сервера.
+ * Driver for mod vehicles controlled by the driver's client code (reading client keys, computing pilot flight),
+ * which the common path cannot handle (player input, {@code almighty:driven_by_rider} tag). Only in mod
+ * compatibility ({@code compat/}); bots obtain drivers from {@code Compat}. One instance per bot; server thread.
  */
 public interface VehicleDriver {
-    /** Ведёт ли привод этот транспорт. */
+    /** Whether this driver controls the vehicle. */
     boolean drives(Entity vehicle);
 
     /**
-     * Тик бота за рулём, после тика транспорта: x — влево (+1) или вправо (−1), y — прыжок (+1) или присед (−1),
-     * z — вперёд (+1) или назад (−1).
+     * Bot pilot tick after the vehicle tick: x left (+1) or right (-1), y jump (+1) or sneak (-1),
+     * z forward (+1) or backward (-1).
      */
     void tick(ServerPlayer pilot, Entity vehicle, float x, float y, float z);
 
-    /** Клавиши мода сверх ванильных — имена в настройках управления. */
+    /** Mod keys beyond vanilla controls: names in control settings. */
     List<String> keys();
 
-    /** Клавиша мода: итог — что сделано; null — такой клавиши у привода нет. */
+    /** Mod key: returns what was done; null if this driver has no such key. */
     String press(ServerPlayer pilot, Entity vehicle, String key);
 }

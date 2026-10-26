@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Хук PreToolUse ведущего: только то, что заведомо роняет сервер, дела владельца и один голос в чате.
+"""GM PreToolUse hook: only known server crashes, owner actions, and one voice in chat.
 
-Хук Claude Code (https://code.claude.com/docs/en/hooks): JSON вызова на stdin, решение — JSON hookSpecificOutput
-с permissionDecision: deny — нельзя никогда (причину видит модель), ask — только с подтверждения владельца (запрос
-разрешения приходит ему в приложение и в игру через канал almighty-chat). Остальное ведущему можно.
+Claude Code hook (https://code.claude.com/docs/en/hooks): call JSON on stdin; decision as JSON hookSpecificOutput
+with permissionDecision: deny means never (the model sees the reason), ask requires owner approval (the permission
+request reaches the owner in the app and in-game through almighty-chat). Other actions are allowed for the GM.
 
-Что запрещено — то, что роняет или замораживает сервер:
-- stop, reload, save-off, save-all flush, forceload add; /tick rate выше TICK_RATE_MAX;
-- скрипты и правила: тикет чанка с замыканием, синхронная загрузка чанка, потоки и задачи на потом,
-  слушатели шины, сон на потоке сервера (Thread.sleep замораживает игру), выход JVM и процессы;
-- постройка, загрузка района и телепорт на участки Sable (x или z от 20 000 000): постройка там роняет сервер.
+Denied actions are those that crash or freeze the server:
+- stop, reload, save-off, save-all flush, forceload add; /tick rate above TICK_RATE_MAX;
+- scripts and rules: chunk tickets with closures, synchronous chunk loading, threads and deferred tasks,
+  bus listeners, sleeping on the server thread (Thread.sleep freezes the game), JVM exit and processes;
+- building, area loading and teleporting onto Sable plots (x or z from 20 000 000): building there crashes the server.
 
-Один голос: игрокам пишет только главная сессия. Вызов из субагента хук узнаёт по agent_id во входе (доки hooks,
-Common input fields) и не пускает его слова в чат: say, команды чата, реплики ботов.
+One voice: only the main session writes to players. The hook identifies subagent calls by agent_id in the input
+(hooks docs, Common input fields) and denies their chat: say, chat commands and bot messages.
 """
 import json
 import re
@@ -50,7 +50,7 @@ FAR_COMMAND = re.compile(r"^(tp|teleport|spreadplayers|fill|clone|setblock|place
 
 
 def segments(cmd):
-    """execute … run <команда>: каждая часть цепочки — своя команда."""
+    """execute ... run <command>: each part of the chain is a separate command."""
     c = cmd.strip().lstrip("/").strip()
     return [c] + [s.strip().lstrip("/") for s in re.split(r"\brun\s+", c)[1:]]
 
@@ -74,7 +74,7 @@ def on_plot(value):
 
 
 def check_command(cmd):
-    """(решение, причина) или None."""
+    """(decision, reason) or None."""
     for seg in segments(cmd):
         for pattern, why in NEVER:
             if re.search(pattern, seg, re.I):
@@ -103,19 +103,19 @@ def check_script(code):
 
 
 def expand(lines, args):
-    """Строки функции такими, какими станут: $(имя) — значение из args."""
+    """Function lines after substitution: $(name) takes its value from args."""
     args = args or {}
     return [re.sub(r"\$\((\w+)\)", lambda m: str(args.get(m.group(1), m.group(0))), l).lstrip("$") for l in lines]
 
 
 def first(*found):
-    """Самое строгое решение: deny важнее ask."""
+    """Strictest decision: deny takes precedence over ask."""
     found = [f for f in found if f]
     return next((f for f in found if f[0] == "deny"), found[0] if found else None)
 
 
 def check_voice(method, p):
-    """Слова игрокам из субагента: say, команда чата (и в цепочке execute … run) или реплика бота."""
+    """Subagent speech to players: say, chat commands (including execute ... run chains), or bot chat."""
     if method == "say":
         return "deny", ONE_VOICE
     if method in ("command", "function"):
@@ -124,14 +124,14 @@ def check_voice(method, p):
             return "deny", ONE_VOICE
     if method == "bot.act":
         said = [a["chat"] for a in p.get("actions") or [] if isinstance(a, dict) and isinstance(a.get("chat"), str)]
-        # «/команда» в чате бота — команда, а не слова; кроме команд чата
+        # "/command" in bot chat is a command, not speech, except for chat commands.
         if any(not c.startswith("/") or any(CHAT.match(seg) for seg in segments(c)) for c in said):
             return "deny", ONE_VOICE
     return None
 
 
 def check_call(method, p, subagent=False):
-    """Метод моста и его параметры — как их шлёт адаптер almighty.py; subagent — вызов из субагента."""
+    """Bridge method and parameters as sent by almighty.py; subagent identifies a subagent call."""
     p = p or {}
     if subagent:
         found = check_voice(method, p)
@@ -155,7 +155,7 @@ def check_call(method, p, subagent=False):
     return None
 
 
-TOOLS = {  # инструмент MCP almighty → (метод моста, параметры)
+TOOLS = {  # almighty MCP tool to (bridge method, parameters)
     "command": lambda i: ("function", i) if i.get("lines") is not None else ("command", i),
     "script": lambda i: ("script", i),
     "rule": lambda i: ("rule.add", i) if i.get("action") == "add" else (None, i),
@@ -189,6 +189,6 @@ def main():
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception as e:  # noqa: BLE001 — сломалась сама охрана: отказ (код 2 блокирует вызов), а не пропуск
+    except Exception as e:  # noqa: BLE001 - guard failure: deny (code 2 blocks the call), never pass through
         print(f"game master guard failed: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(2)

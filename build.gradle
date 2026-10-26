@@ -1,4 +1,4 @@
-// Almighty: мост ИИ-агента (ведущего) к серверу Minecraft — только сервер, игрокам не нужен.
+// Almighty: an AI agent's (game master's) bridge to a Minecraft server; server only, not needed by players.
 plugins {
     id 'java-library'
     id 'net.neoforged.moddev' version '2.0.147'
@@ -11,7 +11,7 @@ base { archivesName = 'almighty' }
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
-// GameTest — только для запусков из Gradle, в jar не входят
+// GameTest is for Gradle runs only; not included in the jar.
 sourceSets {
     devtest {
         compileClasspath += sourceSets.main.output
@@ -25,13 +25,13 @@ configurations {
 
 repositories {
     mavenCentral()
-    // Immersive Aircraft: самолёты под ботом (compat/immersiveaircraft) — компиляция и GameTest;
-    // в jar и mods.toml его нет
+    // Immersive Aircraft: bot-driven planes (compat/immersiveaircraft), compilation and GameTest;
+    // absent from the jar and mods.toml.
     exclusiveContent {
         forRepository { maven { url = 'https://api.modrinth.com/maven' } }
         filter { includeGroup 'maven.modrinth' }
     }
-    // Sable companion (MIT) — открытая библиотека Sable: корабли (compat/sable) и GameTest
+    // Sable companion (MIT), Sable's public library: ships (compat/sable) and GameTest.
     exclusiveContent {
         forRepository { maven { url = 'https://maven.ryanhcode.dev/releases' } }
         filter { includeGroupAndSubgroups 'dev.ryanhcode' }
@@ -45,7 +45,7 @@ neoForge {
         minecraftVersion = project.parchment_minecraft_version
     }
     runs {
-        // выделенный сервер с мостом (проверка mcp/almighty.py руками): ./gradlew runServer
+        // Dedicated server with the bridge (manual mcp/almighty.py check): ./gradlew runServer
         server {
             server()
             gameDirectory = project.file('run/server')
@@ -53,7 +53,7 @@ neoForge {
         }
         gameTestServer {
             type = 'gameTestServer'
-            // моды рядом (самолёты IA) — из devtestRuntimeOnly
+            // Companion mods (IA planes) come from devtestRuntimeOnly.
             sourceSet = sourceSets.devtest
             gameDirectory = project.file('run/gametest')
             systemProperty 'neoforge.enabledGameTestNamespaces', 'almighty'
@@ -70,16 +70,16 @@ neoForge {
     }
 }
 neoForge.addModdingDependenciesTo(sourceSets.devtest)
-// юнит-тесты моста и плана постройки держат данные в классах игры (Gson, BlockPos)
+// Bridge and build-plan unit tests keep data in game classes (Gson, BlockPos).
 neoForge.addModdingDependenciesTo(sourceSets.test)
 
-// мир GameTest — каждый раз новый, как в CI
+// A fresh GameTest world each run, as in CI.
 tasks.matching { it.name == 'runGameTestServer' }.configureEach { task ->
     doFirst { project.delete(new File(task.gameDirectory.get().asFile, 'world')) }
 }
 
 dependencies {
-    // скрипты ведущего (Groovy): в jar мода вложенным jar (Jar-in-Jar), в запусках из Gradle — рядом с игрой
+    // GM scripts (Groovy): nested jar in the mod jar (Jar-in-Jar), alongside the game in Gradle runs.
     jarJar(implementation('org.apache.groovy:groovy')) {
         version {
             strictly '[4.0.33,5)'
@@ -88,11 +88,11 @@ dependencies {
     }
     additionalRuntimeClasspath 'org.apache.groovy:groovy:4.0.33'
 
-    // Immersive Aircraft 1.7.0 (Modrinth, версия xO17G766): привод самолётов ботом вызывается, только когда мод стоит
+    // Immersive Aircraft 1.7.0 (Modrinth version xO17G766): bot aircraft control is called only when the mod is installed.
     compileOnly 'maven.modrinth:immersive-aircraft:xO17G766'
     devtestRuntimeOnly 'maven.modrinth:immersive-aircraft:xO17G766'
-    // Sable 2.0.6 (Modrinth, версия fg9dTRz9; корабли Create Aeronautics): корабли (compat/sable) — через его открытую
-    // библиотеку sable-companion (MIT, её несёт сам Sable: в jar и mods.toml её нет); сам Sable — только GameTest
+    // Sable 2.0.6 (Modrinth version fg9dTRz9; Create Aeronautics ships): ships (compat/sable) use its public
+    // sable-companion library (MIT, shipped by Sable itself, absent from our jar and mods.toml); Sable is GameTest-only.
     compileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
     devtestCompileOnly 'maven.modrinth:sable:fg9dTRz9'
     devtestRuntimeOnly 'maven.modrinth:sable:fg9dTRz9'
@@ -120,7 +120,7 @@ var generateModMetadata = tasks.register('generateModMetadata', ProcessResources
 sourceSets.main.resources.srcDir generateModMetadata
 neoForge.ideSyncTask generateModMetadata
 
-// GPL: копия лицензии — в каждом jar, который уходит на серверы
+// GPL: include a license copy in every jar shipped to servers.
 tasks.named('jar', Jar) {
     from(file('LICENSE'))
 }

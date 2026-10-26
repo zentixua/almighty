@@ -18,11 +18,11 @@ class TokenTest {
         Path file = dir.resolve("gm").resolve("token");
         Token first = Token.load(file);
         String text = Files.readString(file).strip();
-        assertEquals(64, text.length(), "32 байта в hex");
+        assertEquals(64, text.length(), "32 bytes in hex");
         assertTrue(first.accepts("Bearer " + text));
         assertEquals(Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE), Files.getPosixFilePermissions(file));
         Token again = Token.load(file);
-        assertTrue(again.accepts("Bearer " + text), "второй запуск читает тот же токен");
+        assertTrue(again.accepts("Bearer " + text), "second startup reads the same token");
     }
 
     @Test

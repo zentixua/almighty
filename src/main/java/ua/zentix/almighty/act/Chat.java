@@ -22,8 +22,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Слова ведущего игрокам: в чат с именем ({@code [Claude] …}), заголовком посреди экрана или строкой над хотбаром.
- * Текст — строкой ({@code text}) или текстовым компонентом JSON ({@code component}, как у {@code /tellraw}).
+ * The game master's words to players: chat with a name ({@code [Claude] ...}), a title in the middle of the screen,
+ * or a line above the hotbar. Text is a string ({@code text}) or a JSON text component ({@code component}, as in {@code /tellraw}).
  */
 public final class Chat {
     private static final Logger LOG = LogUtils.getLogger();
@@ -58,7 +58,7 @@ public final class Chat {
                     if (style.equals("title")) {
                         p.connection.send(new ClientboundSetTitleTextPacket(text));
                     } else {
-                        // подзаголовок виден только вместе с заголовком: пустой заголовок его показывает
+                        // A subtitle is visible only alongside a title: an empty title makes it visible.
                         p.connection.send(new ClientboundSetSubtitleTextPacket(text));
                         p.connection.send(new ClientboundSetTitleTextPacket(Component.empty()));
                     }

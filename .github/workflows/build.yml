@@ -1,9 +1,9 @@
-# Набор ведущего (Python), сборка, юнит-тесты и GameTest мода (сервер NeoForge, ~1 мин); jar — в артефактах.
-# Ручной запуск на main с release=true: проверка, после неё — релиз v<mod_version> на GitHub с этим jar и заметками
-# из docs/releases/<mod_version>.md.
+# GM toolkit (Python), mod build, unit tests and GameTest (NeoForge server, ~1 min); jar in artifacts.
+# Manual run on main with release=true: checks, then a GitHub release v<mod_version> with this jar and notes
+# from docs/releases/<mod_version>.md.
 name: build
 
-# Каждый коммит проверяется один раз: ветки — запуском pull_request (он и решает слияние), main — push.
+# Each commit is checked once: branches via pull_request (which decides merging), main via push.
 on:
   push:
     branches: [main]
@@ -11,11 +11,11 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: Выпустить релиз v<mod_version> (только с main)
+        description: Create release v<mod_version> (main only)
         type: boolean
         default: false
 
-# пуш отменяет прежнюю сборку той же ветки; ручной запуск (релиз) — в своей группе, пуш в main его не отменит
+# A push cancels the previous build of that branch; a manual release has its own group, unaffected by pushes to main.
 concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && format('release-{0}', github.run_id) || format('build-{0}', github.ref) }}
   cancel-in-progress: true
@@ -31,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Набор ведущего (mcp/gm)
+      - name: GM toolkit (mcp/gm)
         run: python3 -m unittest discover -s mcp/gm/tests
 
       - name: MCP adapter syntax
@@ -56,7 +56,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v5
 
-      - name: Сборка и юнит-тесты
+      - name: Build and unit tests
         run: ./gradlew build --console=plain
 
       - uses: actions/upload-artifact@v6
@@ -70,7 +70,7 @@ jobs:
           ./gradlew runGameTestServer --console=plain
           grep -E 'All [0-9]+ required tests passed' run/gametest/logs/latest.log
 
-      - name: Отчёты при падении
+      - name: Reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
         with:
@@ -94,7 +94,7 @@ jobs:
         with:
           name: almighty-jar
           path: build/libs
-      - name: Релиз
+      - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

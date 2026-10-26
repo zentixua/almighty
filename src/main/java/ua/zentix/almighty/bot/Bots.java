@@ -52,28 +52,29 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
- * Боты одного запуска сервера: вход, список, тик, выход; пометка в табе и чате; защита настоящих игроков. Бот не
- * может взять UUID настоящего игрока (свой UUID из имени в своём пространстве) и уступает имя игроку, который
- * заходит с ним. Без {@code bots.allow_disguise} бот всегда помечен и не берёт имя или скин игрока, которого сервер
- * знает (в игре, в белом списке, оператор, в кэше профилей). Поток сервера, кроме разбора параметров.
+ * Bots for one server run: login, list, tick, logout; tab and chat markers; protection of real players.
+ * A bot cannot take a real player's UUID (its UUID comes from its name in its own namespace), and yields its name
+ * to a player logging in with it. Without {@code bots.allow_disguise}, a bot is always marked and cannot take
+ * the name or skin of a player known to the server (online, whitelisted, operator, profile cache).
+ * Server thread except parameter parsing.
  */
 public final class Bots {
     private static final Logger LOG = LogUtils.getLogger();
-    /** Имя, которое команды понимают как имя игрока ({@code /tp Pilot_1}). */
+    /** A name commands recognize as a player name ({@code /tp Pilot_1}). */
     public static final Pattern NAME = Pattern.compile("[A-Za-z0-9_]{3,16}");
 
     private final GmServer gm;
     private final Map<String, Bot> byName = new LinkedHashMap<>();
     private final Map<UUID, Bot> byUuid = new HashMap<>();
-    /** Входы, которые ждут загрузки места. */
+    /** Logins awaiting destination loading. */
     private final List<Waiting> waiting = new ArrayList<>();
 
-    /** Срок загрузки места входа, тиков. */
+    /** Login destination loading deadline, in ticks. */
     static final int PLACE_WAIT = 20 * 30;
 
     private record Waiting(Areas.Lease lease, long deadline, CompletableFuture<Areas.Lease> ready) {}
 
-    /** Аренда места входа после входа — до {@code until} или выхода бота. */
+    /** Login destination lease after login, until {@code until} or bot logout. */
     private final List<Held> held = new ArrayList<>();
     static final int HOLD_AFTER = 100;
 
@@ -83,7 +84,7 @@ public final class Bots {
         this.gm = gm;
     }
 
-    /** Параметры входа бота: разобраны и проверены в потоке моста. */
+    /** Bot login parameters: parsed and validated on the bridge thread. */
     public record Spec(String name, double[] pos, String dimension, float yaw, float pitch, GameType gamemode,
                        String skinOf, Property textures, boolean marker, boolean autoRespawn) {
         public static Spec parse(Args a) throws RpcException {
@@ -112,7 +113,7 @@ public final class Bots {
         }
     }
 
-    /** Вход бота: проверки здесь, скин (если по имени аккаунта) — в фоне через службы сервера, вход — в потоке сервера. */
+    /** Bot login: checks here, skin lookup (if an account name) in the background through server services, login on the server thread. */
     public CompletableFuture<JsonObject> spawn(Spec spec) {
         return gm.onMain(() -> {
             check(spec);
@@ -134,7 +135,7 @@ public final class Bots {
                         if (lease != null) lease.release();
                         throw e;
                     }
-                    // дальше чанки держит тикет самого игрока: он встаёт не сразу (очередь тикетов игроков), аренда — ещё немного
+                    // The player's own ticket retains chunks afterward; it is queued, so keep the lease a little longer.
                     if (lease != null) held.add(new Held(bot, lease, tickNow() + HOLD_AFTER));
                     JsonObject out = bot.describe(0);
                     if (spec.skinOf() != null && textures.isEmpty()) out.addProperty("skin", "skin \"" + spec.skinOf() + "\" not found: default skin");
@@ -143,9 +144,10 @@ public final class Bots {
     }
 
     /**
-     * Место входа — загрузить до входа: перенос игрока в NeoForge грузит чанк назначения сразу ({@code Entity.setPosRaw}),
-     * в тике это пауза сервера. Чанк с кольцом соседей — тикетом ведущего в фоне ({@link Areas}); null — переноса не будет
-     * (бот остаётся там, где вошёл, у точки появления). Поток сервера.
+     * Load the login destination before login: NeoForge teleportation loads the destination chunk immediately
+     * ({@code Entity.setPosRaw}), stalling the server if done in a tick. A GM ticket loads the chunk and neighbor
+     * ring in the background ({@link Areas}); null means no teleport (the bot stays where it logged in, near spawn).
+     * Server thread.
      */
     private CompletableFuture<Areas.Lease> prepare(Spec spec) throws RpcException {
         MinecraftServer server = gm.server();
@@ -176,7 +178,7 @@ public final class Bots {
         if (spec.dimension() != null) Dims.level(server, spec.dimension());
     }
 
-    /** Имя знакомо серверу: игрок в игре (не бот), белый список, операторы, кэш профилей (кроме ботов). */
+    /** Name known to the server: online player (not a bot), whitelist, operators, profile cache (excluding bots). */
     private boolean known(String name) {
         MinecraftServer server = gm.server();
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
@@ -188,7 +190,7 @@ public final class Bots {
         return cached != null && !cached.getId().equals(uuid(name));
     }
 
-    /** UUID знаком серверу: игрок в игре (не бот), белый список, операторы, кэш профилей. */
+    /** UUID known to the server: online player (not a bot), whitelist, operators, profile cache. */
     private boolean knownId(UUID id) {
         if (id == null || byUuid.containsKey(id)) return false;
         MinecraftServer server = gm.server();
@@ -199,8 +201,8 @@ public final class Bots {
     }
 
     /**
-     * Чей скин в свойстве {@code textures}: его {@code value} — base64 JSON с {@code profileId} и {@code profileName}
-     * владельца (так его подписывают службы Mojang). Не читается — ошибка запроса.
+     * Skin owner in the {@code textures} property: its {@code value} is base64 JSON with the owner's
+     * {@code profileId} and {@code profileName} (as signed by Mojang services). Unreadable data is a request error.
      */
     static GameProfile texturesOwner(Property textures) throws RpcException {
         try {
@@ -217,15 +219,15 @@ public final class Bots {
         MinecraftServer server = gm.server();
         GameProfile profile = new GameProfile(uuid(spec.name()), spec.name());
         if (textures != null) profile.getProperties().put("textures", textures);
-        // вид как у обычного клиента: все слои скина, правая рука, есть в списке игроков сервера
+        // Like an ordinary client: all skin layers, right hand, listed among server players.
         ClientInformation info = new ClientInformation("en_us", 8, ChatVisiblity.FULL, true, 0x7F, HumanoidArm.RIGHT, false, true);
         CommonListenerCookie cookie = new CommonListenerCookie(profile, 0, info, false, ConnectionType.NEOFORGE);
         ServerLevel level = spec.dimension() != null ? Dims.level(server, spec.dimension()) : server.overworld();
-        // как вход игрока (getPlayerForLogin): в верхнем мире — конструктор ищет место у точки появления, а в чужом
-        // измерении с небом искал бы его, загружая чанки в тике сразу
+        // Like player login (getPlayerForLogin): use the Overworld; the constructor searches near spawn, while in another
+        // dimension with a sky it would search by loading chunks synchronously in the tick.
         ServerPlayer player = new BotPlayer(server, server.overworld(), profile, info);
         Bot bot = new Bot(this, profile, spec.marker(), spec.autoRespawn());
-        // до входа: имя в табе считается при входе, событие должно уже знать бота
+        // Before login: the tab name is computed during login, and the event must already know the bot.
         byName.put(key(spec.name()), bot);
         byUuid.put(profile.getId(), bot);
         ProfileCache.Snapshot cache = ProfileCache.snapshot(server.getProfileCache(), spec.name(), profile.getId());
@@ -236,7 +238,7 @@ public final class Bots {
             bot.disconnect(Component.literal("failed to join"));
             throw e;
         } finally {
-            // вход записал бота в кэш профилей: имя → его UUID; команды по имени (/op, /whitelist) нашли бы бота
+            // Login wrote the bot to the profile cache: name to UUID; commands by name (/op, /whitelist) would find the bot.
             cache.restore();
         }
         ServerPlayer p = bot.player();
@@ -246,9 +248,9 @@ public final class Bots {
         } else if (spec.dimension() != null && p.level() != level) {
             p.teleportTo(level, level.getSharedSpawnPos().getX() + 0.5, level.getSharedSpawnPos().getY(), level.getSharedSpawnPos().getZ() + 0.5, spec.yaw(), spec.pitch());
         }
-        // голова — туда же, куда тело: взгляд (getViewYRot) берёт поворот головы, а его тик выставит только потом
+        // Head faces with the body: vision (getViewYRot) uses head rotation, which its tick sets only later.
         p.setYHeadRot(p.getYRot());
-        // тикет игрока — сразу на новое место: чанки там начнут грузиться в фоне, пока бот ждёт их (Controls.move)
+        // Move the player ticket to the new location immediately: chunks start loading in the background while the bot waits (Controls.move).
         p.serverLevel().getChunkSource().move(p);
         bot.settle();
         LOG.info("GM: bot {} joined{}", spec.name(), spec.marker() ? "" : " without the marker");
@@ -256,8 +258,8 @@ public final class Bots {
     }
 
     /**
-     * UUID бота: из имени, в своём пространстве — не совпадёт ни с настоящим (v4), ни с пиратским UUID игрока
-     * ({@code OfflinePlayer:<имя>}). От id мода не зависит: бот с тем же именем находит свои данные и после переименования мода.
+     * Bot UUID: from its name in its own namespace, distinct from real (v4) and offline player UUIDs
+     * ({@code OfflinePlayer:<name>}). Independent of the mod id: a bot with the same name finds its data after a mod rename.
      */
     public static UUID uuid(String name) {
         return UUID.nameUUIDFromBytes(("AgentBot:" + name.toLowerCase(Locale.ROOT)).getBytes(StandardCharsets.UTF_8));
@@ -287,7 +289,7 @@ public final class Bots {
         return new ArrayList<>(byName.values());
     }
 
-    /** Бот этого игрока; не бот — null. */
+    /** This player's bot; null if not a bot. */
     public Bot of(ServerPlayer player) {
         return byUuid.get(player.getUUID());
     }
@@ -297,8 +299,9 @@ public final class Bots {
     }
 
     /**
-     * Программа шагов боту ({@code bot.act}): разбор — здесь (поток моста), очередь — в потоке сервера; ждать конца не
-     * дольше {@code waitSeconds}; не дождались — описание идущей, конец придёт событием {@code bot_done}.
+     * A bot step program ({@code bot.act}): parse here (bridge thread), queue on the server thread; wait up to
+     * {@code waitSeconds} for completion; if still running, return its description, with completion arriving
+     * as a {@code bot_done} event.
      */
     public CompletableFuture<JsonElement> act(String name, JsonArray actions, boolean replace, int waitSeconds) throws RpcException {
         List<Steps.Step> steps = Steps.parse(actions);
@@ -333,7 +336,7 @@ public final class Bots {
         return out;
     }
 
-    /** Конец тика сервера: тики ботов; ушедшие (выгнали, ошибка) — из списка, событием в ленту. */
+    /** Server tick end: tick bots; remove departed bots (kicked, error) from the list and emit a feed event. */
     public void tick() {
         if (!waiting.isEmpty()) places();
         if (!held.isEmpty()) held.removeIf(h -> {
@@ -350,7 +353,7 @@ public final class Bots {
         }
     }
 
-    /** Места входа, которые загрузились или не дождались; продолжения (вход) — после обхода. */
+    /** Login destinations loaded or timed out; continuations (login) run after iteration. */
     private void places() {
         List<Runnable> after = new ArrayList<>();
         for (Iterator<Waiting> it = waiting.iterator(); it.hasNext(); ) {
@@ -369,7 +372,7 @@ public final class Bots {
         after.forEach(Runnable::run);
     }
 
-    /** Остановка сервера: боты выходят как игроки (сохранение, выход в чат) до того, как сервер сохранит остальных. */
+    /** Server shutdown: bots log out as players (saving, chat leave) before the server saves everyone else. */
     public void stop() {
         for (Waiting w : waiting) {
             w.lease().release();
@@ -385,7 +388,7 @@ public final class Bots {
     }
 
     private void gone(Bot bot) {
-        // ушёл — чанки места входа ему больше не нужны
+        // The bot left; it no longer needs its login destination chunks.
         if (!held.isEmpty()) held.removeIf(h -> {
             if (h.bot() != bot) return false;
             h.lease().release();
@@ -412,7 +415,7 @@ public final class Bots {
         return gm.server().getTickCount();
     }
 
-    // --- пометка и защита имени: события игровой шины ---
+    // --- Markers and name protection: game bus events ---
 
     public static void register(IEventBus bus) {
         bus.addListener(EventPriority.LOW, Bots::onTabName);
@@ -430,7 +433,7 @@ public final class Bots {
         return Component.literal(GmConfig.BOTS_MARKER.get() + " ").withStyle(ChatFormatting.GRAY).append(name.copy().withStyle(ChatFormatting.WHITE));
     }
 
-    /** Строка в табе: пометка перед именем. */
+    /** Tab line: marker before the name. */
     private static void onTabName(PlayerEvent.TabListNameFormat e) {
         Bot bot = botOf(e.getEntity());
         if (bot == null || !bot.marked || GmConfig.BOTS_MARKER.get().isBlank()) return;
@@ -438,14 +441,14 @@ public final class Bots {
         e.setDisplayName(marked(current != null ? current : e.getEntity().getName()));
     }
 
-    /** Имя в чате и сообщениях сервера (вошёл, умер): с пометкой. */
+    /** Name in chat and server messages (join, death), with a marker. */
     private static void onName(PlayerEvent.NameFormat e) {
         Bot bot = botOf(e.getEntity());
         if (bot == null || !bot.marked || GmConfig.BOTS_MARKER.get().isBlank()) return;
         e.setDisplayname(marked(e.getDisplayname()));
     }
 
-    /** Настоящий игрок зашёл с именем бота: бот уходит, двух игроков с одним именем на сервере не бывает. */
+    /** A real player logged in with a bot's name: the bot leaves; no two players on the server share a name. */
     private static void onLogin(PlayerEvent.PlayerLoggedInEvent e) {
         if (!(e.getEntity() instanceof ServerPlayer player)) return;
         GmServer gm = GmServer.of(player.server);
@@ -455,10 +458,10 @@ public final class Bots {
     }
 
     /**
-     * Кэш профилей сервера ({@code usercache.json}): вход игрока пишет в него «имя → UUID», а команды по имени
-     * ({@code /op}, {@code /whitelist add}, {@code /ban}) берут UUID оттуда. Бот запись после себя убирает: прежняя
-     * запись этого имени возвращается. Открытого API на это нет — поля кэша рефлексией; не вышло — бот входит как
-     * есть, в лог — предупреждение.
+     * Server profile cache ({@code usercache.json}): player login writes "name to UUID", and commands by name
+     * ({@code /op}, {@code /whitelist add}, {@code /ban}) read the UUID there. A bot removes its entry afterward,
+     * restoring the previous entry for that name. No public API, so reflect cache fields; on failure, log a warning
+     * and let the bot log in as is.
      */
     static final class ProfileCache {
         private static Field byNameField, byUuidField, profileField;
@@ -512,7 +515,7 @@ public final class Bots {
             }
         }
 
-        /** Профиль по имени из кэша, без запроса к Mojang (у {@code GameProfileCache.get(name)} он бывает). */
+        /** Profile by name from cache, without a Mojang request (unlike some {@code GameProfileCache.get(name)} calls). */
         @SuppressWarnings("unchecked")
         static GameProfile byName(GameProfileCache cache, String name) {
             if (cache == null || !ready()) return null;

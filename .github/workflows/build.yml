@@ -41,6 +41,10 @@ jobs:
         with:
           node-version: 20
 
+      - name: Chat channel syntax
+        working-directory: mcp/gm/almighty-chat
+        run: node --check almighty-chat.mjs
+
       - name: Chat routing tests
         working-directory: mcp/gm/almighty-chat
         run: node --test

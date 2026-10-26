@@ -1,4 +1,5 @@
 // node --test
+// Cyrillic messages, names and permission replies below are language-routing fixtures.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { CONTEXT_HEADER, Router, Turns, addressed, fold } from './router.mjs'
@@ -12,19 +13,19 @@ const make = (now = () => 0) => {
 }
 const named = text => addressed(text, [...NAMES, ...TYPO].map(fold), TYPO.map(fold))
 
-test('имя ведущего в любом виде: растянутое, с опечаткой, латиницей и кириллицей', () => {
+test('GM name in any form: stretched, misspelled, Latin and Cyrillic', () => {
   for (const t of ['Ведущий, привет', 'ведууущииий', 'ВЕДУЩИЙ!!!', 'ведуший помоги', 'вeдущему', 'Привет, клод',
     'клоооод', 'Claude?', 'cluade', 'ведучий, дай меч', 'ведущму скажи']) assert.ok(named(t), t)
   for (const t of ['проведущий', 'я веду машину', 'они ведут бой', 'везучий ты', 'клад нашёл', 'код красный',
     'сведущий человек']) assert.ok(!named(t), t)
 })
 
-test('личное /gm идёт всегда, с местом', () => {
+test('private /gm always arrives with location', () => {
   const out = make().route({ type: 'gm', player: 'Alex', text: 'помоги', dimension: 'minecraft:overworld', x: 1, y: 2, z: 3 })
   assert.deepEqual(out, { content: 'помоги', meta: { kind: 'gm', player: 'Alex', private: 'yes', dimension: 'minecraft:overworld', x: '1', y: '2', z: '3' } })
 })
 
-test('чат — только с именем или в разговоре', () => {
+test('chat only with a name or within a conversation', () => {
   let t = 0
   const r = make(() => t)
   assert.equal(r.route({ type: 'chat', player: 'Sam', text: 'всем привет' }), null)
@@ -35,7 +36,7 @@ test('чат — только с именем или в разговоре', () 
   assert.equal(r.route({ type: 'chat', player: 'Sam', text: 'ещё' }), null)
 })
 
-test('ответ ведущего открывает разговор на 3 минуты; ответ всем — тем, кто ждал', () => {
+test('GM reply opens a conversation for 3 minutes; public replies answer waiting players', () => {
   let t = 0
   const r = make(() => t)
   r.route({ type: 'gm', player: 'Alex', text: 'помоги' })
@@ -48,7 +49,7 @@ test('ответ ведущего открывает разговор на 3 м�
   assert.equal(r.route({ type: 'chat', player: 'Steve', text: 'а мост?' }).meta.direct, 'no')
 })
 
-test('игрок в игре один — всё ему', () => {
+test('a lone player receives all attention', () => {
   const r = make()
   assert.equal(r.route({ type: 'chat', player: 'Steve', text: 'го' }), null)
   r.route({ type: 'leave', player: 'Alex' })
@@ -58,7 +59,7 @@ test('игрок в игре один — всё ему', () => {
   assert.equal(r.route({ type: 'chat', player: 'Steve', text: 'го' }), null)
 })
 
-test('общий чат мимо ведущего приходит со следующим сообщением ему, один раз', () => {
+test('public chat not addressed to the GM accompanies its next message once', () => {
   const r = make()
   r.route({ type: 'chat', player: 'Alex', text: 'привет?' })
   r.route({ type: 'chat', player: 'Steve', text: 'го на остров' })
@@ -67,7 +68,7 @@ test('общий чат мимо ведущего приходит со след
   assert.equal(r.route({ type: 'gm', player: 'Steve', text: 'дай меч' }).content, 'дай меч')
 })
 
-test('боты — только названные и в игроков не считаются', () => {
+test('only named bots are heard and never counted as players', () => {
   const r = make()
   assert.equal(r.route({ type: 'gm', player: 'TestBot', bot: true, text: 'x' }), null)
   assert.equal(r.route({ type: 'join', player: 'TestBot', bot: true }), null)
@@ -75,14 +76,14 @@ test('боты — только названные и в игроков не с�
   assert.equal(r.route({ type: 'gm', player: 'Tester', bot: true, text: 'x' }).meta.kind, 'gm')
 })
 
-test('«да <номер>» владельца — ответ на запрос, не сообщение', () => {
+test('owner "yes <id>" is a permission reply, not a message', () => {
   const r = make()
   assert.deepEqual(r.route({ type: 'gm', player: 'Steve', text: 'да abcde' }), { verdict: { request_id: 'abcde', behavior: 'allow' } })
   assert.deepEqual(r.route({ type: 'chat', player: 'Steve', text: 'Нет ABCDE' }), { verdict: { request_id: 'abcde', behavior: 'deny' } })
   assert.equal(r.route({ type: 'gm', player: 'Player', text: 'да abcde' }).meta.kind, 'gm')
 })
 
-test('лаг — от порога и не чаще раза в минуту', () => {
+test('lag is reported above the threshold and at most once per minute', () => {
   let t = 0
   const r = make(() => t)
   assert.equal(r.route({ type: 'lag', ms: 500 }), null)
@@ -91,14 +92,14 @@ test('лаг — от порога и не чаще раза в минуту', (
   assert.equal(r.route({ type: 'lag', ms: 9000 }), null)
 })
 
-test('вход, выход, смерть', () => {
+test('join, leave, death', () => {
   const r = make()
   assert.equal(r.route({ type: 'join', player: 'Steve', x: 0, y: 0, z: 0, dimension: 'd' }).meta.owner, 'yes')
   assert.equal(r.route({ type: 'death', player: 'Alex', message: 'Alex упал', killer: 'Zombie' }).meta.killer, 'Zombie')
   assert.equal(r.route({ type: 'emit', data: {} }), null)
 })
 
-test('«ведущий думает…»: до ответа или конца хода; пришедшие во время хода ждут следующего', () => {
+test('"game master is thinking..." until reply or turn end; arrivals during a turn await the next', () => {
   let t = 0
   const turns = new Turns({ maxMs: 180_000, now: () => t })
   turns.pushed('Steve')
@@ -116,7 +117,7 @@ test('«ведущий думает…»: до ответа или конца х
   assert.deepEqual(turns.waiting(), [])
 })
 
-test('правило выключилось — ведущему сразу; ошибки правила — последней строкой со следующим сообщением', () => {
+test('disabled rules reach the GM immediately; rule errors accompany the next message as the last line', () => {
   const r = make()
   assert.deepEqual(r.route({ type: 'rule.off', rule: 7, name: 'drone_ap', reason: '10 errors in a row' }),
     { content: 'Rule drone_ap turned off: 10 errors in a row', meta: { kind: 'rule', state: 'off', rule: '7', name: 'drone_ap' } })

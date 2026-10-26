@@ -45,18 +45,18 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Команды и функции от имени ведущего: источник с правами 4, без сущности, на точке появления мира (или
- * {@code dimension}/{@code pos}); вывод команд собирается и возвращается, в чат операторам не уходит. Каждая команда —
- * строкой INFO в лог сервера. Функция — строки {@code .mcfunction} без файла и без {@code /reload}: ванильный разбор
- * ({@code CommandFunction.fromLines}) и тот же порядок выполнения, что у {@code /function}, макросы {@code $(...)} —
- * параметром {@code args}.
+ * Commands and functions as the game master: a source with permission level 4, no entity, at world spawn
+ * (or {@code dimension}/{@code pos}); command output is collected and returned, never sent to operators' chat.
+ * Each command is logged at INFO. A function is {@code .mcfunction} lines without a file or {@code /reload}:
+ * vanilla parsing ({@code CommandFunction.fromLines}) and the same execution order as {@code /function};
+ * {@code $(...)} macros use the {@code args} parameter.
  */
 public final class CommandRunner {
     private static final Logger LOG = LogUtils.getLogger();
     /**
-     * Выполнение команд, идущее в этом потоке ({@code Commands.CURRENT_EXECUTION_CONTEXT}): команда, поданная внутри
-     * него (правило на событие, которое вызвала команда или функция), только встала бы в его очередь — без итога и
-     * после выхода из правила. Ведущий выполняет свои команды сразу, своим выполнением.
+     * Ongoing command execution on this thread ({@code Commands.CURRENT_EXECUTION_CONTEXT}): a command submitted
+     * inside it (a rule on an event triggered by a command or function) would only enter its queue, without a result
+     * and run after the rule exits. The game master runs its commands immediately in a separate execution.
      */
     private static final ThreadLocal<Object> CURRENT_EXECUTION = currentExecution();
     static final int MAX_COMMANDS = 100;
@@ -65,7 +65,7 @@ public final class CommandRunner {
 
     private CommandRunner() {}
 
-    /** Вывод одной команды или функции. */
+    /** Output of one command or function. */
     private static final class Capture implements CommandSource {
         final List<String> output = new ArrayList<>();
         final List<String> errors = new ArrayList<>();
@@ -74,7 +74,7 @@ public final class CommandRunner {
 
         @Override
         public void sendSystemMessage(Component message) {
-            // CommandSourceStack.sendFailure красит ошибку в красный корнем сообщения
+            // CommandSourceStack.sendFailure colors the error red at the message root.
             (RED.equals(message.getStyle().getColor()) ? errors : output).add(message.getString());
         }
 
@@ -103,7 +103,7 @@ public final class CommandRunner {
         JsonObject describe(String key, String what) {
             JsonObject out = new JsonObject();
             out.addProperty(key, what);
-            // функция без return итог не сообщает: успех — выполнилась без ошибок
+            // A function without return reports no result: success means execution without errors.
             out.addProperty("ok", !Boolean.FALSE.equals(success) && errors.isEmpty());
             out.addProperty("result", result);
             if (!output.isEmpty()) out.add("output", strings(output));
@@ -112,7 +112,7 @@ public final class CommandRunner {
         }
     }
 
-    /** {@code commands}: строка или список (с {@code /} или без); {@code dimension}, {@code pos} — откуда. */
+    /** {@code commands}: a string or list (with or without {@code /}); {@code dimension}, {@code pos}: the source location. */
     public static JsonElement commands(MinecraftServer server, Args args) throws RpcException {
         List<String> commands = args.strings("commands");
         if (commands.isEmpty() || commands.size() > MAX_COMMANDS) {
@@ -123,9 +123,9 @@ public final class CommandRunner {
     }
 
     /**
-     * Команды по порядку, вывод каждой. Источник — ведущий в {@code level}/{@code pos} или, если задана {@code as},
-     * от лица сущности: {@code @s}, её место, поворот и измерение (права — по-прежнему 4). {@code quiet} — строка лога
-     * DEBUG, а не INFO: правило может звать команду каждый тик.
+     * Commands in order, with output for each. The source is the game master at {@code level}/{@code pos}, or, if
+     * {@code as} is set, the entity: {@code @s}, its position, rotation and dimension (permission level remains 4).
+     * {@code quiet} logs at DEBUG instead of INFO: a rule may call a command every tick.
      */
     public static JsonArray run(MinecraftServer server, ServerLevel level, Vec3 pos, Entity as, List<String> commands, boolean quiet) {
         JsonArray results = new JsonArray();
@@ -146,8 +146,8 @@ public final class CommandRunner {
     }
 
     /**
-     * {@code lines}: строки функции; {@code args}: объект (числа без дробной части — целые) или строка SNBT для
-     * макросов {@code $(...)}.
+     * {@code lines}: function lines; {@code args}: an object (numbers without a fractional part are integers)
+     * or an SNBT string for {@code $(...)} macros.
      */
     public static JsonElement function(MinecraftServer server, Args args) throws RpcException {
         List<String> lines = args.strings("lines");
@@ -221,7 +221,7 @@ public final class CommandRunner {
         return (CompoundTag) tag(json);
     }
 
-    /** JSON → NBT для макросов: целые остаются целыми ({@code 5}, а не {@code 5.0} в подстановке). */
+    /** JSON to NBT for macros: integers remain integers ({@code 5}, rather than {@code 5.0} in substitutions). */
     private static Tag tag(JsonElement json) throws RpcException {
         if (json.isJsonObject()) {
             CompoundTag out = new CompoundTag();

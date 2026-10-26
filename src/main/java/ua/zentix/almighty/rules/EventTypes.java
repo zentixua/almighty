@@ -16,9 +16,9 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * Все события игровой шины, какие есть у NeoForge и модов: наследники {@link Event} по данным сканирования FML
- * (классы каждого файла мода и их предки), без загрузки классов. Имя события — короткое ({@code BlockEvent.BreakEvent})
- * или полное; {@code tick} — {@code ServerTickEvent.Post}, конец каждого тика сервера.
+ * All NeoForge and mod game-bus events: {@link Event} subclasses from FML scan data (classes in each mod file
+ * and their ancestors), without loading classes. Event names may be short ({@code BlockEvent.BreakEvent}) or
+ * fully qualified; {@code tick} means {@code ServerTickEvent.Post}, the end of each server tick.
  */
 public final class EventTypes {
     static final String TICK = "net.neoforged.neoforge.event.tick.ServerTickEvent$Post";
@@ -27,10 +27,10 @@ public final class EventTypes {
 
     private EventTypes() {}
 
-    /** Найденное событие: класс и мод, откуда он. */
+    /** Discovered event: class and its source mod. */
     public record Found(Class<? extends Event> type, String name, String mod) {}
 
-    /** Имя класса (через {@code $}) → мод; только наследники {@link Event}. */
+    /** Class name (using {@code $}) to mod; only {@link Event} subclasses. */
     static Map<String, String> index() {
         Map<String, String> built = index;
         if (built != null) return built;
@@ -45,8 +45,8 @@ public final class EventTypes {
     }
 
     /**
-     * Классы одного файла мода: имя → предок и мод. Предка нет у {@code module-info} (в сборке он есть у многих модов)
-     * и у {@code java.lang.Object}: событием такой класс не бывает.
+     * Classes in one mod file: name to parent and mod. {@code module-info} (present in many modpack mods) and
+     * {@code java.lang.Object} have no parent; such a class cannot be an event.
      */
     static void collect(Iterable<ModFileScanData.ClassData> classes, String owner, Map<String, String> parent, Map<String, String> mod) {
         for (ModFileScanData.ClassData c : classes) {
@@ -56,7 +56,7 @@ public final class EventTypes {
         }
     }
 
-    /** Наследники {@link Event} среди собранных классов: имя → мод. */
+    /** {@link Event} subclasses among the collected classes: name to mod. */
     static Map<String, String> events(Map<String, String> parent, Map<String, String> mod) {
         Map<String, Boolean> isEvent = new HashMap<>();
         Map<String, String> out = new TreeMap<>();
@@ -69,7 +69,7 @@ public final class EventTypes {
     private static boolean event(String name, Map<String, String> parent, Map<String, Boolean> memo) {
         Boolean known = memo.get(name);
         if (known != null) return known;
-        // цепочку предков — без рекурсии: у событий она бывает длинной
+        // Walk the ancestor chain without recursion: event hierarchies can be deep.
         List<String> chain = new ArrayList<>();
         String at = name;
         Boolean result = null;
@@ -86,12 +86,12 @@ public final class EventTypes {
         return result;
     }
 
-    /** Короткое имя: класс без пакета, вложенный — через точку ({@code BlockEvent.BreakEvent}). */
+    /** Short name: class without its package, nested classes separated by dots ({@code BlockEvent.BreakEvent}). */
     public static String shortName(String className) {
         return className.substring(className.lastIndexOf('.') + 1).replace('$', '.');
     }
 
-    /** Событие по имени; нет или неоднозначно — ошибка со списком похожих. */
+    /** Event by name; missing or ambiguous means an error with similar names. */
     public static Found resolve(String name) throws RpcException {
         String query = name.strip();
         if (query.equalsIgnoreCase("tick")) query = TICK;
@@ -130,7 +130,7 @@ public final class EventTypes {
         return new Found(event, shortName(className), all.get(className));
     }
 
-    /** События, в имени которых есть {@code query} (без учёта регистра): имя, полный класс, мод, отменяемое ли. */
+    /** Events whose names contain {@code query} (case-insensitive): name, full class, mod, cancelable status. */
     public static List<Map<String, Object>> search(String query, int limit) {
         String q = query.toLowerCase(Locale.ROOT).replace('$', '.');
         List<Map<String, Object>> out = new ArrayList<>();

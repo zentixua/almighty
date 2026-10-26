@@ -1,18 +1,18 @@
-// Что из ленты событий Almighty идёт в сессию ведущего и в каком виде.
-// Канал Claude Code (https://code.claude.com/docs/en/channels-reference): событие — content и meta,
-// meta — строки с ключами из букв, цифр и «_».
+// Which Almighty feed events reach the GM session, and in what form.
+// Claude Code channel (https://code.claude.com/docs/en/channels-reference): an event has content and meta;
+// meta values are strings with keys made of letters, digits and "_".
 
-// ответ владельца на запрос разрешения: «да abcde» — номер из пяти букв a–z без l
+// Owner reply to a permission request: "yes abcde", an id of five a-z letters excluding l.
 export const PERMISSION_REPLY = /^\s*(да|нет|yes|no|y|n)\s+([a-km-z]{5})\s*$/i
 
 const YES = new Set(['да', 'yes', 'y'])
 
-/** Слово в общем виде: строчные, ё → е, растянутая буква — одна («ведууущииий» → «ведущий»). */
+/** Normalized word: lowercase, ё → е, repeated letters folded ("ведууущииий" → "ведущий"). */
 export function fold (word) {
   return word.toLowerCase().replaceAll('ё', 'е').replace(/(\p{L})\1+/gu, '$1')
 }
 
-/** Расстояние Дамерау — Левенштейна не больше 1: одна буква лишняя, пропущена, заменена или две переставлены. */
+/** Damerau-Levenshtein distance at most 1: one extra, missing or replaced letter, or two transposed letters. */
 export function near (a, b) {
   if (a === b) return true
   if (Math.abs(a.length - b.length) > 1) return false
@@ -24,9 +24,10 @@ export function near (a, b) {
 }
 
 /**
- * Назван ли ведущий в тексте: слово в общем виде (fold) совпало с именем из names или с точностью до одной опечатки —
- * с именем из typoNames (первая буква — точно). Опечатки — только у длинных имён, у которых соседних слов нет
- * («ведущий»); у коротких и украинских одна буква даёт другое слово («клод» — «клад», «ведучий» — «везучий»).
+ * Whether the text names the GM: a normalized word (fold) matches a name from names, or matches typoNames
+ * with at most one typo (first letter exact). Typos apply only to long names without neighboring words
+ * ("ведущий"); short and Ukrainian names can become another word with one letter
+ * ("клод" to "клад", "ведучий" to "везучий").
  */
 export function addressed (text, names, typoNames = []) {
   for (const [raw] of text.matchAll(/\p{L}+/gu)) {
@@ -38,7 +39,7 @@ export function addressed (text, names, typoNames = []) {
 
 export const CONTEXT_HEADER = '[earlier in the game, not forwarded to the game master]'
 
-// правило ленты: номер rule и имя name; несохранившееся при загрузке — spec с именем
+// Feed rule: rule id and name; if not loaded at startup, spec carries the name.
 function ruleName (e) {
   return e.name ?? e.spec?.name ?? (e.rule !== undefined ? `#${e.rule}` : '?')
 }
@@ -53,11 +54,11 @@ function where (e) {
 
 export class Router {
   /**
-   * names — как зовут ведущего в общем чате, typoNames — имена, которые узнаются и с опечаткой; owners — владельцы
-   * (их «да <номер>» — ответ на запрос разрешения); botPlayers — боты, которых слушать как игроков (репетиция);
-   * conversationMs — сколько после обращения игрока к ведущему или ответа ведущего игроку его сообщения в чате идут
-   * без имени; contextLines и contextMs — сколько последних строк мимо ведущего (общий чат, ошибки правил) приложить к
-   * следующему сообщению ему; lagMs и lagEveryMs — какой лаг сообщать и как часто.
+   * names: GM names in public chat; typoNames: names also recognized with a typo; owners: server owners
+   * (their "yes <id>" replies answer permission requests); botPlayers: bots treated as players (rehearsal);
+   * conversationMs: how long after a player addresses the GM or receives a reply their chat reaches the GM
+   * without a name; contextLines and contextMs: how many recent lines not addressed to the GM (public chat,
+   * rule errors) accompany the next message; lagMs and lagEveryMs: which stalls to report and how often.
    */
   constructor ({ names, typoNames = [], owners, botPlayers = [], conversationMs = 180_000, contextLines = 10,
     contextMs = 600_000, lagMs = 2_000, lagEveryMs = 60_000, now = Date.now }) {
@@ -71,21 +72,21 @@ export class Router {
     this.lagMs = lagMs
     this.lagEveryMs = lagEveryMs
     this.now = now
-    this.talked = new Map() // игрок → когда открылся разговор с ведущим
-    this.waiting = new Set() // чьи сообщения ушли ведущему и ждут его ответа
-    this.online = new Set() // кто в игре: люди и боты из botPlayers
-    this.backlog = [] // что шло мимо ведущего: {key, line, at}
+    this.talked = new Map() // Player to conversation start time with the GM.
+    this.waiting = new Set() // Players whose messages reached the GM and await a reply.
+    this.online = new Set() // Online humans and bots listed in botPlayers.
+    this.backlog = [] // Lines not addressed to the GM: {key, line, at}.
     this.lastLag = -Infinity
   }
 
-  /** Кто в игре сейчас: при запуске канала и после перезапуска сервера. */
+  /** Who is online now: at channel startup and after a server restart. */
   setOnline (players) {
     this.online = new Set(players)
   }
 
   /**
-   * Ведущий ответил в чат: to — кому лично, без to — всем, и тогда это ответ всем, кто ждал. С ними открывается
-   * разговор: их сообщения идут ведущему без имени. Возвращает, кому ответ.
+   * The GM replied in chat: to selects private recipients; absent to means everyone, answering all waiting
+   * players. Open a conversation so their messages reach the GM without its name. Return the recipients.
    */
   replied (to) {
     const players = to ?? [...this.waiting]
@@ -96,7 +97,7 @@ export class Router {
     return players
   }
 
-  /** Событие ленты → null (не нужно), {verdict} (ответ на запрос разрешения) или {content, meta}. */
+  /** Feed event to null (unneeded), {verdict} (permission reply), or {content, meta}. */
   route (e) {
     const player = e.player
     if (player !== undefined && e.bot && !this.botPlayers.has(player)) return null
@@ -130,7 +131,7 @@ export class Router {
         const killer = e.killer ? { killer: String(e.killer) } : {}
         return { content: String(e.message ?? `${player} died`), meta: { kind: 'death', player, ...owner, ...killer, ...where(e) } }
       }
-      // правило выключилось (ошибки подряд, бюджет, исчерпан limit) — ведущему сразу; его ошибка — со следующим сообщением
+      // A disabled rule (consecutive errors, budget, exhausted limit) reaches the GM immediately; its error accompanies the next message.
       case 'rule.off':
         return { content: `Rule ${ruleName(e)} turned off: ${e.reason ?? ''}`, meta: { kind: 'rule', state: 'off', ...ruleMeta(e) } }
       case 'rule.error':
@@ -146,7 +147,7 @@ export class Router {
     }
   }
 
-  /** Строка мимо ведущего: придёт со следующим сообщением ему; key — новая строка того же ключа заменяет старую. */
+  /** Line not addressed to the GM: send with the next message; key means a new line replaces the old line with that key. */
   aside (key, line) {
     if (key) this.backlog = this.backlog.filter(l => l.key !== key)
     this.backlog.push({ key, line, at: this.now() })
@@ -154,7 +155,7 @@ export class Router {
     return null
   }
 
-  /** Сообщение ведущему — с тем, что шло мимо него с прошлого раза; open — обращение открывает разговор. */
+  /** Message to the GM with lines not addressed to it since last time; open means the address starts a conversation. */
   ask (player, text, meta, open) {
     if (open) this.talked.set(player, this.now())
     this.waiting.add(player)
@@ -172,21 +173,22 @@ export class Router {
 }
 
 /**
- * Кто ждёт ответа ведущего — для строки «ведущий думает…» над хотбаром. События, пришедшие, пока сессия занята
- * ходом, копятся и приходят ей следующим ходом (доки каналов, Notification format). Поэтому конец хода (хук Stop)
- * снимает ожидание с тех, чьи события были в этом ходе, а пришедшие во время хода ждут следующего.
+ * Players awaiting a GM reply, for the "game master is thinking..." line above the hotbar. Events arriving
+ * while the session is busy with a turn are queued for the next turn (channel docs, Notification format).
+ * Therefore turn end (Stop hook) clears waiting players whose events belonged to this turn;
+ * those arriving during the turn await the next one.
  */
 export class Turns {
   constructor ({ maxMs = 180_000, now = Date.now } = {}) {
     this.maxMs = maxMs
     this.now = now
     this.busy = false
-    this.current = new Map() // игрок → с какого времени ждёт: его событие в идущем ходе
-    this.next = new Map() // пришли во время хода: ждут следующего
-    this.queued = 0 // сколько событий ждут следующего хода, и без игрока тоже (вход, смерть, лаг)
+    this.current = new Map() // Player to waiting start time: their event is in the current turn.
+    this.next = new Map() // Arrived during the turn: await the next one.
+    this.queued = 0 // Events awaiting the next turn, including events without a player (join, death, lag).
   }
 
-  /** Событие ушло в сессию; player — чьё сообщение ведущему (у входа, смерти, лага — нет). */
+  /** Event sent to the session; player identifies a message to the GM (absent for join, death, lag). */
   pushed (player) {
     if (!this.busy) {
       this.busy = true
@@ -197,7 +199,7 @@ export class Turns {
     }
   }
 
-  /** Ведущий ответил этим игрокам. */
+  /** The GM replied to these players. */
   answered (players) {
     for (const p of players) {
       this.current.delete(p)
@@ -205,7 +207,7 @@ export class Turns {
     }
   }
 
-  /** Ход сессии кончился. */
+  /** The session turn ended. */
   stopped () {
     this.current = this.next
     this.next = new Map()
@@ -213,7 +215,7 @@ export class Turns {
     this.queued = 0
   }
 
-  /** Кто ждёт ответа сейчас (не дольше maxMs). */
+  /** Who is waiting now (no longer than maxMs). */
   waiting () {
     const t = this.now()
     return [...new Set([...this.current, ...this.next].filter(([, at]) => t - at < this.maxMs).map(([p]) => p))]

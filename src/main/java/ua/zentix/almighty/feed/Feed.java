@@ -9,17 +9,17 @@ import java.util.HexFormat;
 import java.util.Map;
 
 /**
- * Лента событий для ведущего: кольцо последних {@value #CAPACITY} событий с номерами по порядку. Пишет поток сервера
- * ({@link FeedListeners}, работа ведущего), читает поток моста долгим опросом: {@link #read} ждёт событий после
- * номера {@code after}, не дольше срока. {@code boot} — свой у каждого запуска сервера: клиент по нему видит перезапуск
- * (номера пошли с начала).
+ * GM event feed: a ring of the last {@value #CAPACITY} events with sequential numbers. The server thread writes
+ * ({@link FeedListeners}, GM work); the bridge thread long-polls: {@link #read} waits for events after
+ * {@code after} up to a deadline. Each server run has its own {@code boot}: clients detect a restart from it
+ * (sequence numbers start over).
  */
 public final class Feed {
     static final int CAPACITY = 4096;
 
     private final JsonObject[] ring = new JsonObject[CAPACITY];
     private final String boot;
-    /** Номер следующего события; первое — 1. */
+    /** Next event number; the first is 1. */
     private long next = 1;
 
     public Feed() {
@@ -32,7 +32,7 @@ public final class Feed {
         return boot;
     }
 
-    /** Добавить событие: поля {@code data} — рядом с номером, временем и типом. */
+    /** Add an event: {@code data} fields go alongside the sequence number, time and type. */
     public synchronized void add(String type, JsonObject data) {
         JsonObject event = new JsonObject();
         event.addProperty("seq", next);
@@ -45,9 +45,9 @@ public final class Feed {
     }
 
     /**
-     * События с номером больше {@code after}, не больше {@code limit}; пока их нет — ждать до {@code waitMillis}.
-     * {@code after} больше последнего номера (другой запуск сервера) читается как «с начала». Ушедшие из кольца
-     * события — счётчиком {@code dropped}.
+     * Events after {@code after}, at most {@code limit}; if none exist, wait up to {@code waitMillis}.
+     * An {@code after} beyond the last number (another server run) means "from the beginning".
+     * Events evicted from the ring are counted in {@code dropped}.
      */
     public synchronized JsonObject read(long after, int limit, long waitMillis) throws InterruptedException {
         if (after >= next) after = 0;

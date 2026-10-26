@@ -17,15 +17,15 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Блоки рамки текстом: палитра «символ → блок» и слои снизу вверх, в слое строки с севера на юг (z растёт), символы с
- * запада на восток (x растёт). {@code '.'} — воздух, {@code '?'} — чанк не загружен. Тот же вид принимает постройка
- * (операция {@code layers}): чтобы скопировать рамку с воздухом, добавить в палитру {@code ".": "minecraft:air"}.
- * Поток сервера; рамка небольшая — читается сразу.
+ * Blocks in a box as text: a "character to block" palette and layers from bottom to top; rows run north to south
+ * (increasing z), characters west to east (increasing x). {@code '.'} is air, {@code '?'} an unloaded chunk.
+ * Building accepts the same format ({@code layers} operation): to copy a box including air, add
+ * {@code ".": "minecraft:air"} to the palette. Server thread; the small box is read immediately.
  */
 public final class BlockText {
     static final int MAX_EDGE = 64;
     static final int MAX_BLOCKS = 32_768;
-    /** Символы палитры: без '.', '?', пробела, кавычки и обратной черты (их пришлось бы экранировать в JSON). */
+    /** Palette characters: exclude '.', '?', space, quote and backslash (which would require JSON escaping). */
     static final String SYMBOLS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789#@%&*+=-~^:;!$<>/|()[]{},_'`";
 
     private BlockText() {}
@@ -98,7 +98,7 @@ public final class BlockText {
         return out;
     }
 
-    /** Первая буква пути блока (строчная, затем заглавная), если свободна; иначе — первый свободный символ. */
+    /** First letter of the block path (lowercase, then uppercase), if free; otherwise the first free character. */
     private static char symbol(String name, Map<String, Character> taken) throws RpcException {
         String path = name.substring(name.indexOf(':') + 1);
         char first = path.isEmpty() ? 'a' : path.charAt(0);

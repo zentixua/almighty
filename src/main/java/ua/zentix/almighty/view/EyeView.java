@@ -25,11 +25,11 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Картинка от глаза: перспектива, луч на каждый пиксель по блокам (цвет блока — как на карте, грань — светлее сверху,
- * темнее снизу и по бокам, как в игре; свет — небо с учётом времени суток и источники; вдали — дымка), сущности —
- * цветными рамками по роду, вода — полупрозрачная, стекло — налётом. Незагруженный чанк — шахматка. Перекрестье — в
- * центре. Блоки читаются в потоке сервера порциями под бюджетом тика ({@link View}); вместе с картинкой — то, что
- * {@link Eye} видит без неё.
+ * Eye image: perspective, one block ray per pixel (map block color; faces brighter on top, darker below and on
+ * the sides, as in the game; sky light accounts for time of day, plus light sources; distant haze), entities as
+ * colored boxes by kind, translucent water and tinted glass. Unloaded chunks are a checkerboard. Crosshair at
+ * the center. Blocks are read on the server thread in portions within the tick budget ({@link View});
+ * the image comes with what {@link Eye} sees without it.
  */
 public final class EyeView extends View {
     public static final int MAX_WIDTH = 480, MAX_HEIGHT = 270, MAX_DISTANCE = 256, MAX_BOXES = 128;
@@ -51,7 +51,7 @@ public final class EyeView extends View {
     private final int darken;
     private int next;
 
-    /** {@code self} — чей глаз (его и то, на чём он едет, на картинке нет); null — свободная камера. */
+    /** {@code self} is the viewer (excluded from the image, along with its vehicle); null means a free camera. */
     public EyeView(ServerLevel level, Eye.Camera cam, int width, int height, double distance, Entity self, JsonObject seen) {
         super("eye");
         this.level = level;
@@ -69,7 +69,7 @@ public final class EyeView extends View {
         collect(self);
     }
 
-    /** Сущности в дальности картинки — рамками; у каждой — прямоугольник кадра, чтобы пиксель проверял только свои. */
+    /** Entities within image range as boxes; each has a frame rectangle so a pixel checks only its own entities. */
     private void collect(Entity self) {
         AABB around = new AABB(cam.eye(), cam.eye()).inflate(distance);
         Entity root = self == null ? null : self.getRootVehicle();
@@ -97,7 +97,7 @@ public final class EyeView extends View {
                 y1 = Math.max(y1, py);
             }
             if (behind) {
-                // угол позади глаза: проекция не годится — весь кадр
+                // A corner behind the eye: projection is unsuitable; use the whole frame.
                 x0 = 0;
                 y0 = 0;
                 x1 = width - 1;
@@ -124,7 +124,7 @@ public final class EyeView extends View {
     private int pixel(int i, int j) {
         double sx = (i + 0.5) / width * 2 - 1, sy = 1 - (j + 0.5) / height * 2;
         Vec3 dir = cam.forward().add(cam.right().scale(sx * cam.tanH())).add(cam.up().scale(sy * cam.tanV())).normalize();
-        // сущность ближе всего, что на этом пикселе
+        // The entity is the nearest object at this pixel.
         double entityT = Double.MAX_VALUE;
         int entityColour = 0, entityAxis = 1;
         for (Box b : boxes) {
@@ -140,8 +140,8 @@ public final class EyeView extends View {
     }
 
     /**
-     * Луч по клеткам (DDA): первая клетка с формой — попадание (полный куб — сразу, неполная — по форме); стекло и
-     * прочее без цвета карты — налёт и дальше; вода — дальше, окрашивая; лава — поверхность.
+     * Ray through cells (DDA): the first cell with a shape is a hit (full cube immediately, partial block by shape);
+     * glass and other blocks without map color tint and continue; water continues with coloring; lava is a surface.
      */
     private int march(Vec3 dir, double entityT, int entityColour, int entityAxis) {
         Vec3 eye = cam.eye();
@@ -223,7 +223,7 @@ public final class EyeView extends View {
         return tone(sky, distance, glass, water);
     }
 
-    /** Свет у грани: в клетке, откуда луч вошёл в блок. */
+    /** Light at the face: in the cell from which the ray entered the block. */
     private int light(int x, int y, int z, int axis, int stepX, int stepY, int stepZ) {
         BlockPos p = switch (axis) {
             case 0 -> new BlockPos(x - stepX, y, z);
@@ -234,7 +234,7 @@ public final class EyeView extends View {
         return Math.max(level.getBrightness(LightLayer.SKY, p) - darken, level.getBrightness(LightLayer.BLOCK, p));
     }
 
-    /** Грань: тень по стороне (верх 1, низ 0,5, север-юг 0,8, запад-восток 0,6), свет, дымка, вода и стекло. */
+    /** Face: side shading (top 1, bottom 0.5, north/south 0.8, west/east 0.6), light, haze, water and glass. */
     private int surface(int colour, int axis, int stepY, int light, double t, boolean glass, double water) {
         double face = switch (axis) {
             case 0 -> 0.6;
@@ -245,7 +245,7 @@ public final class EyeView extends View {
         return tone(Png.shade(colour, face * brightness(light)), t, glass, water);
     }
 
-    /** Яркость по уровню света — кривая игры (с окружающим светом измерения) и яркость «по умолчанию». */
+    /** Brightness by light level: the game's curve (including dimension ambient light) and "default" brightness. */
     private double brightness(int light) {
         float f = Mth.clamp(light, 0, 15) / 15.0F;
         double curve = f / (4.0F - 3.0F * f);
@@ -268,7 +268,7 @@ public final class EyeView extends View {
         return r << 16 | g << 8 | bl;
     }
 
-    /** Луч и рамка: {расстояние входа, ось грани входа}; мимо или позади — null. */
+    /** Ray and box: {entry distance, entry face axis}; null for a miss or a box behind the ray. */
     private static double[] slab(AABB b, Vec3 o, Vec3 d) {
         double tmin = Double.NEGATIVE_INFINITY, tmax = Double.POSITIVE_INFINITY;
         int axis = 1;
@@ -292,7 +292,7 @@ public final class EyeView extends View {
     }
 
     private void complete() {
-        // перекрестье: белое, с тёмной обводкой — видно на любом фоне
+        // Crosshair: white with a dark outline, visible on any background.
         int cx = width / 2, cy = height / 2;
         for (int k = -4; k <= 4; k++) {
             if (k == 0) continue;

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Канал Claude Code «almighty-chat»: игроки Minecraft говорят с сессией ведущего.
-// Лента событий мода Almighty (мост HTTP, метод events с долгим опросом) → notifications/claude/channel;
-// запросы разрешений сессии (permission relay) → личное сообщение владельцу в игре, его «да <номер>» — ответ.
-// Хуки сессии (hooks/hooks.json, тип http) сообщают каналу ответ ведущего в чат и конец хода: так канал знает,
-// с кем идёт разговор и кому показывать над хотбаром «ведущий думает…».
-// Контракт канала: https://code.claude.com/docs/en/channels-reference, хуки: https://code.claude.com/docs/en/hooks
-// Настройки — переменные среды: ALMIGHTY_URL, ALMIGHTY_TOKEN_FILE, GM_LANG, GM_NAMES, GM_TYPO_NAMES, GM_OWNERS,
+// Claude Code "almighty-chat" channel: Minecraft players talk to the GM session.
+// Almighty mod event feed (HTTP bridge, long-polling events method) to notifications/claude/channel;
+// session permission requests (permission relay) to a private in-game owner message; "yes <id>" answers it.
+// Session hooks (hooks/hooks.json, http type) report GM chat replies and turn end, so the channel knows
+// who is in a conversation and who should see "game master is thinking..." above the hotbar.
+// Channel contract: https://code.claude.com/docs/en/channels-reference; hooks: https://code.claude.com/docs/en/hooks
+// Settings are environment variables: ALMIGHTY_URL, ALMIGHTY_TOKEN_FILE, GM_LANG, GM_NAMES, GM_TYPO_NAMES, GM_OWNERS,
 // GM_BOT_PLAYERS.
 import { readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
@@ -14,12 +14,12 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { CONTEXT_HEADER, Router, Turns } from './router.mjs'
 
-// пустая переменная — как незаданная: .mcp.json передаёт незаданные как «${X:-}»
+// An empty variable is treated as unset: .mcp.json passes unset values as "${X:-}".
 const list = (v, dflt) => (v || dflt).split(',').map(s => s.trim()).filter(Boolean)
 const URL = (process.env.ALMIGHTY_URL || 'http://127.0.0.1:25650').replace(/\/$/, '') + '/rpc'
 const TOKEN_FILE = process.env.ALMIGHTY_TOKEN_FILE
-// Язык того, что видят игроки (GM_LANG: en — по умолчанию, ru): имена ведущего в чате по умолчанию, строка над
-// хотбаром, запрос разрешения владельцу. Ответ владельца понимается на обоих языках (router.mjs).
+// Player-facing language (GM_LANG: en by default, or ru): default GM chat names, hotbar line,
+// and owner permission request. Owner replies are understood in both languages (router.mjs).
 const TEXTS = {
   en: {
     names: 'claude,claud',
@@ -45,11 +45,11 @@ const router = new Router({
   botPlayers: list(process.env.GM_BOT_PLAYERS, '')
 })
 const turns = new Turns()
-// порт хуков — тот же, что в hooks/hooks.json
+// Hook port matches hooks/hooks.json.
 const HOOK_PORT = 25680
 const THINKING = { text: T.thinking, color: 'gray', italic: true }
 
-// stdout занят протоколом MCP: журнал — в stderr
+// stdout carries the MCP protocol; logs go to stderr.
 const log = (...a) => console.error('[almighty-chat]', ...a)
 
 let token = null
@@ -62,7 +62,7 @@ async function bridge (method, params = {}, timeoutMs = 70_000) {
     body: JSON.stringify({ method, params }),
     signal: AbortSignal.timeout(timeoutMs)
   })
-  if (r.status === 401) token = null // токен сменили: перечитать
+  if (r.status === 401) token = null // Token changed: read it again.
   const data = await r.json().catch(() => ({ ok: false, error: { message: `HTTP ${r.status}` } }))
   if (!data.ok) throw new Error(`${method}: ${data.error?.code ?? r.status} ${data.error?.message ?? ''}`)
   return data.result
@@ -91,8 +91,8 @@ const mcp = new Server(
   }
 )
 
-// Запрос разрешения (хук ответил «ask») — каждому владельцу в игре лично (кого нет в игре, тому мост откажет);
-// ответ придёт его сообщением «да <номер>»
+// Permission request (hook returned "ask") sent privately in-game to every owner (the bridge rejects offline recipients);
+// the reply arrives as their "yes <id>" message.
 mcp.setNotificationHandler(z.object({
   method: z.literal('notifications/claude/channel/permission_request'),
   params: z.object({ request_id: z.string(), tool_name: z.string(), description: z.string(), input_preview: z.string() })
@@ -112,28 +112,28 @@ async function push (content, meta) {
   if (asks) think(meta.player)
 }
 
-// «ведущий думает…» над хотбаром: строка гаснет через 3 с, поэтому — каждые 2 с, пока игрок ждёт ответа
+// The "game master is thinking..." hotbar line expires after 3 s; refresh every 2 s while a player waits.
 function think (player) {
   if (!router.online.has(player)) return
   bridge('say', { component: THINKING, to: [player], style: 'actionbar' }, 5_000).catch(e => log('thinking line:', e.message))
 }
 setInterval(() => turns.waiting().forEach(think), 2_000)
 
-// кто в игре: люди и боты, которых слушать как игроков
+// Online humans and bots treated as players.
 async function syncOnline () {
   const [players, bots] = await Promise.all([bridge('players'), bridge('bots')])
   const own = new Set(bots.map(b => b.name).filter(name => !router.botPlayers.has(name)))
   router.setOnline(players.map(p => p.name).filter(name => !own.has(name)))
 }
 
-// хуки сессии: ответ ведущего в чат (PostToolUse на say) и конец его хода (Stop)
+// Session hooks: GM chat reply (PostToolUse on say) and turn end (Stop).
 function onHook (h) {
   if (h.hook_event_name === 'Stop') {
     turns.stopped()
   } else if (h.hook_event_name === 'PostToolUse' && !h.agent_id) {
     const { style, to } = h.tool_input ?? {}
     const players = Array.isArray(to) ? to : undefined
-    // ответ в чат открывает разговор; своя строка над хотбаром заменяет «думает…»
+    // A chat reply opens a conversation; a custom hotbar line replaces "thinking...".
     switch (String(style ?? 'chat').toLowerCase()) {
       case 'chat': turns.answered(router.replied(players)); break
       case 'actionbar': turns.answered(players ?? turns.waiting())
@@ -184,7 +184,7 @@ async function follow () {
     if (page.boot !== boot) await syncOnline().catch(e => log('online players:', e.message))
     boot = page.boot
     after = page.next
-    if (first) { // старое не ново: события — с минуты запуска канала
+    if (first) { // Old events are not new: start with the minute the channel launched.
       if (page.events.length < 1000) first = false
       continue
     }

@@ -8,7 +8,7 @@ import java.io.ByteArrayInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/** Свой PNG читается стандартным декодером Java как есть. */
+/** Our PNG is read unchanged by Java's standard decoder. */
 class PngTest {
     @Test
     void decodesToSamePixels() throws Exception {
@@ -26,7 +26,7 @@ class PngTest {
         for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) png.set(x, y, 0xC8C8C8);
         Png big = png.upscale(4, 2, 1, 0);
         assertEquals(16, big.width());
-        // линия у клеток, чей номер со сдвигом делится на 2: столбцы клеток 1 и 3, строки клеток 0 и 2
+        // Lines at cells whose offset indices are divisible by 2: cell columns 1 and 3, cell rows 0 and 2.
         assertEquals(Png.shade(0xC8C8C8, 0.6), big.get(4, 1));
         assertEquals(0xC8C8C8, big.get(9, 1));
         assertEquals(Png.shade(0xC8C8C8, 0.6), big.get(9, 0));

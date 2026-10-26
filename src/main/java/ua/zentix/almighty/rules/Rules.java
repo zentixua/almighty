@@ -36,24 +36,26 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 /**
- * Правила ведущего: реакция на любое событие игровой шины прямо на сервере, в том же тике. Без скрипта — свойства
- * события в ленту ({@code emit}); со скриптом — Groovy с переменной {@code event}, его {@code gm.emit} пишет в ленту,
- * {@code event.canceled = true} отменяет отменяемое. Правило выключается само и пишет {@code rule.off}: в среднем
- * дольше {@code budget_ms} за тик по последним 20 тикам, один запуск дольше {@link #runLimitMs} (его обрывает срок
- * скрипта; первый такой обрыв — только ошибка), {@value #ERRORS_OFF} ошибок подряд, больше {@value #EMITS_PER_SECOND} записей в ленту за 20 тиков, событие
- * не из потока сервера. Ботов, которых его скрипт вёл ({@code bot.act}, {@code bot.send}), выключение останавливает:
- * программы сняты, клавиши отпущены. Первый запуск в счёт времени не идёт: в нём Groovy связывает вызовы (до десятков мс). Время —
- * настенное: пауза сборщика мусора внутри запуска в него попадает, поэтому счёт средний, а не по одному тику. Всё — в
- * потоке сервера: разбор и компиляция — в потоке моста ({@link #parse}), остальное — {@code GmServer.onMain}.
+ * GM rules: reactions to any game-bus event directly on the server, in the same tick. Without a script, event
+ * properties enter the feed ({@code emit}); with a script, Groovy receives {@code event}, {@code gm.emit} writes
+ * to the feed, and {@code event.canceled = true} cancels cancelable events. A rule disables itself and emits
+ * {@code rule.off} on: average time above {@code budget_ms} per tick over the last 20 ticks; one run longer than
+ * {@link #runLimitMs} (aborted by the script deadline; the first such abort is only an error);
+ * {@value #ERRORS_OFF} consecutive errors; more than {@value #EMITS_PER_SECOND} feed entries in 20 ticks;
+ * an event off the server thread. Disabling stops bots controlled by its script ({@code bot.act},
+ * {@code bot.send}): programs removed, keys released. Exclude the first run from timing: Groovy links calls then
+ * (up to tens of ms). Time is wall-clock: a GC pause during a run counts, so average rather than judging one tick.
+ * Everything runs on the server thread except parsing and compilation, which use the bridge thread
+ * ({@link #parse}); the rest uses {@code GmServer.onMain}.
  */
 public final class Rules {
     private static final Logger LOG = LogUtils.getLogger();
     static final int MAX_RULES = 100;
     public static final int ERRORS_OFF = 10;
     static final int EMITS_PER_SECOND = 200;
-    /** Окно счёта времени и записей в ленту, тиков. */
+    /** Timing and feed-entry counting window, in ticks. */
     static final int WINDOW = 20;
-    /** Наибольший текст скрипта (разового и правила). */
+    /** Maximum script text size (one-shot and rule). */
     public static final int MAX_SCRIPT = 64 * 1024;
 
     private final MinecraftServer server;
@@ -62,7 +64,7 @@ public final class Rules {
     private final Map<String, Object> state;
     private final Path store;
     private final Map<Long, Rule> rules = new LinkedHashMap<>();
-    /** Сохранённые правила, что не встали при запуске (скрипты выключены, нет события): в файле остаются, пока их не уберут. */
+    /** Saved rules that could not load at startup (scripts disabled, missing event): remain in the file until removed. */
     private final List<JsonObject> unloaded = new ArrayList<>();
     private long next = 1;
     private boolean loading;
@@ -75,11 +77,11 @@ public final class Rules {
         this.store = store;
     }
 
-    /** Разобранное правило: параметры как пришли (для сохранения), событие, скрипт. */
+    /** Parsed rule: original parameters (for persistence), event and script. */
     public record Spec(JsonObject params, EventTypes.Found event, String code, Scripts.Compiled script, String name, int every,
                        long limit, EventPriority priority, boolean canceled, double budgetMs, boolean persist) {}
 
-    /** Разбор и компиляция в потоке моста: мир не трогает. */
+    /** Parse and compile on the bridge thread without accessing the world. */
     public static Spec parse(Args a) throws RpcException {
         JsonObject params = new JsonObject();
         for (String key : List.of("event", "script", "name", "every", "limit", "priority", "canceled", "budget_ms", "persist")) {
@@ -113,7 +115,7 @@ public final class Rules {
         return new Spec(params, event, code, script, name, every, limit, priority, canceled, budget, persist);
     }
 
-    /** Срок одного запуска: бюджет всего окна, не меньше 50 мс и не больше 10 с. */
+    /** One-run deadline: the whole window's budget, at least 50 ms and at most 10 s. */
     static long runLimitMs(double budgetMs) {
         return Math.min(10_000, Math.max(50, (long) Math.ceil(budgetMs * WINDOW)));
     }
@@ -122,7 +124,7 @@ public final class Rules {
         return RpcException.unavailable("Scripts are disabled: scripts.enabled = false in config/almighty-common.toml");
     }
 
-    /** Поставить правило (поток сервера). То же имя — замена прежнего. */
+    /** Add a rule (server thread). The same name replaces the previous rule. */
     public JsonObject add(Spec spec) throws RpcException {
         Rule old = spec.name() == null ? null : byName(spec.name());
         if (old == null && rules.size() >= MAX_RULES) {
@@ -145,7 +147,7 @@ public final class Rules {
         return rule.describe();
     }
 
-    /** Убрать по номеру или имени (поток сервера). */
+    /** Remove by id or name (server thread). */
     public JsonObject remove(Args a) throws RpcException {
         Rule rule;
         String name = a.has("id") ? null : a.string("name", null);
@@ -180,7 +182,7 @@ public final class Rules {
         return out;
     }
 
-    /** Сохранённые правила этого мира (запуск сервера, поток сервера): ошибка одного — в ленту и лог, остальные встают. */
+    /** Saved rules for this world (server startup, server thread): failures go to feed and log; other rules still load. */
     public void load() {
         if (!Files.isRegularFile(store)) return;
         JsonArray saved;
@@ -188,7 +190,7 @@ public final class Rules {
             saved = JsonParser.parseString(Files.readString(store, StandardCharsets.UTF_8)).getAsJsonObject().getAsJsonArray("rules");
             if (saved == null) throw new IllegalStateException("no rules list");
         } catch (IOException | RuntimeException e) {
-            // следующее сохранение перепишет файл: испорченный — в сторону
+            // The next save will rewrite the file: move the corrupt one aside.
             Path bad = store.resolveSibling(store.getFileName() + ".bad");
             LOG.error("GM rules could not be read from {}; the file was moved to {}", store, bad, e);
             try {
@@ -218,7 +220,7 @@ public final class Rules {
         }
     }
 
-    /** Остановка сервера: правила снимаются с шины (статической — в одиночной игре она переживает мир). */
+    /** Server shutdown: remove rules from the bus (static, so it outlives singleplayer worlds). */
     public void stop() {
         for (Rule r : List.copyOf(rules.values())) r.unlisten();
         rules.clear();
@@ -261,7 +263,7 @@ public final class Rules {
         }
     }
 
-    /** Одно правило: подписка, счёт, бюджет. Поля — только поток сервера. */
+    /** One rule: subscription, counters, budget. Fields are server-thread only. */
     private final class Rule {
         final long id;
         final Spec spec;
@@ -271,14 +273,14 @@ public final class Rules {
         long fired, emitted, errors;
         int errorsInRow;
         long lastRun = Long.MIN_VALUE;
-        /** Начала окон счёта (номер тика; до первого — раньше нуля на окно) и ошибки в ленте. */
+        /** Counting-window starts (tick number; one window before zero until the first) and error feed reporting. */
         long timeTick = -WINDOW, timeNanos, emitTick = -WINDOW, lastErrorTick = -WINDOW;
         int windowEmits;
         boolean running, warm;
         volatile boolean wrongThread;
         /**
-         * Боты, которых скрипт правила вёл ({@code act}, {@code send}): выключилось правило — они останавливаются.
-         * Исчерпанный {@code limit} — плановый конец: начатая программа идёт дальше, клавиши на срок отпустятся сами.
+         * Bots controlled by the rule script ({@code act}, {@code send}): disabling the rule stops them.
+         * Exhausting {@code limit} is planned completion: a started program continues and timed keys release themselves.
          */
         final Set<Bot> driven = Collections.newSetFromMap(new IdentityHashMap<>());
 
@@ -327,7 +329,7 @@ public final class Rules {
                 if (spec.script() == null) {
                     emit(Json.fields(event));
                 } else {
-                    // ушедший бот (его новый вход — другой объект) не держится правилом до его конца
+                    // Do not retain a departed bot (a new login is a different object) until the rule ends.
                     driven.removeIf(b -> !b.online());
                     Set<Bot> outer = Bot.driving(driven);
                     Scripts.Result r;
@@ -335,7 +337,7 @@ public final class Rules {
                         r = Scripts.run(spec.script(), Map.of("event", event, "server", server, "gm", api, "state", state, "rule", id));
                     } finally {
                         Bot.driving(outer);
-                        // выключилось посреди запуска (лента переполнена): ботов, которых скрипт повёл после, — тоже
+                        // If disabled mid-run (feed overflow), also stop bots the script began controlling afterward.
                         if (off != null) stopDriven(off);
                     }
                     if (r.ok()) errorsInRow = 0;
@@ -366,12 +368,12 @@ public final class Rules {
                 turnOff(ERRORS_OFF + " errors in a row, last: " + r.message() + (r.line() > 0 ? " (line " + r.line() + ")" : ""));
                 return;
             }
-            // первый запуск может съесть срок на связывании вызовов Groovy: его обрыв — ошибка, выключает — второй
+            // The first run may spend its deadline linking Groovy calls: its abort is an error; the second disables the rule.
             if (r.timedOut() && warm) {
                 turnOff(r.message() + " (budget_ms)");
                 return;
             }
-            // ошибку — в ленту не чаще раза в секунду: у частого события их сотни
+            // Report an error to the feed at most once per second: frequent events can produce hundreds.
             if (tick - lastErrorTick < WINDOW) return;
             lastErrorTick = tick;
             JsonObject d = who();
@@ -397,7 +399,7 @@ public final class Rules {
             feed.add("emit", d);
         }
 
-        /** Выключить: снять с шины, оставить в списке с причиной (видно в rules); сохранённое встанет при перезапуске. */
+        /** Disable: unsubscribe from the bus, keep in the list with a reason (visible in rules); a persisted rule loads on restart. */
         void turnOff(String reason) {
             if (off != null) return;
             off = reason;
@@ -411,7 +413,7 @@ public final class Rules {
             feed.add("rule.off", d);
         }
 
-        /** «Мёртвая рука»: бот автопилота не держит последний ввод (иначе самолёт с рулём вниз уходит в море). */
+        /** Dead man's switch: autopilot bots release the last input (otherwise nose-down control sends an aircraft into the sea). */
         private JsonArray stopDriven(String reason) {
             JsonArray stopped = new JsonArray();
             for (Bot bot : driven) {

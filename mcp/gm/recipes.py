@@ -5,22 +5,22 @@
 #     "httpx>=0.27",
 # ]
 # ///
-"""Рецепты ведущего — проверенные способы сделать дело: файлы .md в каталоге рецептов сервера.
+"""GM recipes: proven ways to do a task, as .md files in the server's recipe directory.
 
-  uv run --script mcp/gm/recipes.py list <каталог>                    — рецепты (и негодные — с ошибками)
-  uv run --script mcp/gm/recipes.py run <каталог> <рецепт> ['{…}']    — выполнить; ответ — JSON {ok, steps, check}
+  uv run --script mcp/gm/recipes.py list <directory>                 - recipes (including invalid ones with errors)
+  uv run --script mcp/gm/recipes.py run <directory> <recipe> ['{...}'] - run; response is JSON {ok, steps, check}
 
-Мост — тот же, что у mcp/almighty.py: ALMIGHTY_URL и ALMIGHTY_TOKEN_FILE (тестовый сервер — его адрес и токен).
+The same bridge as mcp/almighty.py: ALMIGHTY_URL and ALMIGHTY_TOKEN_FILE (use the test server's address and token).
 
-Рецепт — то, что уже получилось в мире, записанное так, чтобы получилось снова без импровизации:
+A recipe records something that already worked in the world so it can work again without improvisation:
 
     ---
     name: clear_weather
-    description: Ясная погода (одна строка: когда брать)
+    description: Clear weather (one line: when to use it)
     kind: instant
     params: {"seconds": {"type": "int", "min": 60, "max": 7200, "default": 1200}}
     ---
-    Пояснение: что делает, подводные камни, как понять, что вышло.
+    Explanation: what it does, pitfalls, how to tell it worked.
 
     ```steps
     [{"method": "command", "params": {"commands": ["weather clear ${seconds}"]}}]
@@ -30,15 +30,15 @@
     return !server.overworld().isRaining()
     ```
 
-name — как имя файла; kind: instant — за секунды, task — дольше (ведущий запускает его в фоне), show — оставляет в
-игре правило, которое живёт дальше. Шапка — строки «ключ: значение», значение — JSON или строка. Шаги — вызовы
-моста (методы ALLOWED, слов игрокам среди них нет), ${имя} — параметр: строка целиком — значение своего типа,
-внутри строки — текстом. Каждый шаг перед вызовом проходит хук от падений (crash_guard.check_call, как вызов
-субагента: рецепт игрокам не пишет); то, что хук отклонил бы или отдал бы владельцу на подтверждение, рецепт не
-делает. check — Groovy, который после шагов говорит, вышло ли (true или {ok: true, …}); у task и show он
-обязателен: «готово» — по миру.
+name matches the file name; kind: instant takes seconds, task takes longer (the GM runs it in the background),
+show leaves a rule running in the game. Header lines are "key: value", with a JSON or string value. Steps call
+the bridge (ALLOWED methods, excluding speech to players); ${name} is a parameter: a whole string becomes its
+typed value, inside a string it becomes text. Before each call, each step passes through the crash guard
+(crash_guard.check_call, like a subagent call: recipes do not write to players); a recipe does not perform
+anything the hook would deny or refer to the owner for approval. check is Groovy that reports success after
+the steps (true or {ok: true, ...}); task and show require it: "done" is determined by the world.
 
-Длинный Groovy (скрипт, правило автопилота) — своим блоком с именем, а в шагах — строкой "${code:имя}" целиком:
+Long Groovy (a script, an autopilot rule) goes in a named block, referenced in steps by the whole string "${code:name}":
 
     ```groovy autopilot
     def ship = gm.ship("${ship}")
@@ -49,8 +49,8 @@ name — как имя файла; kind: instant — за секунды, task �
       "script": "${code:autopilot}"}}]
     ```
 
-В Groovy (блоки и check) ${имя} объявленного параметра подставляется текстом, прочие ${…} — строки Groovy, их не
-трогаем.
+In Groovy (blocks and check), ${name} for a declared parameter is substituted as text; other ${...} expressions
+are Groovy strings and remain unchanged.
 """
 import argparse
 import json
@@ -66,7 +66,7 @@ import crash_guard  # noqa: E402
 ALLOWED = {"command", "function", "script", "rule.add", "rule.remove", "build", "undo", "bot.spawn", "bot.remove",
            "bot.act", "area.prepare", "area.release", "status", "player", "entities", "map", "look", "blocks", "see",
            "jobs", "job", "rules", "bots", "bot", "events", "ships"}
-# значения шагов с кодом Groovy: параметры в них — как в блоке groovy
+# Groovy code values in steps: parameters work as in a groovy block.
 GROOVY_KEYS = ("code", "script")
 KINDS = ("instant", "task", "show")
 TYPES = {
@@ -75,7 +75,7 @@ TYPES = {
     "bool": lambda v: isinstance(v, bool),
     "name": lambda v: isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9_]{1,16}", v) is not None,
     "block": lambda v: isinstance(v, str) and re.fullmatch(r"[a-z0-9_.:/-]+(\[[a-z0-9_=,]*\])?", v) is not None,
-    # без кавычки, $ и \: текст встаёт и в строку Groovy, где ${…} — код
+    # No quote, $ or backslash: text can appear inside a Groovy string, where ${...} is code.
     "text": lambda v: isinstance(v, str) and len(v) <= 200 and not set(v) & set("\n\"$\\"),
 }
 PARAM = re.compile(r"\$\{(\w+)\}")
@@ -140,7 +140,7 @@ def parse(path):
 
 
 def validate(recipe):
-    """Ошибки рецепта списком (пусто — годен)."""
+    """Recipe errors as a list (empty means valid)."""
     errors = []
     stem = os.path.splitext(os.path.basename(recipe.path))[0]
     if recipe.name != stem or not re.fullmatch(r"[a-z0-9_]+", recipe.name or "-"):
@@ -180,7 +180,7 @@ def validate(recipe):
 
 
 def load_all(directory):
-    """Рецепты каталога по имени; негодные — в errors."""
+    """Directory recipes by name; invalid entries go in errors."""
     found, errors = {}, {}
     for f in sorted(os.listdir(directory)):
         if not f.endswith(".md"):
@@ -199,7 +199,7 @@ def load_all(directory):
 
 
 def bind(recipe, given):
-    """Значения параметров: данные + по умолчанию, с проверкой типа и границ."""
+    """Parameter values: supplied data plus defaults, with type and bound checks."""
     given = dict(given or {})
     values = {}
     for k, p in recipe.params.items():
@@ -231,7 +231,7 @@ def _text(v):
 
 
 def substitute(obj, values, code=None):
-    """Параметры в шагах; "${code:имя}" — текст блока groovy с подставленными параметрами."""
+    """Parameters in steps; "${code:name}" is a groovy block's text with substituted parameters."""
     if isinstance(obj, str):
         ref = CODE.fullmatch(obj)
         if ref and code is not None:
@@ -249,12 +249,12 @@ def substitute(obj, values, code=None):
 
 
 def groovy(text, values):
-    """Groovy рецепта: ${имя} объявленного параметра — текстом, прочие ${…} — строки Groovy, как есть."""
+    """Recipe Groovy: substitute declared ${name} parameters as text; leave other ${...} Groovy strings unchanged."""
     def put(m):
         if m.group(1) not in values:
             return m.group(0)
         v = values[m.group(1)]
-        # из строки Groovy в одинарных кавычках текст не выйдет: кавычки в нём — не в код
+        # Text cannot escape a single-quoted Groovy string: its quotes stay data, not code.
         if isinstance(v, str) and "'" in v:
             raise RecipeError(f"{m.group(1)}: text with ' cannot be put into Groovy")
         return _text(v)
@@ -272,7 +272,7 @@ def _code_inside(obj):
 
 
 def _failed(result):
-    """Текст ошибки, если ответ моста говорит о неудаче (команда не прошла, скрипт упал), иначе None."""
+    """Error text if the bridge response reports failure (command failed, script error), otherwise None."""
     if isinstance(result, dict):
         if result.get("ok") is False:
             return result.get("error") or result.get("errors") or json.dumps(result, ensure_ascii=False)[:300]
@@ -287,14 +287,13 @@ def _failed(result):
 
 
 def guard(method, params):
-    """Причина отказа хука от падений или None: рецепт — как субагент (игрокам не пишет), подтверждений не ждёт."""
+    """Crash guard rejection reason or None: recipes act as subagents (no player speech) and never await approval."""
     found = crash_guard.check_call(method, params, subagent=True)
     return found[1] if found else None
 
 
 def run(recipe, given, call):
-    """Выполнить рецепт: хук и вызов моста call(method, params) на каждый шаг, потом проверка. Ответ — {ok, steps,
-    check}."""
+    """Run a recipe: guard and bridge call(method, params) for each step, then check. Response: {ok, steps, check}."""
     values = bind(recipe, given)
     steps = substitute(recipe.steps, values, recipe.code)
     done = []
@@ -344,7 +343,7 @@ def main():
     if a.name not in found:
         print(f"no recipe {a.name}" + (f": {'; '.join(errors[a.name])}" if a.name in errors else ""), file=sys.stderr)
         return 1
-    # мост — вызов адаптера mcp/almighty.py, с его ALMIGHTY_URL и ALMIGHTY_TOKEN_FILE
+    # The bridge is the mcp/almighty.py adapter call, using its ALMIGHTY_URL and ALMIGHTY_TOKEN_FILE.
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     import almighty
     try:

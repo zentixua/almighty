@@ -11,10 +11,10 @@ import java.util.List;
 import java.util.function.LongSupplier;
 
 /**
- * Очередь работ ведущего: в конце тика сервера работы идут по порядку постановки, пока есть время тика; первая — хотя
- * бы одну единицу, так что очередь движется и в тяжёлом тике. Ждущие загрузки чанков проверяют готовность и уступают.
- * Кончившиеся — в историю ({@value #HISTORY} последних), снимки откатов в ней — не больше {@value #RETAINED} мест вместе.
- * Только поток сервера.
+ * GM job queue: at server tick end, jobs run in submission order while time remains; the first gets at least
+ * one work unit, so the queue progresses even in a heavy tick. Jobs awaiting chunks check readiness and yield.
+ * Completed jobs enter history (last {@value #HISTORY}); their undo snapshots total at most {@value #RETAINED}
+ * positions. Server thread only.
  */
 public final class Jobs {
     static final int HISTORY = 50;
@@ -37,7 +37,7 @@ public final class Jobs {
         return job;
     }
 
-    /** Работать в этом тике не дольше {@code nanos}. */
+    /** Work for no more than {@code nanos} this tick. */
     public void tick(long nanos) {
         if (active.isEmpty()) return;
         Budget budget = new Budget(clock, nanos);
@@ -58,7 +58,7 @@ public final class Jobs {
         return null;
     }
 
-    /** Отменить работу; кончившаяся — false. */
+    /** Cancel a job; false if already finished. */
     public boolean cancel(long id) {
         for (Job job : active) {
             if (job.id() == id) {
@@ -71,7 +71,7 @@ public final class Jobs {
         return false;
     }
 
-    /** Остановка сервера: все работы — отменены, их тикеты отпущены. */
+    /** Server shutdown: cancel every job and release their tickets. */
     public void cancelAll() {
         for (Job job : active) job.cancel();
         active.clear();

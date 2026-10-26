@@ -14,19 +14,20 @@ import ua.zentix.almighty.world.Dims;
 import java.util.Locale;
 
 /**
- * Вид на рамку сбоку, сверху или снизу (фасад, разрез, план этажа): из каждой точки ближней грани рамки луч идёт
- * вглубь до первого блока с цветом карты; цвет темнее с глубиной. Блоки без цвета карты (стекло, барьер) луч проходит,
- * но оставляет налёт. Блок — клетка картинки. Неготовый чанк на пути — шахматка, пустой луч — цвет неба.
+ * Box view from the side, above or below (facade, section, floor plan): a ray from each point of the box's near
+ * face goes inward to the first block with map color; color darkens with depth. Rays pass through blocks without
+ * map color (glass, barrier), leaving a tint. One block is one image cell. An unready chunk on the ray is a
+ * checkerboard; an empty ray is sky color.
  */
 public final class LookView extends View {
     static final int MAX_FACE = 256;
     static final int MAX_DEPTH = 256;
     static final long MAX_VOLUME = 4_000_000L;
     private static final int SKY = 0x87AEDB;
-    /** Налёт блоков без цвета карты (стекло, барьер) на то, что за ними. */
+    /** Tint from blocks without map color (glass, barrier) over what lies behind them. */
     private static final int GLASS = 0xF0FAFF;
 
-    /** Взгляд: куда смотрит камера; оси картинки — вправо {@code u}, вниз {@code v}, вглубь {@code d}. */
+    /** View: camera direction; image axes are right {@code u}, down {@code v}, inward {@code d}. */
     public enum Look {
         NORTH(new int[] {1, 0, 0}, new int[] {0, -1, 0}, new int[] {0, 0, -1}),
         SOUTH(new int[] {-1, 0, 0}, new int[] {0, -1, 0}, new int[] {0, 0, 1}),
@@ -68,7 +69,7 @@ public final class LookView extends View {
             min[a] = Math.min(from[a], to[a]);
             size[a] = Math.abs(from[a] - to[a]) + 1;
         }
-        // угол (0, 0, 0) картинки: по каждой оси — край рамки, от которого идут u, v, d
+        // Image corner (0, 0, 0): on each axis, the box edge from which u, v and d proceed.
         for (int a = 0; a < 3; a++) {
             int dir = look.u[a] + look.v[a] + look.d[a];
             origin[a] = dir < 0 ? min[a] + size[a] - 1 : min[a];
@@ -123,7 +124,7 @@ public final class LookView extends View {
             BlockState state = chunk.getBlockState(pos);
             MapColor color = state.getMapColor(chunk, pos);
             if (color != MapColor.NONE) return tinted(Png.shade(color.col, 1.0 - 0.6 * k / Math.max(1, depth - 1)), glass);
-            // стекло, барьер и прочее без цвета карты не прячут то, что за ними, но видны налётом
+            // Glass, barriers and other blocks without map color do not hide what lies behind, but remain visible as a tint.
             if (!state.isAir()) glass = true;
         }
         return tinted(SKY, glass);

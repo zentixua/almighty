@@ -10,7 +10,10 @@ import ua.zentix.almighty.bridge.RpcException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/** Параметры макроса: целые остаются целыми, иначе {@code $(n)} подставит «5.0». */
+/**
+ * Macro parameters: integers remain integers, otherwise {@code $(n)} substitutes "5.0".
+ * Cyrillic string data checks that macro conversion preserves Unicode.
+ */
 class CommandRunnerTest {
     @Test
     void jsonArgsKeepIntegers() throws Exception {

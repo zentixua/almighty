@@ -17,26 +17,26 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 /**
- * Совместимость с Immersive Aircraft: самолёты под ботом. Полёт IA считает клиент пилота — в тике самолёта, когда
- * пилот «местный», IA читает его клавиши ({@code VehicleEntity.tickPilot}, классы клиента). Ввод игрока на сервере IA не
- * читает, а «местным» бот для IA быть не может (на выделенном сервере классов клавиш нет), поэтому бот делает шаг
- * пилота сам, после тика самолёта, — методами IA в том же порядке: рули ({@code setInputs}), скорость
- * ({@code updateVelocity}), ускоритель ({@code applyBoost}), управление ({@code updateController}), движение
- * ({@code move}), сглаживание рулей. Удар о препятствие (его считает клиент в {@code move}) и клавиши высадки и
- * ускорителя — сообщения клиента IA, их обработкой на сервере ({@code receiveServer}). Класс грузится, только когда мод
- * стоит ({@code Compat}). Поток сервера.
+ * Immersive Aircraft compatibility: bot-driven aircraft. IA flight runs on the pilot's client; during the
+ * aircraft tick, if the pilot is "local", IA reads its keys ({@code VehicleEntity.tickPilot}, client classes).
+ * IA does not read server-side player input, and a bot cannot be "local" for IA (key classes are absent on a
+ * dedicated server), so the bot runs the pilot step itself after the aircraft tick, using IA methods in the
+ * same order: controls ({@code setInputs}), velocity ({@code updateVelocity}), boost ({@code applyBoost}),
+ * controller ({@code updateController}), movement ({@code move}), control smoothing. Collisions (computed by the
+ * client in {@code move}), dismount and boost keys use IA client messages handled on the server
+ * ({@code receiveServer}). Load this class only when the mod is installed ({@code Compat}). Server thread.
  * <p>
- * Рефлексия — только там, где открытого пути нет. Проверено по Immersive Aircraft 1.5.2, 1.6.0 и 1.7.0 для 1.21.1
- * (NeoForge): шаг пилота — защищённые {@code updateVelocity}, {@code applyBoost}, {@code updateController} класса
- * {@code VehicleEntity} (подклассы их переопределяют), зовёт их только {@code VehicleEntity.tick}, когда пилот
- * «местный»; открытого метода шага нет. Методы берутся у {@code VehicleEntity} ({@code getDeclaredMethod}), вызов
- * идёт к переопределению подкласса. Остальное — открытое: {@code setInputs}, {@code move}, сглаживание рулей,
- * сообщения. Нет метода в другой версии IA — предупреждение в лог, привод выключен ({@link #drives} — нет), самолёты
- * бот не ведёт.
+ * Reflection only where no public path exists. Checked against Immersive Aircraft 1.5.2, 1.6.0 and 1.7.0 for
+ * 1.21.1 (NeoForge): the pilot step uses protected {@code updateVelocity}, {@code applyBoost} and
+ * {@code updateController} methods of {@code VehicleEntity} (overridden by subclasses), called only from
+ * {@code VehicleEntity.tick} when the pilot is "local"; there is no public step method. Obtain methods from
+ * {@code VehicleEntity} ({@code getDeclaredMethod}); invocation dispatches to subclass overrides. The rest is
+ * public: {@code setInputs}, {@code move}, control smoothing, messages. If another IA version lacks a method,
+ * log a warning and disable the driver ({@link #drives} returns false); the bot does not drive aircraft.
  */
 public final class ImmersiveAircraftDriver implements VehicleDriver {
     public static final String MOD_ID = "immersive_aircraft";
-    /** Клавиши IA сверх ванильных (имена в настройках управления). Рули — клавиши бота, как у клиента IA в NeoForge. */
+    /** IA keys beyond vanilla controls (control-settings names). Steering uses bot keys, like the NeoForge IA client. */
     static final String DISMOUNT = "key.immersive_aircraft.dismount", BOOST = "key.immersive_aircraft.boost";
     private static final List<String> KEYS = List.of(DISMOUNT, BOOST);
 
@@ -47,14 +47,14 @@ public final class ImmersiveAircraftDriver implements VehicleDriver {
     private static final boolean BROKEN = UPDATE_VELOCITY == null || APPLY_BOOST == null || UPDATE_CONTROLLER == null;
 
     /**
-     * Самолёт, в котором клиент пилота предупредил о высадке в воздухе, и его тик: у IA это поле самолёта, у другого
-     * самолёта (и у того же после перезагрузки чанка — это новая сущность) предупреждения не было.
+     * The aircraft in which the pilot client warned about airborne dismounting, and its tick: IA stores this on
+     * the aircraft; another aircraft (or the same after chunk reload, a new entity) has not issued the warning.
      */
     private WeakReference<Entity> warned = new WeakReference<>(null);
     private int warnedAt;
     /**
-     * Самолёт прошлого шага пилота и его ускоритель в конце шага: клиент смотрит ускоритель до того, как тик самолёта
-     * убавит его на единицу.
+     * Aircraft from the previous pilot step and its boost at step end: the client reads boost before the aircraft
+     * tick decrements it by one.
      */
     private WeakReference<Entity> flown = new WeakReference<>(null);
     private int boost;
@@ -75,7 +75,7 @@ public final class ImmersiveAircraftDriver implements VehicleDriver {
         return !BROKEN && vehicle instanceof VehicleEntity;
     }
 
-    /** Шаг пилота — то, что делает тик самолёта у клиента пилота (у самолёта y — тяга, z — штурвал). */
+    /** Pilot step, as run by the aircraft tick on the pilot's client (aircraft y is throttle, z is the flight stick). */
     @Override
     public void tick(ServerPlayer pilot, Entity vehicle, float x, float y, float z) {
         VehicleEntity v = (VehicleEntity) vehicle;
@@ -107,7 +107,7 @@ public final class ImmersiveAircraftDriver implements VehicleDriver {
         }
     }
 
-    /** Удар о препятствие — как клиент IA ({@code VehicleEntity.move}): сила удара сообщением о столкновении. */
+    /** Collision as on the IA client ({@code VehicleEntity.move}): send impact strength in a collision message. */
     private static void collision(ServerPlayer pilot, VehicleEntity v, Vec3 movement, Vec3 prediction) {
         if (!v.verticalCollision && !v.horizontalCollision) return;
         double error = prediction.distanceTo(v.position());
@@ -123,12 +123,12 @@ public final class ImmersiveAircraftDriver implements VehicleDriver {
         return KEYS;
     }
 
-    /** Клавиша IA — как клиент пилота ({@code VehicleEntity.tickPilot}). */
+    /** IA key as on the pilot's client ({@code VehicleEntity.tickPilot}). */
     @Override
     public String press(ServerPlayer pilot, Entity vehicle, String key) {
         VehicleEntity v = (VehicleEntity) vehicle;
         if (key.equals(DISMOUNT)) {
-            // в воздухе клиент сперва предупреждает, высадка — вторым нажатием за секунду
+            // In the air the client warns first; a second press within a second dismounts.
             if (!v.onGround() && (warned.get() != v || v.tickCount - warnedAt >= 20)) {
                 warned = new WeakReference<>(v);
                 warnedAt = v.tickCount;

@@ -19,15 +19,15 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Карта сверху, как у ванильной карты ({@code MapItem.update}): верхний блок с цветом карты, глубина воды, светотень по
- * разнице высот с соседом к северу. Север — вверх, восток — вправо. Только загруженные чанки ({@code getChunkNow}),
- * остальное — шахматкой. {@code below} — смотреть под потолок: столбец начинается с этой высоты (пещеры, Незер,
- * этажи). Игроки и метки ведущего — квадратами своего цвета, их список — в легенде.
+ * Top-down map, like a vanilla map ({@code MapItem.update}): top block with map color, water depth, shading from
+ * the height difference with the northern neighbor. North is up, east is right. Only loaded chunks
+ * ({@code getChunkNow}); others are a checkerboard. {@code below} looks under a ceiling: columns start at that
+ * height (caves, Nether, floors). Players and GM marks are colored squares, listed in the legend.
  */
 public final class MapView extends View {
     public static final int MAX_SIDE = 1024;
     static final int MAX_PIXELS = 512;
-    /** Столбцов в порции. */
+    /** Columns per portion. */
     static final int UNIT = 64;
     private static final int[] MARKERS = {0xFF2020, 0xFF40FF, 0x20FFFF, 0xFFFF20, 0xFFFFFF, 0xFF9020, 0x40FF40, 0x4080FF};
 
@@ -39,10 +39,10 @@ public final class MapView extends View {
     private final double[] north;
     private int row = -1, col;
 
-    /** Метка ведущего на карте. */
+    /** GM mark on the map. */
     public record Mark(String label, int x, int z) {}
 
-    /** Блоки {@code [x0, x0 + sizeX) × [z0, z0 + sizeZ)}. */
+    /** Blocks {@code [x0, x0 + sizeX) x [z0, z0 + sizeZ)}. */
     public MapView(ServerLevel level, int x0, int z0, int sizeX, int sizeZ, Integer below, List<Mark> marks) {
         super("map");
         this.level = level;
@@ -62,7 +62,7 @@ public final class MapView extends View {
         running();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         do {
-            // строка −1 — соседи к северу для светотени первой строки; порция — до UNIT столбцов
+            // Row -1 contains northern neighbors for shading the first row; a portion is up to UNIT columns.
             int z = z0 + row * step;
             for (int end = Math.min(width, col + UNIT); col < end; col++) {
                 int color = column(x0 + col * step, z, pos, col);
@@ -77,7 +77,7 @@ public final class MapView extends View {
         } while (budget.left());
     }
 
-    /** Цвет столбца; высота — в {@code north[px]} для следующей строки (NaN — чанк не загружен). */
+    /** Column color; height goes in {@code north[px]} for the next row (NaN means an unloaded chunk). */
     private int column(int x, int z, BlockPos.MutableBlockPos pos, int px) {
         LevelChunk chunk = level.getChunkSource().getChunkNow(x >> 4, z >> 4);
         int py = Math.max(row, 0);
@@ -122,7 +122,7 @@ public final class MapView extends View {
         return Png.shade(color.col, brightness.modifier / 255.0);
     }
 
-    /** Как {@code MapItem.getCorrectStateForFluidBlock}: вода над блоком без твёрдого верха — водой. */
+    /** Like {@code MapItem.getCorrectStateForFluidBlock}: water over a block without a solid top is water. */
     private static BlockState fluidSurface(LevelChunk chunk, BlockState state, BlockPos pos) {
         FluidState fluid = state.getFluidState();
         return !fluid.isEmpty() && !state.isFaceSturdy(chunk, pos, Direction.UP) ? fluid.createLegacyBlock() : state;
@@ -153,7 +153,7 @@ public final class MapView extends View {
         finish();
     }
 
-    /** Квадрат 3×3 клетки в чёрной кайме; вне карты — нет. */
+    /** A 3x3-cell square with a black border; omitted outside the map. */
     private boolean marker(String label, String kind, int x, int z, int color, JsonArray out) {
         int px = Math.floorDiv(x - x0, step), py = Math.floorDiv(z - z0, step);
         if (px < 0 || py < 0 || px >= width || py >= height) return false;

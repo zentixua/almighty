@@ -11,8 +11,8 @@ import java.security.SecureRandom;
 import java.util.HexFormat;
 
 /**
- * Токен моста: файл {@code config/almighty/token} (только владельцу), создаётся при первом запуске. Клиент моста
- * читает его оттуда же ({@code mcp/almighty.py}); в лог токен не пишется.
+ * Bridge token: {@code config/almighty/token} (owner only), created on first start. The bridge client
+ * reads it from the same location ({@code mcp/almighty.py}); the token is never logged.
  */
 public final class Token {
     private final byte[] value;
@@ -25,7 +25,7 @@ public final class Token {
         return new Token(value);
     }
 
-    /** Токен из файла; нет файла — новый случайный, записанный туда. */
+    /** Token from the file; if absent, generate a random token and write it there. */
     public static Token load(Path file) throws IOException {
         if (Files.isRegularFile(file)) {
             String text = Files.readString(file, StandardCharsets.UTF_8).strip();
@@ -40,13 +40,13 @@ public final class Token {
         try {
             Files.setPosixFilePermissions(tmp, PosixFilePermissions.fromString("rw-------"));
         } catch (UnsupportedOperationException ignored) {
-            // не POSIX (Windows): права по умолчанию каталога
+            // Non-POSIX (Windows): use the directory's default permissions.
         }
         Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         return new Token(text);
     }
 
-    /** Заголовок {@code Authorization: Bearer <токен>}; сравнение за постоянное время. */
+    /** {@code Authorization: Bearer <token>} header; constant-time comparison. */
     public boolean accepts(String header) {
         if (header == null || !header.startsWith("Bearer ")) return false;
         byte[] given = header.substring("Bearer ".length()).strip().getBytes(StandardCharsets.UTF_8);

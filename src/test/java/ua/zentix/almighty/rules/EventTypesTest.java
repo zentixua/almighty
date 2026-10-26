@@ -11,7 +11,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/** Список событий по данным сканирования: класс без предка ({@code module-info} в jar мода) не роняет его сборку. */
+/** Event list from scan data: a class without a parent ({@code module-info} in a mod jar) does not crash collection. */
 class EventTypesTest {
     private static ModFileScanData.ClassData data(String name, String parent) {
         return new ModFileScanData.ClassData(Type.getObjectType(name), parent == null ? null : Type.getObjectType(parent), Set.of());

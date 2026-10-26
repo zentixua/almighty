@@ -8,7 +8,7 @@ import com.google.gson.JsonPrimitive;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Параметры вызова: чтение с проверкой, ошибка — {@link RpcException#badRequest} с именем параметра. */
+/** Call parameters: validated reads; errors use {@link RpcException#badRequest} with the parameter name. */
 public final class Args {
     private final JsonObject json;
 
@@ -66,7 +66,7 @@ public final class Args {
         return p.getAsBoolean();
     }
 
-    /** Массив из {@code count} целых ({@code [x, y, z]}, {@code [x, z]}). */
+    /** Array of {@code count} integers ({@code [x, y, z]}, {@code [x, z]}). */
     public int[] ints(String name, int count) throws RpcException {
         if (!has(name)) throw RpcException.badRequest("Missing parameter " + name);
         return ints(name, json.get(name), count);
@@ -99,7 +99,7 @@ public final class Args {
         return json.getAsJsonObject(name);
     }
 
-    /** Список строк; одна строка — список из неё. */
+    /** List of strings; a single string becomes a one-element list. */
     public List<String> strings(String name) throws RpcException {
         if (!has(name)) throw RpcException.badRequest("Missing parameter " + name);
         JsonElement e = json.get(name);

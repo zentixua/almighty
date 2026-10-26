@@ -56,9 +56,9 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Шаги программы бота: то, что делает игрок клавиатурой и мышью (держать и отпускать клавиши, щёлкать, смотреть,
- * хотбар, меню, чат, табличка, возрождение, полёт), ожидание в тиках и дойти до точки. Разбор — в потоке моста
- * (только проверка), выполнение — в потоке сервера, по тикам бота.
+ * Bot program steps: keyboard and mouse actions (hold and release keys, click, look, hotbar, menu, chat, sign,
+ * respawn, fly), waiting in ticks and walking to a point. Parse on the bridge thread (validation only);
+ * execute on the server thread, on bot ticks.
  */
 final class Steps {
     static final int MAX_STEPS = 256;
@@ -66,12 +66,12 @@ final class Steps {
 
     private Steps() {}
 
-    /** Шаг: тик за тиком, пока не кончится. Ошибка — {@link Failed}: программа на ней останавливается. */
+    /** A step runs tick by tick until finished. Errors use {@link Failed} and stop the program. */
     interface Step {
-        /** Один тик; true — шаг кончился, итог — в {@code out}. */
+        /** One tick; true means the step ended, with its result in {@code out}. */
         boolean tick(Bot bot, ServerPlayer p, JsonObject out);
 
-        /** Программу сняли посреди шага: отпустить то, что шаг держит сам. */
+        /** Program removed mid-step: release what the step holds itself. */
         default void cancel(Bot bot, ServerPlayer p) {}
     }
 
@@ -195,7 +195,7 @@ final class Steps {
         return out;
     }
 
-    /** Текст, который сервер примет от клиента: без § и управляющих символов (иначе он отключает игрока). */
+    /** Text the server accepts from a client: no section sign or control characters (otherwise it disconnects the player). */
     private static String text(String s, int max, String name) throws RpcException {
         if (s.length() > max) throw RpcException.badRequest(name + ": at most " + max + " characters");
         for (int i = 0; i < s.length(); i++) {
@@ -204,7 +204,7 @@ final class Steps {
         return s;
     }
 
-    /** Повернуть голову к точке (yaw — по часовой, если смотреть сверху; pitch — вниз положительный). */
+    /** Turn the head toward a point (yaw clockwise from above; pitch positive downward). */
     static void lookAt(ServerPlayer p, Vec3 at) {
         Vec3 d = at.subtract(p.getEyePosition());
         double horizontal = Math.sqrt(d.x * d.x + d.z * d.z);
@@ -218,7 +218,7 @@ final class Steps {
         p.setYHeadRot(p.getYRot());
     }
 
-    /** Куда смотреть: точка ([x, y, z]; целые — центр блока) или сущность (UUID или имя игрока). */
+    /** Look target: a point ([x, y, z]; integers select the block center) or an entity (UUID or player name). */
     record Target(Vec3 point, String entity) {
         static Target parse(Args a, String name) throws RpcException {
             JsonElement e = a.raw().get(name);
@@ -272,7 +272,7 @@ final class Steps {
         }
     }
 
-    /** Держать клавиши: без срока — пока не отпустят, с {@code ticks} — столько тиков (каждый новый шаг продлевает). */
+    /** Hold keys indefinitely until released, or for {@code ticks} ticks (each new step extends the hold). */
     private record Hold(Set<Controls.Key> keys, int ticks) implements Step {
         @Override
         public boolean tick(Bot bot, ServerPlayer p, JsonObject out) {
@@ -283,7 +283,7 @@ final class Steps {
         }
     }
 
-    /** Клавиша транспорта мода по имени в настройках управления (высадка и ускоритель самолёта IA). */
+    /** Mod vehicle key by its name in control settings (IA aircraft dismount and boost). */
     private record Press(String key) implements Step {
         @Override
         public boolean tick(Bot bot, ServerPlayer p, JsonObject out) {
@@ -295,14 +295,14 @@ final class Steps {
     }
 
     /**
-     * Пакет мода от клиента — то, что клиент мода шлёт со своим вводом (рули, кнопки, меню мода): id пакета и его байты
-     * после id (base64), как они идут по сети. Разбор — кодеком пакета (как у сетевого слоя: реестры сервера,
-     * соединение NeoForge), обработка — обычным обработчиком мода, игрок — бот. Бот шлёт только то, что мог бы послать
-     * клиент: пакет, который мод принимает от клиента, не больше предела ванили. Байты — по исходникам мода или его
-     * памятке.
+     * A client mod packet, as sent by the mod client with its input (controls, buttons, mod menus): packet id and
+     * bytes after the id (base64), as on the wire. Parse with the packet codec (as the network layer does: server
+     * registries, NeoForge connection); handle with the normal mod handler, with the bot as player. The bot sends
+     * only what a client could send: a packet accepted from clients by the mod, within the vanilla size limit.
+     * Bytes come from mod sources or its note.
      */
     private record Payload(ResourceLocation id, byte[] data) implements Step {
-        /** Предел пакета от клиента у ванили ({@code ServerboundCustomPayloadPacket}). */
+        /** Vanilla client packet size limit ({@code ServerboundCustomPayloadPacket}). */
         private static final int MAX_BYTES = 32767;
 
         static Payload parse(Args a) throws RpcException {
@@ -331,13 +331,13 @@ final class Steps {
                 packet = ServerboundCustomPayloadPacket.STREAM_CODEC.decode(buf);
                 left = buf.readableBytes();
             } catch (Exception | StackOverflowError | LinkageError e) {
-                // у клиента это ловит netty и отключает его; в тике сервера ошибка кодека уронила бы сервер
+                // Netty catches this for a client and disconnects it; in the server tick a codec error would crash the server.
                 throw new Failed("packet " + id + " failed to decode: " + e);
             } finally {
                 buf.release();
             }
             if (packet.payload() instanceof DiscardedPayload) throw new Failed("no client packet " + id + " among the server's mods");
-            // сетевой слой отключил бы клиента за пакет длиннее, чем прочёл кодек
+            // The network layer would disconnect a client for a packet longer than the codec consumed.
             if (left > 0) throw new Failed("packet " + id + ": extra bytes after decoding: " + left);
             bot.send(packet);
             out.addProperty("bytes", data.length);
@@ -422,10 +422,10 @@ final class Steps {
     }
 
     /**
-     * Чат и команды — пакетами, как у клиента. Подписать сообщение бот не может (ключа Mojang у него нет): сервер с
-     * {@code enforce-secure-profile} отказал бы ему в чате и в командах с подписываемым текстом ({@code /msg}, {@code /me}),
-     * а клиенты такого сервера неподписанное сообщение игрока прячут. Тогда — как текст командного блока: событие чата
-     * NeoForge и рассылка «маскированным» сообщением, команда — от источника бота без подписи.
+     * Chat and commands use packets, like a client. A bot cannot sign messages (it has no Mojang key): a server with
+     * {@code enforce-secure-profile} would reject chat and commands with signable text ({@code /msg}, {@code /me}),
+     * and clients of that server hide unsigned player messages. Then use the command-block text path: NeoForge chat
+     * event and broadcast as a "disguised" message; commands use the bot's source without a signature.
      */
     private record Chat(String text) implements Step {
         @Override
@@ -477,8 +477,9 @@ final class Steps {
     }
 
     /**
-     * Дойти до точки по прямой: голова к цели, вперёд (и бег), прыжок, когда упёрся в блок на земле, в воде — вверх.
-     * Обходить препятствия бот не умеет: путь выбирает ведущий. Не ближе на 0,1 блока за 60 тиков — застрял.
+     * Walk straight to a point: face the target, move forward (and sprint), jump against a block when grounded,
+     * move upward in water. Bots cannot navigate around obstacles: the GM chooses the path.
+     * Less than 0.1 blocks closer in 60 ticks means stuck.
      */
     private static final class WalkTo implements Step {
         private final double x, z, within;
@@ -542,7 +543,7 @@ final class Steps {
         }
     }
 
-    /** Предмет для итога шага: id и число; пусто — null. */
+    /** Item for a step result: id and count; null if empty. */
     static JsonElement item(ItemStack stack) {
         if (stack.isEmpty()) return com.google.gson.JsonNull.INSTANCE;
         JsonObject o = new JsonObject();

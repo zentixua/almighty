@@ -28,21 +28,21 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 
 /**
- * Ведущий на одном запуске сервера: лента, очередь работ, чанки, мост. Живёт от {@code ServerStartedEvent} до
- * {@code ServerStoppedEvent}; в одиночной игре каждый мир получает свой.
+ * The game master for one server run: feed, job queue, chunks and bridge. Lives from {@code ServerStartedEvent} to
+ * {@code ServerStoppedEvent}; each singleplayer world gets its own instance.
  */
 public final class GmServer {
     private static final Logger LOG = LogUtils.getLogger();
     private static volatile GmServer current;
 
-    /** Работы в GameTest меряют время своими часами: тик идёт без пауз, настенное время там не годится. */
+    /** GameTest jobs measure time with their own clock: ticks run without pauses, so wall-clock time is unsuitable. */
     public static LongSupplier clock = System::nanoTime;
 
     private final MinecraftServer server;
     private final Feed feed = new Feed();
     private final Jobs jobs;
     private final Areas areas;
-    /** Общее для всех скриптов и правил до остановки сервера (переменная {@code state}); только поток сервера. */
+    /** Shared by all scripts and rules until server shutdown (the {@code state} variable); server thread only. */
     private final Map<String, Object> state = new LinkedHashMap<>();
     private final Rules rules;
     private final Bots bots;
@@ -58,7 +58,7 @@ public final class GmServer {
         this.bots = new Bots(this);
     }
 
-    /** Ведущий этого сервера; null — сервер ещё не запустился или уже остановлен. */
+    /** This server's game master; null if the server has not started yet or has already stopped. */
     public static GmServer of(MinecraftServer server) {
         GmServer gm = current;
         return gm != null && gm.server == server ? gm : null;
@@ -82,7 +82,7 @@ public final class GmServer {
         return gm;
     }
 
-    /** Начало тика: пауза дольше {@code lag_ms} с прошлого тика — событие {@code lag}. */
+    /** Tick start: a pause longer than {@code lag_ms} since the previous tick emits a {@code lag} event. */
     void tickStart() {
         long now = System.nanoTime();
         if (lastTick != 0) {
@@ -96,7 +96,7 @@ public final class GmServer {
         lastTick = now;
     }
 
-    /** Конец тика: боты (там, где сервер тикает соединения игроков), работы под бюджетом, затем сроки и отпуск чанков. */
+    /** Tick end: bots (where the server ticks player connections), jobs within budget, then chunk expiry and release. */
     void tickEnd() {
         bots.tick();
         jobs.tick(GmConfig.workNanosPerTick());
@@ -104,8 +104,8 @@ public final class GmServer {
     }
 
     /**
-     * Остановка: мост закрыт, боты вышли (сохранились как игроки), правила сняты с шины, работы отменены, тикеты сняты
-     * сразу (до {@code StopDrain} Incoming).
+     * Shutdown: close the bridge, log out bots (saved as players), remove rules from the bus, cancel jobs and remove
+     * all tickets immediately (before Incoming's {@code StopDrain}).
      */
     void stop() {
         if (bridge != null) bridge.stop();
@@ -144,12 +144,12 @@ public final class GmServer {
         return bots;
     }
 
-    /** Переменная {@code state} скриптов и правил. */
+    /** The {@code state} variable for scripts and rules. */
     public Map<String, Object> state() {
         return state;
     }
 
-    /** Вызов в потоке сервера между тиками; ошибка — исключением в будущем. */
+    /** Call on the server thread between ticks; errors complete the future exceptionally. */
     public <T> CompletableFuture<T> onMain(MainCall<T> call) {
         CompletableFuture<T> out = new CompletableFuture<>();
         server.execute(() -> {
@@ -163,17 +163,17 @@ public final class GmServer {
     }
 
     /**
-     * Поставить работу из потока сервера и ждать её конца не дольше {@code waitSeconds}; не кончилась — описание с
-     * текущим состоянием (работа идёт дальше, её видно в {@code jobs}).
+     * Submit a job from the server thread and wait up to {@code waitSeconds} for completion; if unfinished, return
+     * its current description (the job continues and remains visible in {@code jobs}).
      */
     public CompletableFuture<JsonElement> submit(MainCall<? extends Job> factory, int waitSeconds) {
         return onMain(() -> jobs.submit(factory.run())).thenCompose(job -> await(job, waitSeconds));
     }
 
-    /** Ждать конца работы не дольше {@code waitSeconds}. */
+    /** Wait up to {@code waitSeconds} for job completion. */
     public CompletableFuture<JsonElement> await(Job job, int waitSeconds) {
         CompletableFuture<JsonElement> out = new CompletableFuture<>();
-        // копия: описание в будущем работы общее для всех ждущих, а снимок дописывает в ответ картинку
+        // Copy: the job future's description is shared by all waiters, while a snapshot appends an image to the response.
         job.done().thenAccept(d -> out.complete(d.deepCopy()));
         if (!job.done().isDone()) {
             CompletableFuture.delayedExecutor(waitSeconds, TimeUnit.SECONDS).execute(() -> {

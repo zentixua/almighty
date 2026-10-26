@@ -14,9 +14,9 @@ import ua.zentix.almighty.GmConfig;
 import ua.zentix.almighty.GmServer;
 
 /**
- * Личный канал игрока к ведущему: {@code /gm <текст>} может любой игрок. Текст уходит в ленту событием {@code gm}
- * (игрок, где он, текст), другим игрокам и операторам не показывается; самому игроку — серая строка «→ ведущий: …».
- * Ответить лично ведущий может методом {@code say} с {@code to}.
+ * A player's private channel to the game master: any player can use {@code /gm <text>}. The text enters the feed
+ * as a {@code gm} event (player, location, text), hidden from other players and operators; the sender sees a gray
+ * line "-> game master: ...". The game master can reply privately with {@code say} and {@code to}.
  */
 public final class GmCommand {
     static final String NAME = "gm";
@@ -43,7 +43,7 @@ public final class GmCommand {
         JsonObject d = FeedListeners.where(player);
         d.addProperty("text", text);
         gm.feed().add(NAME, d);
-        // false: только самому игроку, операторам не рассылается
+        // false: only the sender, never broadcast to operators.
         source.sendSuccess(() -> Component.literal("→ " + GmConfig.NAME.get() + ": " + text)
                 .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC), false);
         return 1;

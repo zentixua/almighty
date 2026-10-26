@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** План постройки без мира: блок — строка как есть. */
+/** World-independent build plan: blocks remain raw strings. */
 class BuildPlanTest {
     private static BuildPlan<String> plan(String json) throws RpcException {
         return plan(json, 1_000_000);
@@ -25,12 +25,12 @@ class BuildPlanTest {
     private static BuildPlan<String> plan(String json, long max) throws RpcException {
         JsonArray ops = JsonParser.parseString(json).getAsJsonArray();
         return BuildPlan.parse(ops, s -> {
-            if (s.contains("bad")) throw RpcException.badRequest("нет блока " + s);
+            if (s.contains("bad")) throw RpcException.badRequest("unknown block " + s);
             return s;
         }, -64, 319, max);
     }
 
-    /** Все места: "x,y,z" → блок (+ "!" у keep). */
+    /** All positions: "x,y,z" to block (+ "!" for keep). */
     private static Map<String, String> drain(BuildPlan<String> plan, List<String> order) {
         Map<String, String> out = new HashMap<>();
         BuildPlan.Placement<String> p = new BuildPlan.Placement<>();
@@ -64,7 +64,7 @@ class BuildPlanTest {
         BuildPlan<String> outline = plan("[{\"op\":\"fill\",\"from\":[0,0,0],\"to\":[4,4,4],\"block\":\"glass\",\"mode\":\"outline\"}]");
         assertEquals(98, outline.size());
         Map<String, String> shell = drain(outline, new ArrayList<>());
-        assertEquals(98, shell.size(), "каждое место оболочки — один раз");
+        assertEquals(98, shell.size(), "each shell position exactly once");
         assertFalse(shell.containsKey("2,2,2"));
         assertFalse(shell.containsKey("1,1,1"));
         assertTrue(shell.containsKey("4,2,2") && shell.containsKey("2,4,2") && shell.containsKey("2,2,0"));
@@ -75,7 +75,7 @@ class BuildPlanTest {
 
     @Test
     void thinOutlineHasNoInterior() throws Exception {
-        // стенка в один блок толщиной — вся оболочка
+        // A one-block-thick wall is entirely shell.
         assertEquals(15, plan("[{\"op\":\"fill\",\"from\":[0,0,0],\"to\":[4,2,0],\"block\":\"s\",\"mode\":\"outline\"}]").size());
         assertEquals(15, drain(plan("[{\"op\":\"fill\",\"from\":[0,0,0],\"to\":[4,2,0],\"block\":\"s\",\"mode\":\"outline\"}]"), new ArrayList<>()).size());
         assertEquals(3, drain(plan("[{\"op\":\"fill\",\"from\":[0,0,0],\"to\":[0,2,0],\"block\":\"s\",\"mode\":\"outline\"}]"), new ArrayList<>()).size());
@@ -93,7 +93,7 @@ class BuildPlanTest {
         assertEquals("stone", m.get("12,0,20"));
         assertEquals("dirt", m.get("10,0,21"));
         assertEquals("dirt", m.get("12,0,21"));
-        assertEquals("stone", m.get("12,1,21"), "второй слой — на блок выше, его y из blocks не важен");
+        assertEquals("stone", m.get("12,1,21"), "second layer is one block higher; its y from blocks is irrelevant");
         assertFalse(m.containsKey("11,0,20"));
         assertArrayEquals(new int[] {10, 0, 20, 12, 1, 21}, plan.bounds());
     }
@@ -114,9 +114,9 @@ class BuildPlanTest {
         assertTrue(e.getMessage().startsWith("ops[1]"), e.getMessage());
         assertThrows(RpcException.class, () -> plan("[{\"op\":\"spiral\"}]"));
         assertThrows(RpcException.class, () -> plan("[{\"op\":\"fill\",\"from\":[0,0,0],\"to\":[1,1,1],\"block\":\"a\",\"mode\":\"weird\"}]"));
-        assertThrows(RpcException.class, () -> plan("[{\"op\":\"set\",\"pos\":[0,320,0],\"block\":\"a\"}]"), "выше мира");
-        assertThrows(RpcException.class, () -> plan("[{\"op\":\"set\",\"pos\":[0.5,3,0],\"block\":\"a\"}]"), "дробные координаты");
-        assertThrows(RpcException.class, () -> plan("[{\"op\":\"fill\",\"from\":[0,0,0],\"to\":[9,9,9],\"block\":\"a\"}]", 999), "больше предела");
+        assertThrows(RpcException.class, () -> plan("[{\"op\":\"set\",\"pos\":[0,320,0],\"block\":\"a\"}]"), "above world");
+        assertThrows(RpcException.class, () -> plan("[{\"op\":\"set\",\"pos\":[0.5,3,0],\"block\":\"a\"}]"), "fractional coordinates");
+        assertThrows(RpcException.class, () -> plan("[{\"op\":\"fill\",\"from\":[0,0,0],\"to\":[9,9,9],\"block\":\"a\"}]", 999), "above limit");
         assertThrows(RpcException.class, () -> plan("[]"));
         assertThrows(RpcException.class, () -> plan("[{\"op\":\"layers\",\"origin\":[0,0,0],\"palette\":{\"ab\":\"x\"},\"layers\":[]}]"));
     }

@@ -39,10 +39,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import static ua.zentix.almighty.gametest.GmGameTests.check;
 
 /**
- * Ведущий и корабли Sable (Create Aeronautics): блоки собранного корабля живут на его участке («плоте») далеко от мира
- * (x ≈ 20,48 млн блоков), чанки участка ведёт Sable, а не ванильная загрузка. Ванильные тикеты на участке (постройка
- * ведущего по его координатам) запускают там генерацию чанка — NPE в {@code ChunkMap.acquireGeneration}, сервер
- * встаёт.
+ * The GM and Sable (Create Aeronautics) ships: assembled ship blocks live on a plot far from the world
+ * (x approximately 20.48 million blocks); Sable manages plot chunks, outside vanilla loading. Vanilla tickets
+ * on a plot (a GM build at plot coordinates) start chunk generation there, causing an NPE in
+ * {@code ChunkMap.acquireGeneration} and stopping the server.
  */
 @GameTestHolder(Almighty.ID)
 @PrefixGameTestTemplate(false)
@@ -50,14 +50,14 @@ public final class GmSableGameTests {
     private GmSableGameTests() {}
 
     /**
-     * Аренда на участке корабля (чанк с его блоками и кольцо соседей) тикетов не ставит: Sable не пускает тикеты на
-     * участки ({@code addRegionTicket}), а держатели чанков участка ставит в карту чанков ванили и убирает оттуда сам.
-     * Чанк корабля аренда видит готовым (его отдаёт Sable), пустых соседей на участке не дождётся — постройка там
-     * отказывает сразу, а не через 2 минуты ожидания. Отпуск аренды при живом корабле держатель его чанка не трогает:
-     * снятие тикета, которого нет, пересчитало бы уровень чанка без тикетов (31 → 45), и ваниль выгрузила бы чанк
-     * корабля. Потом корабль убирается при стоящей аренде — Sable снимает держатель его чанка, как при пробоине или
-     * ремонте, — и рядом берётся вторая аренда: с ванильными тикетами там шла бы генерация, и задача генерации не нашла
-     * бы держатель соседа (NPE в {@code ChunkMap.acquireGeneration}).
+     * A lease on a ship plot (its block chunk and neighbor ring) adds no tickets: Sable rejects plot tickets
+     * ({@code addRegionTicket}) and inserts/removes plot chunk holders in vanilla's chunk map itself.
+     * The lease sees the ship chunk ready (provided by Sable), but cannot await empty plot neighbors: building there
+     * refuses immediately, instead of after 2 minutes. Releasing a lease on a live ship leaves its chunk holder
+     * untouched: removing a nonexistent ticket would recalculate the ticketless chunk level (31 to 45), causing
+     * vanilla to unload the ship chunk. Then remove the ship with an active lease: Sable removes its holder as for
+     * a hole or repair; acquire another lease nearby. Vanilla tickets would cause generation there, and the
+     * generation task would fail to find the neighbor holder (NPE in {@code ChunkMap.acquireGeneration}).
      */
     @GameTest(template = "floor", batch = "gm_sable", timeoutTicks = 200, skyAccess = true)
     public static void leaseOnShipPlotLoadsNothing(GameTestHelper h) {
@@ -79,55 +79,55 @@ public final class GmSableGameTests {
         h.startSequence()
                 .thenWaitUntil(() -> {
                     for (SubLevel s : container.getAllSubLevels()) if (!before.contains(s)) ship.set(s);
-                    if (ship.get() == null) throw new GameTestAssertException("корабль не собрался");
+                    if (ship.get() == null) throw new GameTestAssertException("ship did not assemble");
                 })
                 .thenExecute(() -> {
                     LevelPlot plot = ship.get().getPlot();
                     holder.set(plot.getLoadedChunks().stream().findFirst()
-                            .orElseThrow(() -> new GameTestAssertException("у корабля нет чанков на участке")));
+                            .orElseThrow(() -> new GameTestAssertException("ship has no plot chunks")));
                     ChunkPos c = holder.get().getPos();
                     chunk.set(c);
                     level0[0] = holder.get().getTicketLevel();
-                    check(container.inBounds(c) && c.getMinBlockX() > 20_000_000, "чанк корабля не на участке: " + c);
+                    check(container.inBounds(c) && c.getMinBlockX() > 20_000_000, "ship chunk is not on the plot: " + c);
                     lease.set(acquire(gm, level, c, 0));
-                    check(GmTickets.count(level) == tickets, "аренда поставила тикеты на участке корабля: " + (GmTickets.count(level) - tickets));
+                    check(GmTickets.count(level) == tickets, "lease added tickets on ship plot: " + (GmTickets.count(level) - tickets));
                     JsonObject lease1 = lease.get().describe();
-                    check(lease1.get("refused").getAsInt() == lease.get().chunks() && lease1.has("refusal"), "отказанные чанки аренды: " + lease1);
+                    check(lease1.get("refused").getAsInt() == lease.get().chunks() && lease1.has("refusal"), "refused lease chunks: " + lease1);
                     build.set(GmGameTests.call(h, "build", GmGameTests.params("{\"ops\":[{\"op\":\"set\",\"pos\":[%d,100,%d],\"block\":\"minecraft:stone\"}],\"wait\":50}",
                             c.getMinBlockX(), c.getMinBlockZ())));
                 })
                 .thenExecuteAfter(5, () -> {
-                    check(lease.get().ready() >= 1, "чанк корабля аренда не видит: " + lease.get().describe());
-                    check(build.get().isDone(), "постройка на участке корабля ждёт чанки, которых не будет");
+                    check(lease.get().ready() >= 1, "lease cannot see ship chunk: " + lease.get().describe());
+                    check(build.get().isDone(), "ship-plot build awaits chunks that will never arrive");
                     JsonObject job = build.get().join().getAsJsonObject();
                     check(job.get("state").getAsString().equals("failed") && job.get("error").getAsString().contains("refuse loading"),
-                            "постройка на участке корабля: " + job);
+                            "ship-plot build: " + job);
                     lease.get().release();
                 })
                 .thenExecuteAfter(10, () -> {
                     PlotChunkHolder now = container.getChunkHolder(chunk.get());
                     check(now == holder.get() && now.getTicketLevel() == level0[0],
-                            "отпуск аренды тронул чанк живого корабля: уровень " + level0[0] + " → " + (now == null ? "нет держателя" : now.getTicketLevel()));
+                            "lease release affected a live ship chunk: level " + level0[0] + " → " + (now == null ? "missing holder" : now.getTicketLevel()));
                     lease.set(acquire(gm, level, chunk.get(), 0));
                 })
                 .thenExecuteAfter(5, () -> container.removeSubLevel(ship.get(), SubLevelRemovalReason.REMOVED))
-                // ещё аренда рядом: новые чанки в радиусе генерации (8 чанков) от убранного держателя
+                // Another nearby lease: new chunks within generation radius (8 chunks) of the removed holder.
                 .thenExecuteAfter(5, () -> next.set(acquire(gm, level, chunk.get(), 48)))
-                // генерация на участке уронила бы сервер в следующих тиках
+                // Generation on the plot would crash the server in subsequent ticks.
                 .thenIdle(40)
                 .thenExecute(() -> {
                     int left = GmTickets.count(level) - tickets;
                     lease.get().release();
                     next.get().release();
-                    check(left == 0, "аренда поставила тикеты на участке корабля: " + left);
+                    check(left == 0, "lease added tickets on ship plot: " + left);
                 })
                 .thenSucceed();
     }
 
     /**
-     * Корабль для автопилота ({@code ships}, {@code gm.ship}): собранный в воздухе корабль с бочкой падает. Имя, место
-     * и рамки — как у Sable; скорость — в блоках в секунду (сходится с ходом за тик × 20), вращения нет; бочка на
-     * участке находится по типу, участок ↔ мир переводятся туда и обратно.
+     * Autopilot ship ({@code ships}, {@code gm.ship}): a ship assembled in midair with a barrel falls. Name,
+     * position and bounds match Sable; velocity is in blocks per second (matches per-tick displacement × 20), without
+     * rotation; find the barrel on the plot by type; convert plot to world and back.
      */
     @GameTest(template = "floor", batch = "gm_sable_ships", timeoutTicks = 200, skyAccess = true)
     public static void shipsForAutopilot(GameTestHelper h) {
@@ -153,32 +153,32 @@ public final class GmSableGameTests {
                         }
                     }
                     ship.set(Ships.find(level.getServer(), "GmTestShip"));
-                    if (ship.get() == null) throw new GameTestAssertException("корабль не собрался: " + Ships.all(level).size());
-                    // рамку Sable считает в своём тике
-                    if (ship.get().box().getSize() == 0) throw new GameTestAssertException("у корабля ещё нет рамки");
+                    if (ship.get() == null) throw new GameTestAssertException("ship did not assemble: " + Ships.all(level).size());
+                    // Sable computes bounds in its tick.
+                    if (ship.get().box().getSize() == 0) throw new GameTestAssertException("ship has no bounds yet");
                 })
                 .thenExecute(() -> {
                     JsonArray listed = GmGameTests.call(h, "ships", GmGameTests.params("{\"name\":\"GmTestShip\"}")).join().getAsJsonArray();
-                    check(listed.size() == 1, "ships по имени: " + listed);
+                    check(listed.size() == 1, "ships by name: " + listed);
                     JsonObject d = listed.get(0).getAsJsonObject();
                     check(d.get("uuid").getAsString().equals(ship.get().uuid().toString()) && d.has("orientation") && d.has("velocity")
-                            && d.has("angular_velocity") && d.getAsJsonObject("plot").has("from"), "описание корабля: " + d);
+                            && d.has("angular_velocity") && d.getAsJsonObject("plot").has("from"), "ship description: " + d);
                     Vec3 w = ship.get().pos();
-                    check(w.distanceTo(Vec3.atCenterOf(barrel)) < 4, "корабль не там, где собран: " + w + ", бочка " + barrel);
-                    check(ship.get().box().inflate(0.5).contains(Vec3.atCenterOf(barrel)), "рамка корабля без бочки: " + ship.get().box());
+                    check(w.distanceTo(Vec3.atCenterOf(barrel)) < 4, "ship is not at its assembly position: " + w + ", barrel " + barrel);
+                    check(ship.get().box().inflate(0.5).contains(Vec3.atCenterOf(barrel)), "ship bounds exclude barrel: " + ship.get().box());
                     List<BlockEntity> found = ship.get().blockEntities("minecraft:barrel");
-                    check(found.size() == 1, "бочек на участке: " + found.size() + ", участок " + ship.get().plotBox());
+                    check(found.size() == 1, "barrels on plot: " + found.size() + ", plot " + ship.get().plotBox());
                     BlockPos plot = found.get(0).getBlockPos();
-                    check(plot.getX() > 20_000_000, "бочка не на участке: " + plot);
+                    check(plot.getX() > 20_000_000, "barrel is not on plot: " + plot);
                     Vec3 inWorld = ship.get().toWorld(Vec3.atCenterOf(plot));
-                    check(inWorld.distanceTo(Vec3.atCenterOf(barrel)) < 1.5, "бочка участка в мире: " + inWorld + ", собрана в " + barrel);
-                    check(ship.get().toPlot(inWorld).distanceTo(Vec3.atCenterOf(plot)) < 1e-6, "участок → мир → участок");
-                    check(ship.get().blockEntities("minecraft:chest").isEmpty(), "сундук на корабле без сундука");
-                    // скрипт видит корабль через gm.ship: внутренние классы Sable Groovy не грузит (подписи с ClientLevel)
+                    check(inWorld.distanceTo(Vec3.atCenterOf(barrel)) < 1.5, "plot barrel in world: " + inWorld + ", assembled at " + barrel);
+                    check(ship.get().toPlot(inWorld).distanceTo(Vec3.atCenterOf(plot)) < 1e-6, "plot → world → plot");
+                    check(ship.get().blockEntities("minecraft:chest").isEmpty(), "chest on a ship without a chest");
+                    // The script accesses ships through gm.ship: Groovy cannot load Sable internals (signatures with ClientLevel).
                     JsonObject r = GmGameTests.now(GmGameTests.call(h, "script", GmGameTests.params("{\"code\":"
                             + "\"def s = gm.ship('GmTestShip'); return [s.name(), s.blockEntities('minecraft:barrel').size(), s.velocity().y < 1]\"}")))
                             .getAsJsonObject();
-                    check(r.get("ok").getAsBoolean() && r.get("value").toString().equals("[\"GmTestShip\",1,true]"), "gm.ship из скрипта: " + r);
+                    check(r.get("ok").getAsBoolean() && r.get("value").toString().equals("[\"GmTestShip\",1,true]"), "gm.ship from script: " + r);
                 });
         for (int i = 0; i < 8; i++) {
             seq = seq.thenExecuteAfter(1, () -> {
@@ -191,24 +191,24 @@ public final class GmSableGameTests {
             Vec3 mean = Vec3.ZERO;
             for (Vec3 v : vel.subList(1, vel.size() - 1)) mean = mean.add(v);
             mean = mean.scale(1.0 / (vel.size() - 2));
-            check(moved.y < -1, "корабль не падает: ход " + moved + " блоков/с, места " + pos);
-            check(Math.abs(mean.y - moved.y) < 0.3 * Math.abs(moved.y) + 0.2, "скорость " + mean + " — не блоков в секунду: ход " + moved + ", скорости " + vel);
-            check(ship.get().angularVelocity().length() < 0.2, "падение без вращения: ω " + ship.get().angularVelocity());
-            // закрутить вокруг вертикали: скорость Sable берёт точку участка, а не мира (иначе ошибка — ω × 2·10^7 блоков)
+            check(moved.y < -1, "ship is not falling: displacement " + moved + " blocks/s, positions " + pos);
+            check(Math.abs(mean.y - moved.y) < 0.3 * Math.abs(moved.y) + 0.2, "velocity " + mean + " is not in blocks per second: displacement " + moved + ", velocities " + vel);
+            check(ship.get().angularVelocity().length() < 0.2, "fall without rotation: ω " + ship.get().angularVelocity());
+            // Spin around the vertical axis: Sable velocity takes a plot point, not a world point (otherwise error is ω × 2·10^7 blocks).
             yaw.set(yaw(ship.get()));
             RigidBodyHandle.of(sub.get()).addLinearAndAngularVelocity(new Vector3d(), new Vector3d(0, 1, 0));
         }).thenExecuteAfter(5, () -> {
             RigidBodyHandle body = RigidBodyHandle.of(sub.get());
             Vec3 lin = vec(body.getLinearVelocity()), omega = vec(body.getAngularVelocity());
-            check(omega.y > 0.5, "корабль не закрутился: ω Sable " + omega);
+            check(omega.y > 0.5, "ship did not spin: Sable ω " + omega);
             double turned = Math.abs(Math.toDegrees(yaw(ship.get()) - yaw.get()));
-            check(turned > 5, "корабль не повернулся: " + turned + "°");
-            check(ship.get().velocity().distanceTo(lin) < 1e-3, "скорость вращающегося корабля " + ship.get().velocity() + ", у Sable " + lin);
-            check(ship.get().angularVelocity().distanceTo(omega) < 1e-3, "угловая скорость " + ship.get().angularVelocity() + ", у Sable " + omega);
+            check(turned > 5, "ship did not rotate: " + turned + "°");
+            check(ship.get().velocity().distanceTo(lin) < 1e-3, "spinning ship velocity " + ship.get().velocity() + ", Sable " + lin);
+            check(ship.get().angularVelocity().distanceTo(omega) < 1e-3, "angular velocity " + ship.get().angularVelocity() + ", Sable " + omega);
             Vec3 arm = new Vec3(2, 0, 1);
             Vec3 expected = lin.add(omega.cross(arm));
             check(ship.get().velocityAt(ship.get().pos().add(arm)).distanceTo(expected) < 1e-3,
-                    "скорость точки сбоку " + ship.get().velocityAt(ship.get().pos().add(arm)) + ", ждали " + expected);
+                    "velocity of side point " + ship.get().velocityAt(ship.get().pos().add(arm)) + ", expected " + expected);
         }).thenExecute(() -> {
             for (SubLevel s : new ArrayList<>(container.getAllSubLevels())) {
                 if (!before.contains(s)) container.removeSubLevel(s, SubLevelRemovalReason.REMOVED);
@@ -224,7 +224,7 @@ public final class GmSableGameTests {
         return new Vec3(v.x(), v.y(), v.z());
     }
 
-    /** Аренда на чанк {@code c}, сдвинутый на {@code dx} блоков по x. */
+    /** Lease for chunk {@code c}, shifted {@code dx} blocks along x. */
     private static Areas.Lease acquire(GmServer gm, ServerLevel level, ChunkPos c, int dx) {
         try {
             return gm.areas().acquire(level, "проверка", c.getMinBlockX() + dx, c.getMinBlockZ(), c.getMaxBlockX() + dx, c.getMaxBlockZ(), 0);

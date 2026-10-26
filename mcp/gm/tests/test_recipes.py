@@ -1,4 +1,4 @@
-"""Рецепты: python3 -m unittest discover -s mcp/gm/tests"""
+"""Recipes: python3 -m unittest discover -s mcp/gm/tests. Unicode strings below are recipe and substitution fixtures."""
 import os
 import shutil
 import sys
@@ -59,7 +59,7 @@ class RecipesTest(unittest.TestCase):
         self.assertEqual(b.calls[0], ("command", {"commands": ["weather clear 1200s"]}))
         b = FakeBridge({"command": [{"command": "x", "ok": False, "errors": ["Unknown"]}]})
         self.assertFalse(recipes.run(r, {}, b)["ok"])
-        # хук от падений: слова игрокам, падения сервера и дела владельца рецепт не делает
+        # Crash guard: recipes neither speak to players, crash the server, nor perform owner actions.
         for command in ("say привет", "stop", "op Steve"):
             path = self.write("bad", '---\nname: bad\ndescription: x\nkind: instant\nparams: {}\n---\n```steps\n'
                                      f'[{{"method": "command", "params": {{"commands": ["{command}"]}}}}]\n```\n')
@@ -89,7 +89,7 @@ class RecipesTest(unittest.TestCase):
         self.assertFalse(recipes.TYPES["text"]('${"x".execute()}'))
         with self.assertRaises(recipes.RecipeError):
             recipes.groovy("gm.emit('${t}')", {"t": "п'ять"})
-        with self.assertRaises(recipes.RecipeError):  # и код прямо в шаге
+        with self.assertRaises(recipes.RecipeError):  # Code directly in a step, too.
             recipes.substitute([{"method": "script", "params": {"code": "gm.emit('${t}')"}}], {"t": "п'ять"})
         self.assertEqual(recipes.substitute({"commands": ["say ${t}"]}, {"t": "п'ять"}), {"commands": ["say п'ять"]})
         path = self.write("ap", '---\nname: ap\ndescription: x\nkind: instant\nparams: {}\n---\n```groovy a\n1\n```\n'

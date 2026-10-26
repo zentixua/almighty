@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Шаблон для GameTest: плоская площадка с каменным полом (structure .nbt, MC 1.21.1).
-GameTest ставит шаблон на блок выше своей точки отсчёта: слой шаблона y = 0 — это y = 1 в координатах теста.
+"""GameTest template: a flat platform with a stone floor (structure .nbt, MC 1.21.1).
+GameTest places the template one block above its reference point: template layer y = 0 is y = 1 in test coordinates.
 
-  python3 scripts/gen_test_structures.py   → src/devtest/resources/data/almighty/structure/floor.nbt
+  python3 scripts/gen_test_structures.py   -> src/devtest/resources/data/almighty/structure/floor.nbt
 """
 import gzip
 import os
@@ -39,12 +39,12 @@ def _payload(tag, v):
 
 
 def structure(sx, sy, sz, floor_layers):
-    """floor_layers: список имён блоков снизу вверх (y = 0, 1, …); остальное — воздух."""
+    """floor_layers: block names from bottom to top (y = 0, 1, ...); everything else is air."""
     palette = ["minecraft:air"] + sorted(set(floor_layers))
     blocks = []
     for y in range(sy):
         if y >= len(floor_layers):
-            break  # воздух не пишем: GameTest сам очищает площадку перед тестом
+            break  # Do not write air: GameTest clears the platform before each test.
         state = palette.index(floor_layers[y])
         for x in range(sx):
             for z in range(sz):
@@ -68,5 +68,5 @@ def write(name, data):
     print(path, os.path.getsize(path))
 
 
-# площадка 64×64 с полом из камня — постройки, откат, карта и виды сбоку
+# 64×64 platform with a stone floor: building, undo, map and side views.
 write("floor", structure(64, 12, 64, ["minecraft:stone"]))

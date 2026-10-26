@@ -6,20 +6,20 @@
 #     "httpx>=0.27",
 # ]
 # ///
-"""Связь ИИ-агента (ведущего) с модом Almighty на сервере: MCP-сервер и командная строка.
+"""Connect an AI agent (game master) to the server's Almighty mod: MCP server and command line.
 
-Мод слушает HTTP на сервере (по умолчанию 127.0.0.1:25650, только POST /rpc с токеном), этот скрипт — мост к нему:
+The mod listens over HTTP on the server (default 127.0.0.1:25650, only POST /rpc with a token); this script bridges to it:
 
-  uv run mcp/almighty.py mcp           — MCP-сервер (stdio) для Claude Code:
-                                             claude mcp add almighty -- uv run /путь/mcp/almighty.py mcp
-  uv run mcp/almighty.py call status   — один вызов: метод и параметры JSON, ответ — JSON
-  uv run mcp/almighty.py call map '{"center": [0, 0], "size": 256}' --png карта.png
-  uv run mcp/almighty.py follow        — лента событий: строка JSON на событие (для Monitor);
-                                             --from-start — с начала кольца, иначе — с этой минуты
+  uv run mcp/almighty.py mcp           - MCP server (stdio) for Claude Code:
+                                             claude mcp add almighty -- uv run /path/mcp/almighty.py mcp
+  uv run mcp/almighty.py call status   - one call: method and JSON parameters, JSON response
+  uv run mcp/almighty.py call map '{"center": [0, 0], "size": 256}' --png map.png
+  uv run mcp/almighty.py follow        - event feed: one JSON line per event (for Monitor);
+                                             --from-start reads from the ring start, otherwise from this minute
 
-Адрес — ALMIGHTY_URL (по умолчанию http://127.0.0.1:25650), токен — ALMIGHTY_TOKEN или файл из
-ALMIGHTY_TOKEN_FILE (мод пишет его в config/almighty/token каталога сервера при первом запуске).
-Методы и их параметры — CLAUDE.md.
+Address: ALMIGHTY_URL (default http://127.0.0.1:25650); token: ALMIGHTY_TOKEN or the file in
+ALMIGHTY_TOKEN_FILE (the mod writes config/almighty/token in the server directory on first start).
+Methods and parameters: CLAUDE.md.
 """
 import argparse
 import base64
@@ -53,10 +53,10 @@ _client = None
 
 
 def rpc(method, params=None, timeout=None):
-    """Вызов метода мода; ошибка мода — GmError с его текстом. timeout — свой срок ответа в секундах."""
+    """Call a mod method; mod errors raise GmError with their message. timeout overrides the response deadline in seconds."""
     global _client
     if _client is None:
-        # мост ждёт ответа сервера до 60 с; прокси окружения к петле не нужен
+        # The bridge waits up to 60 s for the server response; loopback needs no environment proxy.
         _client = httpx.Client(timeout=70, trust_env=False, headers={"Authorization": "Bearer " + _token()})
     body = {"method": method, "params": {k: v for k, v in (params or {}).items() if v is not None}}
     try:
@@ -74,7 +74,7 @@ def rpc(method, params=None, timeout=None):
 
 
 def _split_image(result):
-    """Ответ снимка → (байты PNG или None, остальное описание)."""
+    """Snapshot response to (PNG bytes or None, remaining description)."""
     if isinstance(result, dict) and "png_base64" in result:
         rest = dict(result)
         png = base64.b64decode(rest.pop("png_base64"))
@@ -83,7 +83,7 @@ def _split_image(result):
 
 
 def _notes():
-    """Памятки модов и датапаков сервера — в конец инструкций MCP; сервер недоступен — строка, где их взять."""
+    """Append server mod and datapack notes to MCP instructions; if unavailable, add a line explaining where to get them."""
     try:
         notes = rpc("notes", timeout=5)
     except (GmError, OSError) as e:
@@ -97,7 +97,7 @@ def _notes():
 def serve_mcp():
     from mcp.server.fastmcp import FastMCP, Image
 
-    # строка INFO на каждый запрос httpx — шум в журнале MCP
+    # An INFO line for every httpx request clutters the MCP log.
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     mcp = FastMCP("almighty", instructions=(
@@ -119,7 +119,7 @@ def serve_mcp():
         text = json.dumps(rest, ensure_ascii=False, indent=1)
         return [Image(data=png, format="png"), text] if png else text
 
-    # Проверки здесь, а не в моде: мост назвал бы from/to вместо start/end, а лишний параметр просто пропустил бы.
+    # Validate here, not in the mod: the bridge would name from/to instead of start/end and silently ignore extra parameters.
     def _need(where, **given):
         missing = [k for k, v in given.items() if v is None]
         if missing:
@@ -439,7 +439,7 @@ def serve_mcp():
 
 
 def follow(from_start):
-    """Лента построчно; мост недоступен или сервер перезапущен — строка об этом, дальше ждать."""
+    """Feed as lines; if the bridge is unavailable or the server restarts, report it in a line and keep waiting."""
     after, boot, down = 0, None, False
     if not from_start:
         while True:

@@ -42,16 +42,17 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Значения скриптов и событий → JSON для ведущего, параметры JSON → значения Groovy. Игровое — коротко и так, чтобы
- * вернуть его в команду: позиция — {@code [x, y, z]}, блок — строкой как в {@code /setblock}, NBT — SNBT, сущность —
- * тип, имя, uuid и место. Событие — его свойства (методы {@code getX}/{@code isX}). Незнакомое — {@code toString()}.
- * Вложенность, длина списков и строк ограничены: ответ не разрастается от случайного большого объекта.
+ * Script and event values to JSON for the GM; JSON parameters to Groovy values. Game data is concise and reusable
+ * in commands: position as {@code [x, y, z]}, block as a {@code /setblock} string, NBT as SNBT, entity as type,
+ * name, uuid and position. Events expose their properties ({@code getX}/{@code isX} methods).
+ * Unknown values use {@code toString()}. Nesting, list and string lengths are bounded so an accidentally large
+ * object cannot inflate the response.
  */
 public final class Json {
     static final int MAX_DEPTH = 8;
     static final int MAX_ITEMS = 1000;
     static final int MAX_TEXT = 4000;
-    /** Свойства события раскрываются на столько уровней: сущность, позиция, список выпавших предметов. */
+    /** Event properties expand this many levels: entity, position, list of dropped items. */
     static final int EVENT_DEPTH = 2;
 
     private Json() {}
@@ -140,8 +141,8 @@ public final class Json {
     }
 
     /**
-     * Свойства события: публичные методы без параметров {@code getX()}/{@code isX()}, объявленные в самом событии и
-     * его предках (без {@link Event} и {@link Object}), по алфавиту. Метод, который бросил, пропускается.
+     * Event properties: public parameterless {@code getX()}/{@code isX()} methods declared by the event and its
+     * ancestors (excluding {@link Event} and {@link Object}), alphabetically. Skip methods that throw.
      */
     public static JsonObject fields(Object event) {
         return fields(event, EVENT_DEPTH);
@@ -158,7 +159,7 @@ public final class Json {
                 m.trySetAccessible();
                 out.add(name, from(m.invoke(event), depth - 1));
             } catch (ReflectiveOperationException | RuntimeException e) {
-                // свойство, которое не читается без контекста, — не свойство события
+                // A property unreadable without context is not an event property.
             }
         }
         return out;
@@ -175,7 +176,7 @@ public final class Json {
         return Character.toLowerCase(bare.charAt(0)) + bare.substring(1);
     }
 
-    /** JSON → значения Groovy: объект — {@code Map}, массив — {@code List}, целое — {@code Integer}/{@code Long}. */
+    /** JSON to Groovy values: object as {@code Map}, array as {@code List}, integer as {@code Integer}/{@code Long}. */
     public static Object toJava(JsonElement json) {
         if (json == null || json.isJsonNull()) return null;
         if (json.isJsonObject()) {

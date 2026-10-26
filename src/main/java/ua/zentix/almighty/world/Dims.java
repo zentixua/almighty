@@ -12,7 +12,7 @@ import ua.zentix.almighty.bridge.RpcException;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Измерение из параметра {@code dimension} (по умолчанию — верхний мир). Поток сервера. */
+/** Dimension from the {@code dimension} parameter (Overworld by default). Server thread. */
 public final class Dims {
     private Dims() {}
 
@@ -21,7 +21,7 @@ public final class Dims {
         return level(server, args.string("dimension"));
     }
 
-    /** Измерение по id ({@code minecraft:the_nether} или {@code the_nether}). */
+    /** Dimension by id ({@code minecraft:the_nether} or {@code the_nether}). */
     public static ServerLevel level(MinecraftServer server, String id) throws RpcException {
         ResourceLocation location;
         try {

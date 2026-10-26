@@ -26,19 +26,19 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * HTTP-мост: {@code POST /rpc} с телом {@code {"method": "...", "params": {...}}} и заголовком
- * {@code Authorization: Bearer <токен>}; ответ {@code {"ok": true, "result": ...}} или
- * {@code {"ok": false, "error": {"code": ..., "message": ...}}}. HTTP-сервер — из самой Java ({@code jdk.httpserver}),
- * свой пул потоков: долгий опрос ленты не держит остальные вызовы. Потоки моста к миру не ходят — это делают методы
- * через поток сервера.
+ * HTTP bridge: {@code POST /rpc} with body {@code {"method": "...", "params": {...}}} and header
+ * {@code Authorization: Bearer <token>}; response {@code {"ok": true, "result": ...}} or
+ * {@code {"ok": false, "error": {"code": ..., "message": ...}}}. Uses Java's own HTTP server ({@code jdk.httpserver})
+ * and a dedicated thread pool: long-polling the feed does not block other calls. Bridge threads do not access
+ * the world; methods do so through the server thread.
  */
 public final class Bridge {
     private static final Logger LOG = LogUtils.getLogger();
-    /** Тело запроса не больше: план постройки слоями на сотни тысяч мест — единицы МБ. */
+    /** Maximum request body: a layered build plan for hundreds of thousands of positions takes a few MB. */
     private static final int MAX_BODY = 16 << 20;
     /**
-     * Сколько поток моста ждёт ответа метода. Сами методы ждут меньше (лента — до 25 с, постройка и снимок — до 30 с),
-     * так что предел срабатывает, только когда поток сервера стоит.
+     * How long the bridge thread waits for a method response. Methods themselves wait less (feed: up to 25 s,
+     * build and snapshot: up to 30 s), so this limit is reached only when the server thread stalls.
      */
     private static final long TIMEOUT_SECONDS = 60;
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
@@ -66,7 +66,7 @@ public final class Bridge {
         http.start();
     }
 
-    /** Остановить: новые запросы не принимаются, ждущие ответа получают обрыв соединения. */
+    /** Stop: reject new requests and disconnect clients waiting for a response. */
     public void stop() {
         http.stop(0);
         pool.shutdownNow();
@@ -88,7 +88,7 @@ public final class Bridge {
             }
             send(exchange, status, response);
         } catch (IOException e) {
-            // клиент ушёл, не дождавшись ответа
+            // The client disconnected before receiving a response.
         } finally {
             exchange.close();
         }
@@ -142,7 +142,7 @@ public final class Bridge {
         }
     }
 
-    /** Тело целиком, если не больше {@link #MAX_BODY}; больше — null. */
+    /** The full body if no larger than {@link #MAX_BODY}; null otherwise. */
     private static byte[] read(InputStream in) throws IOException {
         byte[] body = in.readNBytes(MAX_BODY + 1);
         return body.length > MAX_BODY ? null : body;

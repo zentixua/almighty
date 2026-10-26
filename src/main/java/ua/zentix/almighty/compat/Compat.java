@@ -10,20 +10,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Совместимость с модами — только то, чего общими путями (пакеты клиента, ввод игрока, метки, памятки) не сделать.
- * Модуль мода — в {@code compat/<мод>}, мод — {@code compileOnly}: класс модуля грузится, только когда мод стоит.
+ * Mod compatibility only for what common paths (client packets, player input, tags, notes) cannot do.
+ * A mod's module lives in {@code compat/<mod>}; the mod is {@code compileOnly}: load the module class only when installed.
  */
 public final class Compat {
     private Compat() {}
 
-    /** Приводы транспорта модов, которые стоят, — новые экземпляры для бота. */
+    /** Drivers for installed vehicle mods, as new instances for the bot. */
     public static List<VehicleDriver> vehicleDrivers() {
         List<VehicleDriver> drivers = new ArrayList<>(1);
         if (ModList.get().isLoaded(ImmersiveAircraftDriver.MOD_ID)) drivers.add(new ImmersiveAircraftDriver());
         return drivers;
     }
 
-    /** Корабли модов физики: Sable (Create Aeronautics); мода нет — null. */
+    /** Physics-mod ships: Sable (Create Aeronautics); null without the mod. */
     public static Ships.Source ships() {
         return ModList.get().isLoaded(SableShips.MOD_ID) ? new SableShips() : null;
     }

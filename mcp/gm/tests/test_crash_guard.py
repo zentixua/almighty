@@ -1,4 +1,4 @@
-"""Хук от падений: python3 -m unittest discover -s mcp/gm/tests"""
+"""Crash guard hook: python3 -m unittest discover -s mcp/gm/tests. Unicode chat strings below are input fixtures."""
 import json
 import pathlib
 import subprocess

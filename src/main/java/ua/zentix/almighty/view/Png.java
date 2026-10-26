@@ -8,8 +8,8 @@ import java.util.zip.CRC32;
 import java.util.zip.Deflater;
 
 /**
- * Картинка снимка и PNG без AWT: на сервере в контейнере может не быть ни графической библиотеки Java, ни шрифтов.
- * Пиксели — {@code 0xRRGGBB}; увеличение — ближайшим соседом, с линиями сетки.
+ * Snapshot image and PNG without AWT: a container server may have neither Java's graphics library nor fonts.
+ * Pixels are {@code 0xRRGGBB}; nearest-neighbor scaling with grid lines.
  */
 public final class Png {
     private final int width, height;
@@ -38,8 +38,9 @@ public final class Png {
     }
 
     /**
-     * Каждый пиксель — квадратом {@code k × k}; линия сетки (затемнение) — по левому и верхнему краю клеток, чей номер
-     * со сдвигом ({@code offX}, {@code offY}) делится на {@code grid} (0 — без сетки; при {@code k < 3} сетки нет).
+     * Each pixel becomes a {@code k x k} square; grid lines (darkening) follow the left and top edges of cells
+     * whose indices, with offsets ({@code offX}, {@code offY}), are divisible by {@code grid}
+     * (0 means no grid; no grid when {@code k < 3}).
      */
     public Png upscale(int k, int grid, int offX, int offY) {
         if (k == 1) return this;
@@ -55,7 +56,7 @@ public final class Png {
         return out;
     }
 
-    /** Цвет, умноженный на {@code k} (0..1). */
+    /** Color multiplied by {@code k} (0..1). */
     public static int shade(int c, double k) {
         int r = (int) (((c >> 16) & 255) * k), g = (int) (((c >> 8) & 255) * k), b = (int) ((c & 255) * k);
         return (r << 16) | (g << 8) | b;
@@ -69,13 +70,13 @@ public final class Png {
             DataOutputStream h = new DataOutputStream(header);
             h.writeInt(width);
             h.writeInt(height);
-            h.writeByte(8); // глубина
+            h.writeByte(8); // Bit depth.
             h.writeByte(2); // RGB
             h.writeByte(0);
             h.writeByte(0);
             h.writeByte(0);
             chunk(file, "IHDR", header.toByteArray());
-            // фильтр Sub: соседние пиксели карты часто одного цвета — сжимается лучше
+            // Sub filter: neighboring map pixels often share a color, improving compression.
             byte[] raw = new byte[height * (1 + width * 3)];
             int i = 0;
             for (int y = 0; y < height; y++) {

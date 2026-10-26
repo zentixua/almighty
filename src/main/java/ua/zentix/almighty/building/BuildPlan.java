@@ -13,19 +13,19 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * План постройки: операции по порядку, каждая выдаёт места по одному (постройка идёт частями между тиками). Блок —
- * строкой, как в {@code /setblock} ({@code oak_stairs[facing=east]}, {@code chest{...}}); строки разбирает
- * {@link Resolver}, план от мира не зависит (юнит-тесты без игры).
+ * Build plan: operations in order, each yielding one position at a time (building runs in portions between ticks).
+ * A block is a string as in {@code /setblock} ({@code oak_stairs[facing=east]}, {@code chest{...}});
+ * {@link Resolver} parses strings. The plan is independent of the world (unit tests without the game).
  * <ul>
- * <li>{@code {"op": "fill", "from": [x,y,z], "to": [x,y,z], "block": "...", "mode": "replace|keep|hollow|outline"}} —
- * как {@code /fill}: keep — только на место воздуха, hollow — оболочка блоком, внутри воздух, outline — только
- * оболочка;</li>
+ * <li>{@code {"op": "fill", "from": [x,y,z], "to": [x,y,z], "block": "...", "mode": "replace|keep|hollow|outline"}}:
+ * as in {@code /fill}; keep replaces only air, hollow places a shell with air inside, outline places only the shell;</li>
  * <li>{@code {"op": "set", "pos": [x,y,z], "block": "..."}};</li>
- * <li>{@code {"op": "layers", "origin": [x,y,z], "palette": {"#": "stone", ...}, "layers": [[строки], ...]}} — слои
- * снизу вверх от {@code origin}, строка — z с севера на юг, символ — x с запада на восток; символ не из палитры
- * (пробел, точка) — место не трогать. Слой может быть и объектом {@code {"rows": [...]}} — как отдаёт {@code blocks}.</li>
+ * <li>{@code {"op": "layers", "origin": [x,y,z], "palette": {"#": "stone", ...}, "layers": [[rows], ...]}}:
+ * layers from bottom to top starting at {@code origin}; rows run north to south along z, characters west to east
+ * along x; characters absent from the palette (space, dot) leave the position unchanged. A layer can also be
+ * an object {@code {"rows": [...]}} as returned by {@code blocks}.</li>
  * </ul>
- * Места идут снизу вверх, внутри слоя — с севера на юг и с запада на восток.
+ * Positions run bottom to top, then north to south and west to east within each layer.
  */
 public final class BuildPlan<B> {
     static final int MAX_OPS = 10_000;
@@ -35,7 +35,7 @@ public final class BuildPlan<B> {
         B resolve(String block) throws RpcException;
     }
 
-    /** Место постройки; {@code keep} — ставить, только если там воздух. */
+    /** Build position; {@code keep} places only into air. */
     public static final class Placement<B> {
         public int x, y, z;
         public B block;
@@ -53,7 +53,7 @@ public final class BuildPlan<B> {
     private interface Op<B> {
         long size();
 
-        /** Следующее место в {@code out}; false — операция кончилась. */
+        /** Next position in {@code out}; false means the operation has ended. */
         boolean next(Placement<B> out);
 
         int[] bounds();
@@ -80,12 +80,12 @@ public final class BuildPlan<B> {
         this.bounds = b;
     }
 
-    /** Сколько мест всего. */
+    /** Total number of positions. */
     public long size() {
         return size;
     }
 
-    /** {@code [minX, minY, minZ, maxX, maxY, maxZ]} по всем операциям. */
+    /** {@code [minX, minY, minZ, maxX, maxY, maxZ]} across all operations. */
     public int[] bounds() {
         return bounds.clone();
     }
@@ -98,7 +98,7 @@ public final class BuildPlan<B> {
         return false;
     }
 
-    /** Разобрать операции; высоты — в {@code [minY, maxY]}, мест — не больше {@code maxBlocks}. */
+    /** Parse operations; heights within {@code [minY, maxY]}, at most {@code maxBlocks} positions. */
     public static <B> BuildPlan<B> parse(JsonArray json, Resolver<B> resolver, int minY, int maxY, long maxBlocks) throws RpcException {
         if (json.isEmpty() || json.size() > MAX_OPS) throw RpcException.badRequest("ops: 1 to " + MAX_OPS + " operations");
         Map<String, B> cache = new HashMap<>();
@@ -153,7 +153,7 @@ public final class BuildPlan<B> {
         };
     }
 
-    /** Коробка: снизу вверх, с севера на юг, с запада на восток; outline пропускает внутренность строки прыжком. */
+    /** Box: bottom to top, north to south, west to east; outline jumps over row interiors. */
     private static final class Fill<B> implements Op<B> {
         private final int minX, minY, minZ, maxX, maxY, maxZ;
         private final B block, air;
@@ -191,7 +191,7 @@ public final class BuildPlan<B> {
                 case "hollow" -> out.set(x, y, z, shell ? block : air, false);
                 default -> out.set(x, y, z, block, false);
             }
-            // outline: на внутренних строках после западной стенки — сразу к восточной
+            // outline: in interior rows, jump directly from the west wall to the east wall.
             if (mode.equals("outline") && x == minX && maxX > minX && y > minY && y < maxY && z > minZ && z < maxZ) x = maxX;
             else x++;
             if (x > maxX) {

@@ -20,20 +20,22 @@ import ua.zentix.almighty.world.Dims;
 import java.util.Arrays;
 
 /**
- * Постройка или откат частями между тиками. Сначала ждёт, пока чанки рамки с кольцом соседей станут полными (аренда
- * {@link Areas}: загрузка без тика, в фоне), затем ставит места порциями по {@value #UNIT}, пока есть время тика.
+ * Build or undo in portions between ticks. First await full chunks for the box and its neighbor ring
+ * ({@link Areas} lease: background loading without ticking), then place positions in portions of {@value #UNIT}
+ * while tick time remains.
  *
- * <p>Место ставится как у {@code /fill} ({@code FillCommand}): сперва {@code getBlockEntity} — он поднимает отложенную
- * блок-сущность свежего чанка (иначе замена оставила бы её данные при новом блоке), снимок старого блока с данными
- * блок-сущности, {@code Clearable.tryClear} (содержимое сундука не высыпается), {@code BlockInput.place} с
- * {@code UPDATE_CLIENTS}; после порции — {@code blockUpdated} её мест. Снимок всех изменённых мест — для отката
- * ({@code undo}), он сам — такая же работа со своим снимком. Откат не возвращает то, что изменилось вне рамки (факел у
- * стены, отвалившийся при её сносе, — предметом), и сущности.
+ * <p>Place each position as {@code /fill} does ({@code FillCommand}): first {@code getBlockEntity} initializes a
+ * fresh chunk's pending block entity (otherwise replacement would leave its data under the new block), snapshot
+ * the old block and block entity data, {@code Clearable.tryClear} (chest contents do not spill),
+ * {@code BlockInput.place} with {@code UPDATE_CLIENTS}; after the portion, call {@code blockUpdated} for its
+ * positions. The snapshot of all changed positions enables undo ({@code undo}), which is itself the same kind
+ * of job with its own snapshot. Undo does not restore changes outside the box (a torch detached when its wall
+ * is removed becomes an item), or entities.
  */
 public final class BuildJob extends Job {
     static final int UNIT = 32;
 
-    /** Изменённые места: старое состояние и данные блок-сущности — по порядку изменения. */
+    /** Changed positions: previous states and block entity data in change order. */
     static final class Snapshot {
         private long[] pos = new long[256];
         private int[] state = new int[256];
@@ -56,7 +58,7 @@ public final class BuildJob extends Job {
     private final Areas areas;
     private final int[] bounds;
     private final long timeoutTicks;
-    /** Постройка — план; откат — снимок, который он возвращает (с конца). Оба отпускаются с концом работы. */
+    /** Build uses a plan; undo uses the snapshot it restores (in reverse). Both are released when the job ends. */
     private BuildPlan<BlockInput> plan;
     private Snapshot restore;
     private final long total;
@@ -82,14 +84,14 @@ public final class BuildJob extends Job {
         this.restoreAt = restore != null ? restore.size : 0;
     }
 
-    /** Постройка по плану; чанки берутся сразу (нет места под аренду — ошибка вызова). */
+    /** Build from a plan; acquire chunks immediately (no lease capacity is a call error). */
     public static BuildJob build(ServerLevel level, Areas areas, BuildPlan<BlockInput> plan, long timeoutTicks) throws RpcException {
         BuildJob job = new BuildJob("build", level, areas, plan.bounds(), timeoutTicks, plan, null, 0);
         job.lease(areas);
         return job;
     }
 
-    /** Откат постройки {@code of}: её снимок переходит в откат (второй откат той же постройки — ошибка). */
+    /** Undo build {@code of}: transfer its snapshot to the undo job (a second undo of the same build is an error). */
     public static BuildJob undo(BuildJob of, long timeoutTicks) throws RpcException {
         if (!of.state().finished()) throw RpcException.conflict("Job #" + of.id() + " is still running: cancel it first");
         if (of.snapshot == null) {
@@ -138,7 +140,7 @@ public final class BuildJob extends Job {
         long[] updated = new long[UNIT];
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         do {
-            // порция — UNIT мест, считая и нетронутые (воздух на воздух, keep): иначе пустая коробка шла бы одной порцией
+            // A portion is UNIT positions, including unchanged ones (air over air, keep); otherwise an empty box would run in one portion.
             int n = 0;
             boolean more = true;
             for (int k = 0; k < UNIT && (more = advance(pos)); k++) {
@@ -155,7 +157,7 @@ public final class BuildJob extends Job {
         } while (budget.left());
     }
 
-    /** Следующее место в {@code pos}; false — всё. */
+    /** Next position in {@code pos}; false means done. */
     private boolean advance(BlockPos.MutableBlockPos pos) {
         if (plan != null) {
             if (!plan.next(cursor)) return false;
@@ -167,7 +169,7 @@ public final class BuildJob extends Job {
         return true;
     }
 
-    /** Поставить место; true — блок изменился (его соседям — обновление). */
+    /** Place a position; true means the block changed (its neighbors need an update). */
     private boolean put(BlockPos pos) {
         done++;
         if (level.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4) == null) {
@@ -178,7 +180,7 @@ public final class BuildJob extends Job {
             kept++;
             return false;
         }
-        // поднимает отложенную блок-сущность свежего чанка: её данные не останутся при новом блоке
+        // Initialize the fresh chunk's pending block entity so its data does not survive under the new block.
         BlockEntity be = level.getBlockEntity(pos);
         CompoundTag oldTag = be != null ? be.saveWithFullMetadata(level.registryAccess()) : null;
         Clearable.tryClear(be);
@@ -209,7 +211,7 @@ public final class BuildJob extends Job {
     @Override
     protected void release() {
         if (lease != null) lease.release();
-        // после конца в истории держится только свой снимок: план и возвращённый откатом снимок не нужны
+        // After completion, history retains only this job's snapshot: the plan and the snapshot restored by undo are no longer needed.
         plan = null;
         restore = null;
     }

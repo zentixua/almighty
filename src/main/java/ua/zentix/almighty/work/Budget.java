@@ -2,7 +2,7 @@ package ua.zentix.almighty.work;
 
 import java.util.function.LongSupplier;
 
-/** Время работы ведущего в одном тике сервера. Часы подменяются в проверках: GameTest не мерит настенное время. */
+/** GM work time in one server tick. Tests substitute the clock: GameTest does not measure wall-clock time. */
 public final class Budget {
     private final LongSupplier clock;
     private final long deadline;

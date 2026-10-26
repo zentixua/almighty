@@ -8,8 +8,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Программа бота — шаги одного вызова {@code bot.act}: идут по тикам бота, мгновенные — подряд в одном тике (не
- * больше {@link #MAX_INSTANT}). Ошибка шага останавливает программу. Итог — по шагу на каждый пройденный шаг.
+ * Bot program: steps from one {@code bot.act} call, running on bot ticks; instant steps run consecutively
+ * within one tick (at most {@link #MAX_INSTANT}). A step error stops the program. Results contain one entry
+ * for each completed step.
  */
 final class Program {
     static final int MAX_INSTANT = 64;
@@ -21,7 +22,7 @@ final class Program {
     private JsonObject out = new JsonObject();
     private int index;
     private String state = "queued", error;
-    /** Вызов уже вернулся, не дождавшись: конец — событием {@code bot_done} в ленте. */
+    /** The call already returned without waiting: completion emits {@code bot_done} to the feed. */
     volatile boolean detached;
 
     Program(long id, List<Steps.Step> steps) {
@@ -33,7 +34,7 @@ final class Program {
         return done;
     }
 
-    /** Тик программы; true — кончилась (вся, с ошибкой). */
+    /** Program tick; true means finished (all steps or an error). */
     boolean tick(Bot bot) {
         if (state.equals("cancelled")) return true;
         state = "running";
@@ -51,7 +52,7 @@ final class Program {
                 state = "failed";
                 return true;
             }
-            // сняли посреди шага (правило по событию этого шага заменило программы)
+            // Removed mid-step (a rule triggered by this step replaced the programs).
             if (state.equals("cancelled")) return true;
             if (!finished) return false;
             out.addProperty("step", index);
@@ -64,13 +65,13 @@ final class Program {
         return true;
     }
 
-    /** Снять программу (новая с {@code replace}, бот ушёл): шаг отпускает то, что держит сам. */
+    /** Remove the program (a new one with {@code replace}, bot left): the step releases resources it holds itself. */
     void cancel(Bot bot, String why) {
         if (index < steps.size() && state.equals("running")) {
             try {
                 steps.get(index).cancel(bot, bot.player());
             } catch (RuntimeException e) {
-                // снимают и при отключении бота, где ошибка уронила бы тик сервера; клавиши отпустит cancelAll
+                // Also removed during bot disconnection, when an error would crash the server tick; cancelAll releases the keys.
                 error = why + " (the step failed to release what it held: " + e + ")";
                 state = "cancelled";
                 return;

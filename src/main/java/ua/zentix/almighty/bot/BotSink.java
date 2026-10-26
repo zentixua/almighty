@@ -11,13 +11,14 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Конец канала бота вместо сети: всё, что сервер пишет «клиенту», забирается здесь, до кодировщика (его в канале нет).
- * Пакеты — в очередь, её разбирает бот в потоке сервера; прочее (задачи смены протокола {@code Connection}) — просто
- * принимается. Обещание записи выполняется всегда: смена протокола ждёт его ({@code syncUninterruptibly}), без него
- * поток сервера встал бы навсегда. Пишут сюда и чужие потоки (сеть модов), поэтому очередь — без блокировок.
+ * Bot channel endpoint instead of a network: consumes everything the server writes to the "client", before
+ * the encoder (absent from the channel). Packets enter a queue read by the bot on the server thread; other
+ * messages ({@code Connection} protocol change tasks) are simply accepted. Always complete the write promise:
+ * protocol changes wait for it ({@code syncUninterruptibly}); otherwise the server thread would block forever.
+ * Other threads (mod networking) also write here, so the queue is lock-free.
  */
 final class BotSink extends ChannelOutboundHandlerAdapter {
-    /** Сервер стоит, а пакеты идут: дальше столько — старые выбрасываются, бот их уже не прочтёт. */
+    /** The server stalls while packets arrive: above this limit, discard oldest packets the bot will no longer read. */
     static final int MAX_QUEUED = 20_000;
 
     private final Queue<Packet<?>> packets = new ConcurrentLinkedQueue<>();
@@ -36,7 +37,7 @@ final class BotSink extends ChannelOutboundHandlerAdapter {
         }
     }
 
-    /** Следующий пакет сервера боту; null — пусто. Только поток сервера. */
+    /** Next server packet for the bot; null if empty. Server thread only. */
     Packet<?> poll() {
         Packet<?> p = packets.poll();
         if (p != null) size.decrementAndGet();

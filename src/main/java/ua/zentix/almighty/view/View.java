@@ -6,8 +6,9 @@ import ua.zentix.almighty.work.Job;
 import java.util.Base64;
 
 /**
- * Снимок мира работой под бюджетом тика: поток сервера читает блоки по строкам, картинку в PNG кодирует поток моста
- * ({@link #attach}) — сжатие не занимает тик. Картинка держится до выдачи или до ухода работы из истории.
+ * World snapshot as a job within the tick budget: the server thread reads blocks by rows; the bridge thread
+ * encodes the image as PNG ({@link #attach}), keeping compression out of the tick. The image is retained until
+ * delivered or until the job leaves history.
  */
 public abstract class View extends Job {
     private volatile Png image;
@@ -18,7 +19,7 @@ public abstract class View extends Job {
         super(kind);
     }
 
-    /** Готовая картинка (поток сервера, перед {@code finish}); увеличение до ~512 точек, сетка — каждые {@code grid}. */
+    /** Finished image (server thread, before {@code finish}); scale to about 512 pixels, with a grid every {@code grid} cells. */
     protected final void image(Png png, int grid, int gridX, int gridY) {
         this.upscale = Math.max(1, Math.min(8, 512 / Math.max(png.width(), png.height())));
         this.grid = grid;
@@ -46,7 +47,7 @@ public abstract class View extends Job {
     @Override
     protected void release() {}
 
-    /** Снимок короткий, его ответ ждёт вызов: в ленту не попадает. */
+    /** A snapshot is brief and its response has a waiting call: do not add it to the feed. */
     @Override
     public boolean announce() {
         return false;
@@ -57,10 +58,10 @@ public abstract class View extends Job {
         out.add("legend", legend.deepCopy());
     }
 
-    /** Поток моста: к описанию кончившейся работы — картинка PNG (base64). Выдаётся один раз. */
+    /** Bridge thread: append a PNG image (base64) to the completed job description. Delivered once. */
     public JsonObject attach(JsonObject result) {
         Png png = image;
-        // состояние — из описания: его составил поток сервера, а поле работы этот поток видеть не обязан
+        // Use the state from the description, made by the server thread; this thread need not see the job field.
         if (png == null || !result.has("state") || !result.get("state").getAsString().equals("done")) return result;
         image = null;
         Png big = png.upscale(upscale, grid, gridX, gridY);

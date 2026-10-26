@@ -12,8 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Срок скрипта идёт только во время его вызова: замыкание, отданное игре сравнением тикетов
- * ({@code TicketType.create}), игра зовёт после срока, и {@code TimeoutException} в нём уронил бы мир.
+ * The script deadline applies only during its call: the game invokes a closure supplied as a ticket comparator
+ * ({@code TicketType.create}) after the deadline; a {@code TimeoutException} there would crash the world.
  */
 class ScriptsTest {
     private static final long TIMEOUT_MS = 50;
@@ -59,10 +59,10 @@ class ScriptsTest {
                 assertTrue(result.timedOut(), code + " → " + result.message());
             }
         }
-        assertFalse(Scripts.expired(), "после вызова срока нет");
+        assertFalse(Scripts.expired(), "no deadline after the call");
     }
 
-    /** Правило, сработавшее от команды скрипта, идёт со своим сроком; после него снова действует срок внешнего. */
+    /** A rule triggered by a script command has its own deadline; afterward, the outer deadline applies again. */
     @Test
     void nestedRunHasItsOwnDeadline() throws Exception {
         try (Scripts.Compiled inner = compile("1 + 1");
@@ -73,7 +73,7 @@ class ScriptsTest {
         }
         try (Scripts.Compiled inner = compile("for (int i = 0; i < 3; i++) {}\n1 + 1");
              Scripts.Compiled outer = compile("pause.run()\nnested.get().ok()")) {
-            // внешний срок вышел в коде Java (его срок не прерывает), вложенный запуск — со своим сроком и успевает
+            // The outer deadline expired in Java code (not interrupted by the deadline); the nested run has its own and completes in time.
             Runnable pause = () -> {
                 try {
                     Thread.sleep(2 * TIMEOUT_MS);
@@ -86,6 +86,6 @@ class ScriptsTest {
             assertTrue(result.ok(), result.message());
             assertEquals(true, result.value());
         }
-        assertFalse(Scripts.expired(), "после вызова срока нет");
+        assertFalse(Scripts.expired(), "no deadline after the call");
     }
 }

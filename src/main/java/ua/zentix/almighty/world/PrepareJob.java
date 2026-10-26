@@ -4,7 +4,7 @@ import com.google.gson.JsonObject;
 import ua.zentix.almighty.work.Budget;
 import ua.zentix.almighty.work.Job;
 
-/** Ожидание готовности подготовленного района ({@code area.prepare}); сам район живёт своим сроком, работа его не держит. */
+/** Wait for a prepared area ({@code area.prepare}) to become ready; the area has its own lifetime and is not retained by the job. */
 public final class PrepareJob extends Job {
     private final Areas.Lease lease;
 

@@ -5,9 +5,9 @@ import com.google.gson.JsonElement;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Метод моста. Зовётся в потоке HTTP: разбирает параметры там же, а к миру идёт только через поток сервера
- * ({@code GmServer.onMain}) или работой под бюджетом тика. Ошибка разбора — {@link RpcException} сразу, ошибка в потоке
- * сервера — исключением в будущем.
+ * Bridge method. Called on the HTTP thread: parses parameters there and accesses the world only through
+ * the server thread ({@code GmServer.onMain}) or a job within the tick budget. Parse errors throw
+ * {@link RpcException} immediately; server-thread errors complete the future exceptionally.
  */
 @FunctionalInterface
 public interface Method {

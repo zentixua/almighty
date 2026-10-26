@@ -14,9 +14,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import ua.zentix.almighty.bot.BotPlayer;
 
 /**
- * Возрождение создаёт игрока заново ({@code new ServerPlayer} в {@code PlayerList.respawn}), и выбрать его класс
- * событием NeoForge нельзя. Бот после смерти должен остаться {@link BotPlayer} — иначе сервер перестаёт считать
- * транспорт под ним. Касается только ботов: остальных игроков создаёт исходный вызов. Так же делает Carpet.
+ * Respawn recreates the player ({@code new ServerPlayer} in {@code PlayerList.respawn}); no NeoForge event
+ * can select its class. A bot must remain {@link BotPlayer} after death, or the server stops simulating
+ * its vehicle. Bots only: the original call creates all other players. Carpet does the same.
  */
 @Mixin(PlayerList.class)
 abstract class PlayerListMixin {

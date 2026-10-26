@@ -6,8 +6,8 @@ import { CONTEXT_HEADER, Router, Turns, addressed, fold } from './router.mjs'
 const NAMES = ['клод', 'клоду', 'ведучий']
 const TYPO = ['ведущий', 'ведущему', 'claude']
 const make = (now = () => 0) => {
-  const r = new Router({ names: NAMES, typoNames: TYPO, owners: ['ZentixUA'], botPlayers: ['Tester'], now })
-  r.setOnline(['ZentixUA', 'ENOTzRPG', 'Wally'])
+  const r = new Router({ names: NAMES, typoNames: TYPO, owners: ['Steve'], botPlayers: ['Tester'], now })
+  r.setOnline(['Steve', 'Alex', 'Sam'])
   return r
 }
 const named = text => addressed(text, [...NAMES, ...TYPO].map(fold), TYPO.map(fold))
@@ -20,66 +20,66 @@ test('имя ведущего в любом виде: растянутое, с �
 })
 
 test('личное /gm идёт всегда, с местом', () => {
-  const out = make().route({ type: 'gm', player: 'ENOTzRPG', text: 'помоги', dimension: 'minecraft:overworld', x: 1, y: 2, z: 3 })
-  assert.deepEqual(out, { content: 'помоги', meta: { kind: 'gm', player: 'ENOTzRPG', private: 'yes', dimension: 'minecraft:overworld', x: '1', y: '2', z: '3' } })
+  const out = make().route({ type: 'gm', player: 'Alex', text: 'помоги', dimension: 'minecraft:overworld', x: 1, y: 2, z: 3 })
+  assert.deepEqual(out, { content: 'помоги', meta: { kind: 'gm', player: 'Alex', private: 'yes', dimension: 'minecraft:overworld', x: '1', y: '2', z: '3' } })
 })
 
 test('чат — только с именем или в разговоре', () => {
   let t = 0
   const r = make(() => t)
-  assert.equal(r.route({ type: 'chat', player: 'Wally', text: 'всем привет' }), null)
-  assert.equal(r.route({ type: 'chat', player: 'Wally', text: 'ведущему: дай меч' }).meta.direct, 'yes')
+  assert.equal(r.route({ type: 'chat', player: 'Sam', text: 'всем привет' }), null)
+  assert.equal(r.route({ type: 'chat', player: 'Sam', text: 'ведущему: дай меч' }).meta.direct, 'yes')
   t = 30_000
-  assert.equal(r.route({ type: 'chat', player: 'Wally', text: 'и щит' }).meta.direct, 'no')
+  assert.equal(r.route({ type: 'chat', player: 'Sam', text: 'и щит' }).meta.direct, 'no')
   t = 300_000
-  assert.equal(r.route({ type: 'chat', player: 'Wally', text: 'ещё' }), null)
+  assert.equal(r.route({ type: 'chat', player: 'Sam', text: 'ещё' }), null)
 })
 
 test('ответ ведущего открывает разговор на 3 минуты; ответ всем — тем, кто ждал', () => {
   let t = 0
   const r = make(() => t)
-  r.route({ type: 'gm', player: 'ENOTzRPG', text: 'помоги' })
+  r.route({ type: 'gm', player: 'Alex', text: 'помоги' })
   t = 170_000
-  assert.deepEqual(r.replied(undefined), ['ENOTzRPG'])
+  assert.deepEqual(r.replied(undefined), ['Alex'])
   t = 340_000
-  assert.equal(r.route({ type: 'chat', player: 'ENOTzRPG', text: 'спасибо' }).meta.direct, 'no')
-  assert.equal(r.route({ type: 'chat', player: 'ZentixUA', text: 'го на остров' }), null)
-  r.replied(['ZentixUA'])
-  assert.equal(r.route({ type: 'chat', player: 'ZentixUA', text: 'а мост?' }).meta.direct, 'no')
+  assert.equal(r.route({ type: 'chat', player: 'Alex', text: 'спасибо' }).meta.direct, 'no')
+  assert.equal(r.route({ type: 'chat', player: 'Steve', text: 'го на остров' }), null)
+  r.replied(['Steve'])
+  assert.equal(r.route({ type: 'chat', player: 'Steve', text: 'а мост?' }).meta.direct, 'no')
 })
 
 test('игрок в игре один — всё ему', () => {
   const r = make()
-  assert.equal(r.route({ type: 'chat', player: 'ZentixUA', text: 'го' }), null)
-  r.route({ type: 'leave', player: 'ENOTzRPG' })
-  r.route({ type: 'leave', player: 'Wally' })
-  assert.equal(r.route({ type: 'chat', player: 'ZentixUA', text: 'го' }).meta.alone, 'yes')
-  r.route({ type: 'join', player: 'ENOTzRPG' })
-  assert.equal(r.route({ type: 'chat', player: 'ZentixUA', text: 'го' }), null)
+  assert.equal(r.route({ type: 'chat', player: 'Steve', text: 'го' }), null)
+  r.route({ type: 'leave', player: 'Alex' })
+  r.route({ type: 'leave', player: 'Sam' })
+  assert.equal(r.route({ type: 'chat', player: 'Steve', text: 'го' }).meta.alone, 'yes')
+  r.route({ type: 'join', player: 'Alex' })
+  assert.equal(r.route({ type: 'chat', player: 'Steve', text: 'го' }), null)
 })
 
 test('общий чат мимо ведущего приходит со следующим сообщением ему, один раз', () => {
   const r = make()
-  r.route({ type: 'chat', player: 'ENOTzRPG', text: 'привет?' })
-  r.route({ type: 'chat', player: 'ZentixUA', text: 'го на остров' })
-  const out = r.route({ type: 'chat', player: 'ENOTzRPG', text: 'ведууущииий' })
-  assert.equal(out.content, `ведууущииий\n\n${CONTEXT_HEADER}\nENOTzRPG: привет?\nZentixUA: го на остров`)
-  assert.equal(r.route({ type: 'gm', player: 'ZentixUA', text: 'дай меч' }).content, 'дай меч')
+  r.route({ type: 'chat', player: 'Alex', text: 'привет?' })
+  r.route({ type: 'chat', player: 'Steve', text: 'го на остров' })
+  const out = r.route({ type: 'chat', player: 'Alex', text: 'ведууущииий' })
+  assert.equal(out.content, `ведууущииий\n\n${CONTEXT_HEADER}\nAlex: привет?\nSteve: го на остров`)
+  assert.equal(r.route({ type: 'gm', player: 'Steve', text: 'дай меч' }).content, 'дай меч')
 })
 
 test('боты — только названные и в игроков не считаются', () => {
   const r = make()
-  assert.equal(r.route({ type: 'gm', player: 'Jet_Watch', bot: true, text: 'x' }), null)
-  assert.equal(r.route({ type: 'join', player: 'Jet_Watch', bot: true }), null)
-  assert.ok(!r.online.has('Jet_Watch'))
+  assert.equal(r.route({ type: 'gm', player: 'TestBot', bot: true, text: 'x' }), null)
+  assert.equal(r.route({ type: 'join', player: 'TestBot', bot: true }), null)
+  assert.ok(!r.online.has('TestBot'))
   assert.equal(r.route({ type: 'gm', player: 'Tester', bot: true, text: 'x' }).meta.kind, 'gm')
 })
 
 test('«да <номер>» владельца — ответ на запрос, не сообщение', () => {
   const r = make()
-  assert.deepEqual(r.route({ type: 'gm', player: 'ZentixUA', text: 'да abcde' }), { verdict: { request_id: 'abcde', behavior: 'allow' } })
-  assert.deepEqual(r.route({ type: 'chat', player: 'ZentixUA', text: 'Нет ABCDE' }), { verdict: { request_id: 'abcde', behavior: 'deny' } })
-  assert.equal(r.route({ type: 'gm', player: 'ClyuDan', text: 'да abcde' }).meta.kind, 'gm')
+  assert.deepEqual(r.route({ type: 'gm', player: 'Steve', text: 'да abcde' }), { verdict: { request_id: 'abcde', behavior: 'allow' } })
+  assert.deepEqual(r.route({ type: 'chat', player: 'Steve', text: 'Нет ABCDE' }), { verdict: { request_id: 'abcde', behavior: 'deny' } })
+  assert.equal(r.route({ type: 'gm', player: 'Player', text: 'да abcde' }).meta.kind, 'gm')
 })
 
 test('лаг — от порога и не чаще раза в минуту', () => {
@@ -93,25 +93,25 @@ test('лаг — от порога и не чаще раза в минуту', (
 
 test('вход, выход, смерть', () => {
   const r = make()
-  assert.equal(r.route({ type: 'join', player: 'ZentixUA', x: 0, y: 0, z: 0, dimension: 'd' }).meta.owner, 'yes')
-  assert.equal(r.route({ type: 'death', player: 'ENOTzRPG', message: 'ENOTzRPG упал', killer: 'Zombie' }).meta.killer, 'Zombie')
+  assert.equal(r.route({ type: 'join', player: 'Steve', x: 0, y: 0, z: 0, dimension: 'd' }).meta.owner, 'yes')
+  assert.equal(r.route({ type: 'death', player: 'Alex', message: 'Alex упал', killer: 'Zombie' }).meta.killer, 'Zombie')
   assert.equal(r.route({ type: 'emit', data: {} }), null)
 })
 
 test('«ведущий думает…»: до ответа или конца хода; пришедшие во время хода ждут следующего', () => {
   let t = 0
   const turns = new Turns({ maxMs: 180_000, now: () => t })
-  turns.pushed('ZentixUA')
-  turns.pushed('ENOTzRPG')
+  turns.pushed('Steve')
+  turns.pushed('Alex')
   turns.pushed(null)
-  assert.deepEqual(turns.waiting(), ['ZentixUA', 'ENOTzRPG'])
-  turns.answered(['ZentixUA'])
-  assert.deepEqual(turns.waiting(), ['ENOTzRPG'])
+  assert.deepEqual(turns.waiting(), ['Steve', 'Alex'])
+  turns.answered(['Steve'])
+  assert.deepEqual(turns.waiting(), ['Alex'])
   turns.stopped()
-  assert.deepEqual(turns.waiting(), ['ENOTzRPG'])
+  assert.deepEqual(turns.waiting(), ['Alex'])
   turns.stopped()
   assert.deepEqual(turns.waiting(), [])
-  turns.pushed('Wally')
+  turns.pushed('Sam')
   t = 200_000
   assert.deepEqual(turns.waiting(), [])
 })
@@ -122,5 +122,5 @@ test('правило выключилось — ведущему сразу; о�
     { content: 'Rule drone_ap turned off: 10 errors in a row', meta: { kind: 'rule', state: 'off', rule: '7', name: 'drone_ap' } })
   assert.equal(r.route({ type: 'rule.error', rule: 7, name: 'drone_ap', error: 'GroovyCastException', line: 3 }), null)
   assert.equal(r.route({ type: 'rule.error', rule: 7, name: 'drone_ap', error: 'NPE' }), null)
-  assert.equal(r.route({ type: 'gm', player: 'ZentixUA', text: 'дрон?' }).content, `дрон?\n\n${CONTEXT_HEADER}\nrule drone_ap: NPE`)
+  assert.equal(r.route({ type: 'gm', player: 'Steve', text: 'дрон?' }).content, `дрон?\n\n${CONTEXT_HEADER}\nrule drone_ap: NPE`)
 })

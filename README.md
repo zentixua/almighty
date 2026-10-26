@@ -42,9 +42,10 @@ blocks, items or network packets of its own.
   (`work.ms_per_tick`, 3 ms by default). Large builds and pictures do not stall the server.
 - The agent connects through the MCP adapter [`mcp/almighty.py`](mcp/almighty.py). It has 14 tools: `status`,
   `entities`, `command`, `say`, `script`, `rule`, `events`, `view`, `build`, `area`, `job`, `bot`, `notes`, and `call`
-  for any bridge method by name. The 32 bridge methods are listed in [CLAUDE.md](CLAUDE.md) (in Russian).
+  for any bridge method by name. The 32 bridge methods are listed in [AGENTS.md](AGENTS.md) (in English).
 - Any player can write to the game master privately with `/gm <text>`. Other players and operators do not see the
-  message, and the agent can answer that player alone.
+  message, and the agent can answer that player alone. If the game master is unavailable, the reply follows the
+  player's language: Russian for `ru_ru`, English otherwise, without a client mod.
 - [`mcp/gm/`](mcp/gm/README.md) is a kit for running the game master as one Claude Code session: a chat channel that
   wakes the session when players address it, a hook that blocks calls known to crash a server, and recipes.
 

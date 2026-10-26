@@ -23,12 +23,12 @@ class Commands(unittest.TestCase):
             self.assertEqual(decision("command", {"commands": [c]}), "deny", c)
 
     def test_owner_only_asks(self):
-        for c in ("op ClyuDan", "whitelist add Foo", "ban Foo", "kick Foo", "execute run deop ZentixUA"):
+        for c in ("op Player", "whitelist add Foo", "ban Foo", "kick Foo", "execute run deop Steve"):
             self.assertEqual(decision("command", {"commands": [c]}), "ask", c)
 
     def test_ordinary_allowed(self):
         for c in ("time set day", "save-all", "tick rate 20", "tick freeze", "incoming salvo missile 1 0 at 1 64 2",
-                  "tp ZentixUA 3590 110 310", "gamerule doFireTick true", "spark profiler start --timeout 30"):
+                  "tp Steve 3590 110 310", "gamerule doFireTick true", "spark profiler start --timeout 30"):
             self.assertIsNone(decision("command", {"commands": [c]}), c)
 
     def test_sable_plot(self):
@@ -76,7 +76,7 @@ class OneVoice(unittest.TestCase):
     def test_subagent_does_not_talk_to_players(self):
         self.assertEqual(self.sub("say", {"text": "готово"}), "deny")
         self.assertEqual(self.sub("call", {"method": "say", "params": {"text": "x"}}), "deny")
-        for c in ("tellraw @a \"x\"", "/say x", "execute as @a run title @s title \"x\"", "msg ZentixUA x"):
+        for c in ("tellraw @a \"x\"", "/say x", "execute as @a run title @s title \"x\"", "msg Steve x"):
             self.assertEqual(self.sub("command", {"commands": [c]}), "deny", c)
         self.assertEqual(self.sub("bot", {"action": "act", "name": "B", "actions": [{"chat": "Огонь!"}]}), "deny")
 

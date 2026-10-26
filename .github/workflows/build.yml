@@ -34,6 +34,17 @@ jobs:
       - name: Набор ведущего (mcp/gm)
         run: python3 -m unittest discover -s mcp/gm/tests
 
+      - name: MCP adapter syntax
+        run: python3 -m py_compile mcp/almighty.py
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Chat routing tests
+        working-directory: mcp/gm/almighty-chat
+        run: node --test
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin

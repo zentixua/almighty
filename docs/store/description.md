@@ -1,3 +1,5 @@
+[Русский](https://github.com/zentixua/almighty/blob/main/docs/store/description.ru.md)
+
 Almighty is a server-side NeoForge mod for Minecraft 1.21.1. It lets an AI agent, such as Claude Code, act as the
 game master of your server: it sees the world, follows what players do, talks to them and changes the game, all
 without a game client. Players install nothing.

@@ -25,7 +25,7 @@ export function near (a, b) {
 
 /**
  * Whether the text names the GM: a normalized word (fold) matches a name from names, or matches typoNames
- * with at most one typo (first letter exact). Typos apply only to long names without neighboring words
+ * with at most one typo (first letter exact). Typos apply only to long names with no real word one letter away
  * ("ведущий"); short and Ukrainian names can become another word with one letter
  * ("клод" to "клад", "ведучий" to "везучий").
  */

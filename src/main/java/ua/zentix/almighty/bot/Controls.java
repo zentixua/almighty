@@ -414,7 +414,7 @@ final class Controls {
         if (p.isRemoved()) return;
         if (riding && p.isPassenger()) p.absMoveTo(before.x, before.y, before.z, p.getYRot(), p.getXRot());
         Vec3 d = p.position().subtract(before);
-        // A rider sends a packet every tick; a walking player sends one after movement, rotation, landing or leaving ground,
+        // A rider sends a packet every tick; a player on foot sends one after movement, rotation, landing or leaving ground,
         // and every 20 ticks when stationary.
         if (riding || movePackets.tick(p.getX(), p.getY(), p.getZ(), p.getYRot(), p.getXRot(), p.onGround())) {
             p.serverLevel().getChunkSource().move(p);
@@ -456,7 +456,7 @@ final class Controls {
     }
 
     /**
-     * Crosshair target as in {@code GameRenderer.pick}: block (shape, transparent fluids) within block interaction
+     * Crosshair target as in {@code GameRenderer.pick}: block (shape, ignoring fluids) within block interaction
      * reach, entity within entity reach, whichever is nearer; beyond reach is a miss. No chunk loading.
      */
     static HitResult pick(ServerPlayer p) {

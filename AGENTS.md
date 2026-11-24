@@ -11,7 +11,7 @@ world: an HTTP bridge on the server and the agent's MCP adapter `mcp/almighty.py
 or registry entries (the only custom data is the entity tag `almighty:driven_by_rider`); clients need not install it.
 No dependencies on other mods: a mod's compatibility module (`compat/`) loads only when that mod is installed.
 Public repository: https://github.com/zentixua/almighty. The bridge runs on the Open Skies modpack server
-(zentixua/open-skies, `side = "server"`).
+(zentixua/open-skies-friends, `side = "server"`).
 
 ## People and rules
 
@@ -53,8 +53,8 @@ uv run mcp/almighty.py call status       # one bridge call (address and token at
 CI (GitHub Actions) checks every PR and push to `main`: GM toolkit, build, unit tests, GameTest; the jar is the
 `almighty-jar` artifact. Release: bump `mod_version` (`gradle.properties`), write `docs/releases/<version>.md`, merge
 into `main` and manually run `build` on `main` with `release=true`; the workflow releases `v<version>` with the jar.
-open-skies picks the jar up by itself (its `update` workflow, every 3 hours; run it manually to get it at once).
-Immersive Aircraft and Sable are pinned there: change them in an open-skies PR together with the pins here.
+open-skies-friends picks the jar up by itself (its `update` workflow, every 3 hours; run it manually to get it at once).
+Immersive Aircraft and Sable are pinned there: change them in an open-skies-friends PR together with the pins here.
 Modrinth and CurseForge pages use the manually triggered `publish` workflow: `draft` (hidden Modrinth draft),
 `submit`, `release`; fields: `docs/store/modrinth.json`; procedure: `docs/store/listing.md`.
 

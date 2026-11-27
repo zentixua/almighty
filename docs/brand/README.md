@@ -1,6 +1,8 @@
 # Almighty brand kit: pixel-art directions
 
-**Round four (current):** finalists: [`finalists.png`](finalists.png), reads in [`finalists.md`](finalists.md).
+**Round five (current):** finalists from four concept families: [`finalists2.png`](finalists2.png), process and reads in [`finalists2.md`](finalists2.md).
+
+**Round four:** finalists: [`finalists.png`](finalists.png), reads in [`finalists.md`](finalists.md).
 
 **Round three:** Puppeteer variants: [`puppeteer.png`](puppeteer.png), reads in [`puppeteer.md`](puppeteer.md).
 

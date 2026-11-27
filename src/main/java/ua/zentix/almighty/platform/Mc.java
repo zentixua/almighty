@@ -204,7 +204,11 @@ public final class Mc {
     /** A new command source at command permission level {@code level}. */
     public static CommandSourceStack source(CommandSource output, Vec3 pos, Vec2 rotation, ServerLevel level, int permission,
                                             String name, Component displayName, MinecraftServer server, Entity entity) {
-        //? if >=26.1 {
+        //? if >=26.3 {
+        /*// 26.3: a source names itself after its entity, or after one constant component (text name = its string).
+        return entity != null ? new CommandSourceStack(output, pos, rotation, level, permissions(permission), server, entity)
+                : new CommandSourceStack(output, pos, rotation, level, permissions(permission), displayName, server);
+        *///?} else if >=26.1 {
         /*return new CommandSourceStack(output, pos, rotation, level, permissions(permission), name, displayName, server, entity);
         *///?} else {
         return new CommandSourceStack(output, pos, rotation, level, permission, name, displayName, server, entity);
@@ -362,7 +366,14 @@ public final class Mc {
     /** A recipe's result item (26.x: the first stack its recipe-book display shows); empty if it has none. */
     public static net.minecraft.world.item.ItemStack recipeResult(net.minecraft.world.item.crafting.Recipe<?> recipe,
                                                                   net.minecraft.core.RegistryAccess access) {
-        //? if >=26.1 {
+        //? if >=26.3 {
+        /*var displays = recipe.display();
+        if (displays.isEmpty()) return net.minecraft.world.item.ItemStack.EMPTY;
+        var context = net.minecraft.util.context.ContextMap.builder()
+                .set(net.minecraft.world.item.crafting.display.SlotDisplayContext.REGISTRIES, access)
+                .buildAndValidate(net.minecraft.world.item.crafting.display.SlotDisplayContext.CONTEXT);
+        return displays.getFirst().result().resolveForFirstStack(context);
+        *///?} else if >=26.1 {
         /*var displays = recipe.display();
         if (displays.isEmpty()) return net.minecraft.world.item.ItemStack.EMPTY;
         var context = new net.minecraft.util.context.ContextMap.Builder()
@@ -510,6 +521,50 @@ public final class Mc {
         };
         *///?} else {
         return r.name().toLowerCase(Locale.ROOT);
+        //?}
+    }
+
+    /** Swing the hand as the server does after an interaction a client asked for (seen by others and the player). */
+    public static void swing(net.minecraft.server.level.ServerPlayer p, net.minecraft.world.InteractionHand hand) {
+        //? if >=26.3 {
+        /*p.swing(hand, p.getItemInHand(hand).getInteractAnimation(), true);
+        *///?} else {
+        p.swing(hand, true);
+        //?}
+    }
+
+    /** The packet a client sends when it swings the main hand at nothing or at a block it digs. */
+    public static net.minecraft.network.protocol.Packet<?> swingPacket() {
+        //? if >=26.3 {
+        /*return net.minecraft.network.protocol.game.ServerboundPunchPacket.INSTANCE;
+        *///?} else {
+        return new net.minecraft.network.protocol.game.ServerboundSwingPacket(net.minecraft.world.InteractionHand.MAIN_HAND);
+        //?}
+    }
+
+    /** Drop an item the player could not carry, as a client's "drop" would (thrown from the hand: no). */
+    public static void drop(net.minecraft.server.level.ServerPlayer p, net.minecraft.world.item.ItemStack stack) {
+        //? if >=26.3 {
+        /*p.drop(stack, false, net.minecraft.util.Prediction.SERVER_ONLY);
+        *///?} else {
+        p.drop(stack, false);
+        //?}
+    }
+
+    /** Whether an advancement's display announces it in chat, and its title. */
+    public static boolean announces(net.minecraft.advancements.DisplayInfo d) {
+        //? if >=26.3 {
+        /*return d.announceToChat();
+        *///?} else {
+        return d.shouldAnnounceChat();
+        //?}
+    }
+
+    public static net.minecraft.network.chat.Component title(net.minecraft.advancements.DisplayInfo d) {
+        //? if >=26.3 {
+        /*return d.title();
+        *///?} else {
+        return d.getTitle();
         //?}
     }
 }

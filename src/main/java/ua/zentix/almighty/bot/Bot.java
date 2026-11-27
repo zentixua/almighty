@@ -388,6 +388,9 @@ public final class Bot {
                     send(new ServerboundChatAckPacket(chatAcks));
                     chatAcks = 0;
                 }
+                //? if >=26.3 {
+                /*String text = chat.unsignedContent().map(Component::getString).orElse(chat.body().content());
+                *///?} else
                 String text = chat.unsignedContent() != null ? chat.unsignedContent().getString() : chat.body().content();
                 chat(chat.chatType(), text);
             }
@@ -402,8 +405,13 @@ public final class Bot {
             }
             case ClientboundOpenSignEditorPacket sign -> {
                 JsonObject m = mail("sign_editor", "", null);
+                //? if >=26.3 {
+                /*m.add("pos", Observe.pos(sign.pos()));
+                m.addProperty("front", sign.slot() == net.minecraft.world.level.block.entity.SignTextSlot.FRONT);
+                *///?} else {
                 m.add("pos", Observe.pos(sign.getPos()));
                 m.addProperty("front", sign.isFrontText());
+                //?}
             }
             case ClientboundPlayerCombatKillPacket kill -> mail("death", kill.message().getString(), null);
             case ClientboundDisconnectPacket bye -> mail("disconnect", bye.reason().getString(), null);
@@ -435,6 +443,10 @@ public final class Bot {
         ServerPlayer p = player();
         if (Mc.level(p).getChunkSource().getChunkNow(p.getBlockX() >> 4, p.getBlockZ() >> 4) == null) return;
         teleportPending = false;
+        //? if >=26.3 {
+        /*// 26.3: the client confirms with the position it now has (the server's teleport target).
+        send(new ServerboundAcceptTeleportationPacket(teleportId, p.getX(), p.getY(), p.getZ(), p.getYRot(), p.getXRot()));
+        *///?} else
         send(new ServerboundAcceptTeleportationPacket(teleportId));
     }
 

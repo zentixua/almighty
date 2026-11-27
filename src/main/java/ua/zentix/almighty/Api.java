@@ -143,7 +143,7 @@ public final class Api {
                 ServerPlayer p = to == null ? null : server.getPlayerList().getPlayer(to);
                 if (p == null) throw RpcException.conflict("The player who asked is offline");
                 net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(holder, n);
-                if (!p.getInventory().add(stack)) p.drop(stack, false);
+                if (!p.getInventory().add(stack)) ua.zentix.almighty.platform.Mc.drop(p, stack);
                 JsonObject out = new JsonObject();
                 out.addProperty("player", Mc.name(p.getGameProfile()));
                 out.addProperty("item", id.toString());

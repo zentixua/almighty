@@ -157,6 +157,9 @@ public final class NeoForgePlatform implements Platform {
 
     @Override
     public InteractionResult interactEntityAt(Player player, Entity entity, Vec3 at, InteractionHand hand) {
+        //? if >=26.3 {
+        /*return CommonHooks.onInteractEntity(player, entity, hand, at);
+        *///?} else
         return CommonHooks.onInteractEntityAt(player, entity, at, hand);
     }
 

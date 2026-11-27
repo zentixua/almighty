@@ -36,7 +36,11 @@ public final class AlmightyNeoForge {
     public AlmightyNeoForge(IEventBus modBus, ModContainer container) {
         NeoForgePlatform platform = new NeoForgePlatform();
         Platform.set(platform);
-        container.registerConfig(ModConfig.Type.COMMON, NeoForgeConfig.build());
+        // config/almighty-common.toml on every version (26.3's FML calls the unsynced type LOCAL).
+        //? if >=26.3 {
+        /*container.registerConfig(ModConfig.Type.LOCAL, NeoForgeConfig.build(), Almighty.ID + "-common.toml");
+        *///?} else
+        container.registerConfig(ModConfig.Type.COMMON, NeoForgeConfig.build(), Almighty.ID + "-common.toml");
         //? if >=26.1 {
         /*// 26.x ticket types are registry entries: the GM's chunk ticket (world/Areas).
         modBus.addListener((net.neoforged.neoforge.registries.RegisterEvent e) -> e.register(

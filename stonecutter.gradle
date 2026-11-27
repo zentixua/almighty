@@ -38,4 +38,6 @@ stonecutter.parameters {
     replacements.string(v26) { replace 'new GameTestAssertException(', 'new ua.zentix.almighty.gametest.v26.Failure(' }
     // 26.x day time is a world clock: `time query daytime` became `time query time` (GameTest command fixtures).
     replacements.string(v26) { replace 'time query daytime', 'time query time' }
+    boolean v263 = current.parsed.matches('>=26.3')
+    replacements.string(v263) { replace 'net.minecraft.advancements.CriteriaTriggers', 'net.minecraft.advancements.triggers.CriteriaTriggers' }
 }

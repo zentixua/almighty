@@ -143,6 +143,10 @@ final class Steps {
             if (lines.size() > 4) throw RpcException.badRequest("lines: at most 4 lines");
             String[] four = {"", "", "", ""};
             for (int i = 0; i < lines.size(); i++) four[i] = text(lines.get(i), 384, "lines");
+            //? if >=26.3 {
+            /*return packet("sign", new ServerboundSignUpdatePacket(new BlockPos(pos[0], pos[1], pos[2]), List.of(four),
+                    a.bool("front", true) ? net.minecraft.world.level.block.entity.SignTextSlot.FRONT : net.minecraft.world.level.block.entity.SignTextSlot.BACK));
+            *///?} else
             return packet("sign", new ServerboundSignUpdatePacket(new BlockPos(pos[0], pos[1], pos[2]), a.bool("front", true), four[0], four[1], four[2], four[3]));
         }
         if (a.has("respawn")) return new Respawn();

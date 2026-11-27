@@ -132,11 +132,20 @@ public final class GmServer {
         Nodes.refresh(server);
         ua.zentix.almighty.policy.Identity.onlineMode(server.usesAuthentication());
         gm.rules.load();
-        if (server.isDedicatedServer() && GmConfig.BRIDGE_ENABLED.get()) {
+        boolean integrated = !server.isDedicatedServer();
+        if (integrated && GmConfig.BRIDGE_INTEGRATED.get() && !loopback(GmConfig.BRIDGE_HOST.get())) {
+            LOG.error("Almighty bridge: bridge.integrated works only on loopback; bridge.host is {}", GmConfig.BRIDGE_HOST.get());
+        } else if ((!integrated || GmConfig.BRIDGE_INTEGRATED.get()) && GmConfig.BRIDGE_ENABLED.get()) {
             try {
                 InetSocketAddress address = new InetSocketAddress(GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PORT.get());
                 Agents agents = Agents.load(configDir);
-                gm.bridge = new Bridge(address, agents, gm.dispatch, Api.LONG, new HashSet<>(GmConfig.BRIDGE_ALLOWED_ORIGINS.get()));
+                javax.net.ssl.SSLContext tls = tls(server);
+                if (tls == null && !loopback(GmConfig.BRIDGE_HOST.get())) {
+                    LOG.warn("Almighty bridge listens on {} without TLS: tokens and calls cross the network in plain text. Keep that "
+                            + "address reachable only from this machine or a private network, or set bridge.tls_cert and bridge.tls_key",
+                            GmConfig.BRIDGE_HOST.get());
+                }
+                gm.bridge = new Bridge(address, agents, gm.dispatch, Api.LONG, new HashSet<>(GmConfig.BRIDGE_ALLOWED_ORIGINS.get()), tls);
                 gm.mcp = Mcp.mount(server, gm.bridge, configDir, GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PUBLIC_URL.get(),
                         new HashSet<>(GmConfig.BRIDGE_ALLOWED_ORIGINS.get()));
                 gm.bridge.start();
@@ -148,6 +157,23 @@ public final class GmServer {
             }
         }
         return gm;
+    }
+
+    /** The owner's certificate when both TLS files are set; null for plain HTTP. A broken setting stops the bridge. */
+    private static javax.net.ssl.SSLContext tls(MinecraftServer server) throws IOException {
+        String cert = GmConfig.BRIDGE_TLS_CERT.get().strip(), key = GmConfig.BRIDGE_TLS_KEY.get().strip();
+        if (cert.isEmpty() && key.isEmpty()) return null;
+        if (cert.isEmpty() || key.isEmpty()) throw new IOException("bridge.tls_cert and bridge.tls_key go together");
+        Path dir = server.getServerDirectory();
+        try {
+            return ua.zentix.almighty.bridge.Tls.context(dir.resolve(cert), dir.resolve(key));
+        } catch (java.security.GeneralSecurityException e) {
+            throw new IOException("TLS: " + e.getMessage(), e);
+        }
+    }
+
+    static boolean loopback(String host) {
+        return ua.zentix.almighty.mcp.signin.SignIn.loopback(host);
     }
 
     /** Tick start: a pause longer than {@code lag_ms} since the previous tick emits a {@code lag} event. */

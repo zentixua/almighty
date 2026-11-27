@@ -69,7 +69,9 @@ public final class Api {
 
     /** Whether a call has no effects: idempotency keys are ignored for it. {@code notes} with {@code text} writes a note. */
     public static boolean readOnly(String method, JsonObject params) {
-        return READ_ONLY.contains(method) || (method.equals("notes") && !params.has("text"));
+        return READ_ONLY.contains(method) || (method.equals("notes") && !params.has("text"))
+                || (method.equals("file") && params.has("action") && params.get("action").isJsonPrimitive()
+                && java.util.Set.of("list", "read").contains(params.get("action").getAsString()));
     }
 
     /** Methods without effects on the world, whatever their parameters. */

@@ -249,15 +249,18 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   writing air. Caveat: work the server thread runs inside a GM call (a script that loads a chunk drains queued
   tasks, player packets included) is recorded into that call's change; scripts must not load chunks (deny list).
 - Policy edits by asking (`policy/ConfigFiles`, `PolicyEdits`): `file` reads and writes only `policy.toml` and
-  `scripts/<name>.groovy`. Friction follows origin: the owner (effective owner, the console, an internal caller)
-  applies at once; a player's request is refused (403); the agent's own initiative applies at once only if
-  `PolicyEdits.grants` finds nothing (preset or identity more open, owners added or removed, ceilings or floors
-  raised, deny zones narrowed, `agent_may` widened, ask_admin wider, confirm_first narrower, larger quotas);
-  otherwise it becomes an admin confirmation that a holder of `almighty.engine` decides (202, then replayed under
-  the decider). An agent raised to an owner ceiling only by the console editing the file. The last owner cannot be
+  `scripts/<name>.groovy`. Friction follows origin: the owner (the console, an internal caller, or a request
+  whose player is an owner) applies at once; a player's request is refused (403); the agent's own initiative, on
+  any preset (private too, where its floor is owner), applies at once only if `PolicyEdits.grants` finds nothing
+  (preset more open or leaving private, identity verifying more people, owners added or removed, ceilings or
+  floors raised, deny zones narrowed, `agent_may` widened, ask_admin wider, confirm_first narrower, larger
+  quotas); otherwise it becomes an admin confirmation that a holder of `almighty.engine` decides (202; the owner
+  sees a summary with the text's hash, the exact text runs when allowed). An undo is a write of the saved text
+  (`undo_of`), so its approval is bound to that text; the undone version stays in `policy.history/undone/`. One
+  lock (`PolicyFile.LOCK`) covers compare, history, write and reload. An agent raised to an owner ceiling only by the console editing the file. The last owner cannot be
   removed. Every write is validated (`Policy.parse`, then `PolicyFile.write`, atomic); the old file goes to
-  `policy.history/` (50 kept); `/almighty policy undo` or `file {action: "undo"}` walks back. Scripts are written
-  only by the owner. Hand edits with `/almighty reload` keep no history.
+  `policy.history/` (50 kept); `/almighty policy undo` or `file {action: "undo"}` walks back. Scripts are read
+  and written only by the owner. Hand edits with `/almighty reload` keep no history.
 - `knowledge/`: what the agent learns about this server, one method `notes`. `Notes`: notes from mods and
   datapacks (`data/<namespace>/almighty/notes/<name>.md` in the server's current data, refreshed after `/reload`,
   id `<namespace>:<name>`; a datapack overrides a mod note at the same path, an empty file removes it), the

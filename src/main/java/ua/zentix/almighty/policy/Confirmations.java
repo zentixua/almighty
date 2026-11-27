@@ -266,9 +266,18 @@ public final class Confirmations {
     /** Wait for the requester: 202 {@code pending} with the id (never the nonce). */
     public synchronized Pending ask(Kind kind, Caller caller, String method, JsonObject params, UUID confirmer, Node node,
                                     UUID requester, String requesterName) throws RpcException {
+        return ask(kind, caller, method, params, confirmer, node, requester, requesterName, null);
+    }
+
+    /**
+     * {@code display}: what the decider sees instead of the rendered call, for a call too large to read in chat
+     * (a whole policy file: its summary); the exact parameters still run, and identical asks still merge.
+     */
+    public synchronized Pending ask(Kind kind, Caller caller, String method, JsonObject params, UUID confirmer, Node node,
+                                    UUID requester, String requesterName, String display) throws RpcException {
         long now = clockMillis.getAsLong();
         expire(now);
-        String text = render(method, params);
+        String text = display != null ? display : render(method, params);
         if (text.length() > MAX_SHOWN) throw RpcException.badRequest("This call is too long to show a person for confirmation; split it");
         JsonObject shown = params.deepCopy();
         shown.remove("for");
@@ -276,7 +285,7 @@ public final class Confirmations {
             int mine = 0, agent = 0;
             for (Pending p : byId.values()) {
                 if (p.state != State.WAITING) continue;
-                if (p.requester.equals(requester)) mine++;
+                if (p.kind == Kind.REQUESTER && java.util.Objects.equals(p.requester, requester)) mine++;
                 if (p.caller.name().equals(caller.name())) agent++;
             }
             if (mine >= PER_REQUESTER) throw new RpcException(429, "ask_limit", requesterName + " already has " + mine + " questions waiting");

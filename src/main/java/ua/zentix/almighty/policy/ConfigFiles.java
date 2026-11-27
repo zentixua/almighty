@@ -52,14 +52,27 @@ public final class ConfigFiles {
     public static Asker digest(Decisions decisions) {
         return (a, grants) -> {
             try {
+                // The owner reads a summary (a whole file does not fit a chat line); the exact text runs when allowed.
+                String text = a.raw().has("text") ? a.raw().get("text").getAsString() : "";
+                String display = "file: the agent proposes policy.toml (" + text.lines().count() + " lines, sha256 " + sha(text)
+                        + "), which grants " + grants;
                 Confirmations.Pending pending = decisions.confirmations().ask(Confirmations.Kind.ADMIN, a.caller(), "file", a.raw(),
-                        null, Node.ENGINE, null, "the agent");
+                        null, Node.ENGINE, null, "the agent", display);
                 if (pending.count() == 1) decisions.prompt(pending);
                 return Confirmations.waiting(pending, "the owner (it grants " + grants + ")");
             } catch (RpcException e) {
                 return e;
             }
         };
+    }
+
+    static String sha(String text) {
+        try {
+            byte[] d = java.security.MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(d, 0, 6);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private Path resolve(String path) throws RpcException {
@@ -73,7 +86,7 @@ public final class ConfigFiles {
         try {
             return switch (action) {
                 case "list" -> list();
-                case "read" -> read(a.string("path"));
+                case "read" -> read(a, a.string("path"));
                 case "write" -> write(a, a.string("path"), a.string("text"), "write");
                 case "undo" -> undo(a);
                 default -> throw RpcException.badRequest("action: list, read, write or undo");
@@ -106,8 +119,10 @@ public final class ConfigFiles {
         return out;
     }
 
-    private JsonObject read(String path) throws IOException, RpcException {
+    private JsonObject read(Args a, String path) throws IOException, RpcException {
         Path p = resolve(path);
+        // Scripts are the owner's code (they may hold anything the owner wrote): only the owner reads them here.
+        if (!path.equals("policy.toml") && !owner(a)) throw new RpcException(403, "policy", "Scripts are read only when the owner asks");
         if (!Files.isRegularFile(p)) throw RpcException.notFound("No " + path);
         JsonObject out = new JsonObject();
         out.addProperty("path", path);
@@ -126,23 +141,48 @@ public final class ConfigFiles {
         return out;
     }
 
-    /** Undo the last policy change: write back the newest saved version (with the same friction). */
+    /**
+     * Whether the call comes from the owner: the console or an internal caller, or a request whose player is the
+     * owner. The agent unasked is never the owner here, whatever its floor (on a private server too): its own
+     * initiative gets the friction.
+     */
+    private boolean owner(Args a) throws RpcException {
+        if (a.caller().agent() == null) return true;
+        Gate.Rights r = gate.rights(a.caller(), a.raw());
+        return r.ticket() != null && r.effective() == Role.OWNER;
+    }
+
+    /** This exact call was allowed in game by a holder of almighty.engine (the owner's digest), not any admin ask. */
+    private static boolean approved() {
+        Confirmations.Pending running = Confirmations.running();
+        return running != null && running.kind == Confirmations.Kind.ADMIN && running.method.equals("file")
+                && running.node == Node.ENGINE && running.decider != null;
+    }
+
+    /**
+     * Undo the last policy change: a write of the newest saved version's exact text (so an approval, if it grants,
+     * is bound to that text), with the same friction. The restored entry leaves the history; the undone version is
+     * kept in {@code policy.history/undone/}.
+     */
     private JsonObject undo(Args a) throws IOException, RpcException {
-        List<Path> h = history();
-        if (h.isEmpty()) throw RpcException.notFound("No earlier policy saved");
-        Path last = h.get(h.size() - 1);
-        JsonObject out = write(a, "policy.toml", Files.readString(last, StandardCharsets.UTF_8), "undo");
-        // write() saved the undone version as the newest entry; drop it and the restored one, so undo walks back.
-        Files.deleteIfExists(newest());
-        Files.deleteIfExists(last);
-        return out;
+        synchronized (PolicyFile.LOCK) {
+            List<Path> h = history();
+            if (h.isEmpty()) throw RpcException.notFound("No earlier policy saved");
+            Path last = h.get(h.size() - 1);
+            JsonObject p = new JsonObject();
+            p.addProperty("action", "write");
+            p.addProperty("path", "policy.toml");
+            p.addProperty("text", Files.readString(last, StandardCharsets.UTF_8));
+            p.addProperty("undo_of", last.getFileName().toString());
+            if (a.raw().has("for")) p.add("for", a.raw().get("for"));
+            return write(new Args(p, a.caller()), "policy.toml", p.get("text").getAsString(), "undo");
+        }
     }
 
     private JsonObject write(Args a, String path, String text, String what) throws IOException, RpcException {
         Path p = resolve(path);
-        Role effective = a.caller().agent() == null ? Role.OWNER : gate.rights(a.caller(), a.raw()).effective();
-        boolean owner = effective == Role.OWNER;
-        if (!owner && a.caller().requester() != null) {
+        boolean owner = owner(a);
+        if (!owner && a.caller().requester() != null && !approved()) {
             throw new RpcException(403, "policy", "Players cannot change Almighty's files (only the owner, or restricting changes by the agent)");
         }
         if (!path.equals("policy.toml")) {
@@ -158,68 +198,87 @@ public final class ConfigFiles {
         } catch (Policy.Invalid e) {
             throw RpcException.badRequest("policy.toml refused, the current one stays: " + e.getMessage());
         }
-        Policy old = policies.current();
-        if (!old.owners().isEmpty() && neu.owners().isEmpty()) throw RpcException.conflict("This would remove the last owner: refused");
-        String host = PolicyEdits.hostLevel(old, neu);
-        if (host != null && a.caller().agent() != null) {
-            throw new RpcException(403, "policy", "Only the console can do this (" + host + "): the owner edits policy.toml there");
-        }
-        // This exact call, approved in game by a holder of almighty.engine (the owner): applied, whatever the agent's ceiling.
-        Confirmations.Pending running = Confirmations.running();
-        boolean approved = running != null && running.kind == Confirmations.Kind.ADMIN && running.method.equals("file") && running.decider != null;
-        if (!owner && !approved) {
-            String grants = PolicyEdits.grants(old, neu);
-            if (grants != null) {
+        boolean approved = approved();
+        synchronized (PolicyFile.LOCK) {
+            // Compared with the policy as it is now, under the lock (another write may have just landed).
+            Policy old = policies.current();
+            if (!old.owners().isEmpty() && neu.owners().isEmpty()) throw RpcException.conflict("This would remove the last owner: refused");
+            String host = PolicyEdits.hostLevel(old, neu);
+            if (host != null && a.caller().agent() != null) {
+                throw new RpcException(403, "policy", "Only the console can do this (" + host + "): the owner edits policy.toml there");
+            }
+            if (!owner && !approved) {
+                String grants = PolicyEdits.grants(old, neu);
                 // The agent's own initiative, granting something: one owner's approval, through the quiet digest.
-                throw asker.ask(a, grants);
+                if (grants != null) throw asker.ask(a, grants);
+            }
+            Path saved = apply(p, text);
+            // An undo: the restored entry leaves the walk (only if it is still that text); the undone version is kept.
+            if (a.raw().has("undo_of")) {
+                Path entry = dir.resolve("policy.history").resolve(a.raw().get("undo_of").getAsString()).normalize();
+                if (entry.getParent().equals(dir.resolve("policy.history").normalize()) && Files.isRegularFile(entry)
+                        && Files.readString(entry, StandardCharsets.UTF_8).equals(text)) {
+                    Files.deleteIfExists(entry);
+                    if (saved != null) {
+                        Path undone = dir.resolve("policy.history").resolve("undone");
+                        Files.createDirectories(undone);
+                        Files.move(saved, undone.resolve(saved.getFileName()), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    }
+                }
             }
         }
-        apply(p, text);
         return done(path, what, owner ? "applied (asked by the owner)" : approved ? "applied (approved by the owner)" : "applied (it only restricts)");
     }
 
-    /** {@code /almighty policy undo}: the owner at the console or in game (level 4); no friction beyond validation. */
+    /** {@code /almighty policy undo}: the owner at the console or in game; no friction beyond validation. */
     public String undoByOwner() {
+        JsonObject p = new JsonObject();
+        p.addProperty("action", "undo");
         try {
-            List<Path> h = history();
-            if (h.isEmpty()) return "No earlier policy saved";
-            Path last = h.get(h.size() - 1);
-            String text = Files.readString(last, StandardCharsets.UTF_8);
-            try {
-                Policy.parse(text);
-            } catch (Policy.Invalid e) {
-                return "The saved policy is not valid any more: " + e.getMessage();
-            }
-            Files.deleteIfExists(last);
-            apply(dir.resolve("policy.toml"), text);
-            Files.deleteIfExists(newest());
+            undo(new Args(p, ua.zentix.almighty.bridge.Caller.INTERNAL));
             return null;
         } catch (IOException | RpcException e) {
             return e.getMessage();
         }
     }
 
-    /** The newest history entry: the copy {@link #apply} just made of the version being undone. */
-    private Path newest() throws IOException {
-        List<Path> h = history();
-        return h.isEmpty() ? dir.resolve("policy.history").resolve("none") : h.get(h.size() - 1);
-    }
-
-    private void apply(Path p, String text) throws IOException, RpcException {
+    /** Write the new text, keeping the old file in history first; returns the history copy (null if none). */
+    private Path apply(Path p, String text) throws IOException, RpcException {
         Path h = dir.resolve("policy.history");
         Files.createDirectories(h);
-        if (Files.isRegularFile(p)) Files.copy(p, h.resolve(stamp(h)));
+        Path copy = null;
+        if (Files.isRegularFile(p)) {
+            copy = h.resolve(stamp(h));
+            Files.copy(p, copy);
+        }
         List<Path> all = history();
         for (int i = 0; i + HISTORY < all.size(); i++) Files.deleteIfExists(all.get(i));
         String why = PolicyFile.write(p, text);
-        if (why != null) throw RpcException.badRequest(why);
+        if (why != null) {
+            if (copy != null) Files.deleteIfExists(copy);
+            throw RpcException.badRequest(why);
+        }
         String reloaded = policies.reload();
         if (reloaded != null) throw new RpcException(500, "reload", reloaded);
+        return copy;
     }
 
     /** A unique, sortable history name (two writes in one millisecond must not collide). */
     private static String stamp(Path h) {
         long t = System.currentTimeMillis();
+        // Never before the newest entry (a clock that went back would misorder the walk).
+        try {
+            List<Path> all = new ArrayList<>();
+            try (DirectoryStream<Path> s = Files.newDirectoryStream(h, "*.toml")) {
+                s.forEach(all::add);
+            }
+            for (Path q : all) {
+                String n = q.getFileName().toString().replace(".toml", "");
+                if (n.matches("\\d{15}")) t = Math.max(t, Long.parseLong(n) + 1);
+            }
+        } catch (IOException e) {
+            // Best effort: the time alone.
+        }
         while (Files.exists(h.resolve(String.format(java.util.Locale.ROOT, "%015d.toml", t)))) t++;
         return String.format(java.util.Locale.ROOT, "%015d.toml", t);
     }

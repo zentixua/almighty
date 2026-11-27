@@ -62,6 +62,10 @@ class PolicyFilesTest {
         assertNotNull(PolicyEdits.grants(friends, Policy.parse(friends("[zones.arena]\nfrom = [0,0,0]\nto = [9,9,9]\nagent_may = [\"build\"]"))), "an arena grants");
         assertNotNull(PolicyEdits.grants(friends, Policy.parse(friends("[quotas]\nbuild_blocks = 999999"))), "larger quotas grant");
         assertNull(PolicyEdits.grants(friends, Policy.parse(friends("[quotas]\nbuild_blocks = 10"))), "smaller quotas restrict");
+        assertNotNull(PolicyEdits.grants(Policy.parse("preset = \"private\"\nowners = [\"" + OWNER + "\"]"), friends),
+                "leaving private lets players reach the agents");
+        assertNotNull(PolicyEdits.grants(friends, Policy.parse(friends("identity = \"proxy\"\n"))), "auto → proxy may verify more people");
+        assertNull(PolicyEdits.grants(Policy.parse(friends("identity = \"proxy\"\n")), friends), "back to auto");
         assertNotNull(PolicyEdits.hostLevel(friends, Policy.parse(friends("[agents.mod]\nceiling = \"owner\""))), "owner ceiling: console only");
     }
 
@@ -86,6 +90,29 @@ class PolicyFilesTest {
         assertNull(f.undoByOwner());
         assertTrue(!Files.readString(dir.resolve("policy.toml")).contains("build_blocks"), "back to the start");
         assertNotNull(f.undoByOwner(), "nothing earlier");
+    }
+
+    @Test
+    void onPrivateTheAgentUnaskedIsNotTheOwner(@TempDir Path dir) throws Exception {
+        // Private: the agent's floor is its ceiling (owner for gm), but its own initiative still gets the friction.
+        String priv = "preset = \"private\"\nowners = [\"" + OWNER + "\"]\n";
+        ConfigFiles f = files(dir, priv);
+        RpcException wait = assertThrows(RpcException.class, () -> write(f, gm, priv.replace(OWNER.toString(), OWNER + "\", \"" + UUID.randomUUID())));
+        assertEquals(202, wait.status(), "a new owner, unasked: waits for the owner");
+        assertEquals(202, assertThrows(RpcException.class, () -> write(f, gm, priv + "identity = \"offline\"")).status());
+        assertEquals("applied (it only restricts)", write(f, gm, priv + "[quotas]\nbuild_blocks = 5").get("how").getAsString());
+    }
+
+    @Test
+    void anAgentsUndoIsBoundToTheTextItRestores(@TempDir Path dir) throws Exception {
+        ConfigFiles f = files(dir, friends("[quotas]\nbuild_blocks = 999"));
+        write(f, gm, friends("[quotas]\nbuild_blocks = 10"));
+        JsonObject undo = new JsonObject();
+        undo.addProperty("action", "undo");
+        // Undoing back to the larger quota grants: it waits, and what waits is the exact text.
+        assertEquals(202, assertThrows(RpcException.class, () -> f.call(new Args(undo, gm))).status());
+        assertTrue(Files.readString(dir.resolve("policy.toml")).contains("build_blocks = 10"));
+        assertEquals(1, Files.list(dir.resolve("policy.history")).filter(x -> x.toString().endsWith(".toml")).count(), "nothing consumed");
     }
 
     @Test

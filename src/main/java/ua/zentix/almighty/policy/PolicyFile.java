@@ -20,8 +20,17 @@ public final class PolicyFile {
 
     private PolicyFile() {}
 
+    /** One writer of policy.toml at a time: the bridge's file method, owner commands, undo. */
+    public static final Object LOCK = new Object();
+
     /** Replace the owners list; returns null, or why nothing changed. */
     public static String owners(Path file, Set<UUID> owners) throws IOException {
+        synchronized (LOCK) {
+            return ownersLocked(file, owners);
+        }
+    }
+
+    private static String ownersLocked(Path file, Set<UUID> owners) throws IOException {
         String old = Files.isRegularFile(file) ? Files.readString(file, StandardCharsets.UTF_8) : "";
         String list = "owners = [" + owners.stream().map(u -> "\"" + u + "\"").collect(Collectors.joining(", ")) + "]";
         Matcher m = OWNERS.matcher(old);
@@ -36,10 +45,17 @@ public final class PolicyFile {
         } catch (Policy.Invalid e) {
             return e.getMessage();
         }
-        Files.createDirectories(file.toAbsolutePath().getParent());
-        Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-        Files.writeString(tmp, text, StandardCharsets.UTF_8);
-        Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        return null;
+        synchronized (LOCK) {
+            Path dir = file.toAbsolutePath().getParent();
+            Files.createDirectories(dir);
+            Path tmp = Files.createTempFile(dir, file.getFileName().toString(), ".tmp");
+            try {
+                Files.writeString(tmp, text, StandardCharsets.UTF_8);
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } finally {
+                Files.deleteIfExists(tmp);
+            }
+            return null;
+        }
     }
 }

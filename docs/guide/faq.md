@@ -36,7 +36,7 @@ list ([Permissions](permissions.md)).
 
 **What if it breaks something?**
 Every block it writes is journaled: the player who asked gets an `[Undo]` button, and you can undo any change with
-`/almighty undo <change>`. `/almighty pause` stops every agent from changing anything at once
+`/almighty undo <change>`. `/almighty pause` at once leaves every agent only able to look
 ([Safety](security.md#undo-audit-and-the-red-button)).
 
 **Does it slow the server down?**

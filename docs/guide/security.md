@@ -59,7 +59,8 @@ level. Scripts and rules with scripts need the owner.
 
 - **Change journal.** Every block the game master writes is recorded on disk with what was there before, so a change
   can be undone even after a crash. An undo puts back only positions that still hold what the change put there;
-  anything changed since stays. Block entity contents (a chest's items), entities and inventories are not recorded.
+  anything changed since stays. Edits that change only a block entity's contents (a chest's items without replacing the chest),
+  entities and inventories are not recorded.
 - **Receipts.** After a request with an effect, the player who asked gets a line in chat with `[Undo]`.
 - **Audit log.** Every call with an effect and every refusal is a line in `logs/almighty/audit-<date>.jsonl` (kept
   30 days, `audit.days`); `/almighty log [agent] [count]` shows the latest.

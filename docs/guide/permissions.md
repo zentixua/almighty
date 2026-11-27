@@ -16,8 +16,8 @@ Every player and every agent has one of five roles. Each includes everything bel
 | owner | Players listed in `owners` (verified), the console | Everything: scripts, rules with scripts, any command |
 | admin | Operators of level 3 or 4 | Look at other players, creative bots, undo anyone's changes, read the audit log, decide requests above a player's rights |
 | builder | Operators of level 2 | Keep areas loaded, add rules without scripts, run scripts the owner approved |
-| member | Every verified player on a friends' server | Build, give themselves items, bots in survival, speak to everyone, write world notes |
-| guest | Every verified player on a public server, every unverified player | Look at the world, read notes, get private answers, run commands at their own operator level |
+| member | Every verified player on a friends' server, operators of level 1 | Build, give themselves items, bots in survival, speak to everyone, write world notes |
+| guest | Every other verified player on a public server, every unverified player | Look at the world, read notes, get private answers, run commands at their own operator level |
 
 Commands always go through vanilla's own permission checks: a request runs its commands at the requester's own
 operator level, or at the level of their role if that is higher (owner 4, admin 3, builder 2, member and guest 0),
@@ -101,7 +101,7 @@ ladder at its default role.
 | `almighty.bots.admin` | admin | Creative or spectator bots, client packets, skins |
 | `almighty.undo.any` | admin | Undo other agents' and players' changes |
 | `almighty.audit` | admin | Read the audit log |
-| `almighty.approve` | admin | Decide requests above a player's rights (`ask_admin`) |
+| `almighty.approve` | admin | Decide players' commands above their rights (`ask_admin`) |
 | `almighty.engine` | owner | Scripts and rules with scripts: code in the server's Java process |
 
 ### LuckPerms
@@ -132,7 +132,8 @@ ask_admin = ["kick"]       # these may go to an admin when the player lacks the 
 confirm_first = ["tp"]     # these always need the requester's confirmation
 ```
 
-A request in `ask_admin` above the player's rights goes to admins holding `almighty.approve` as one quiet chat line
+A request in `ask_admin` above the player's rights goes to admins who hold what it needs (for a command,
+`almighty.approve`) as one quiet chat line
 at most every 10 minutes; they see it with `/almighty inbox`. An approved request runs once with that admin's rights.
 Empty `ask_admin` (the default) means such requests are simply refused.
 
@@ -211,5 +212,6 @@ The game master can read and edit `policy.toml` (and, for owners only, scripts i
 - **A player's request** to change the policy is refused.
 
 Every write is checked first; the previous file goes to `config/almighty/policy.history/` (50 kept), and
-`/almighty policy undo` puts it back. Raising an agent to an owner ceiling is done only by you, in the file or with
-`/almighty approve <code> <name> owner`.
+`/almighty policy undo` puts it back. Raising an agent to an owner ceiling is done only in the file or with
+`/almighty approve <code> <name> owner`, which the console and level-4 operators can type: give level 4 only to
+people you trust as owners.

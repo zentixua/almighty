@@ -21,7 +21,7 @@ Players can also address the game master in public chat by its name (`feed.names
 
 | Command | Who | What it does |
 |---|---|---|
-| `/almighty inbox` | Holders of `almighty.approve`, the console | Requests above a player's rights that wait for an admin (`ask_admin`), with `[Allow]` and `[Deny]`. |
+| `/almighty inbox` | Admins who hold what a request needs (for commands, `almighty.approve`), the console | Requests above a player's rights that wait for an admin (`ask_admin`), with `[Allow]` and `[Deny]`. |
 | `/almighty role <player> <role> [duration]` | Admins, the console | Give a role (`guest`, `member`, `builder`, `admin`) below your own, for example `/almighty role Alex builder 3h` (`30m`, `2d`, `1h30m`). Without a duration, until cleared. |
 | `/almighty role <player> clear` | Admins, the console | Take a given role back. |
 
@@ -31,7 +31,7 @@ Players can also address the game master in public chat by its name (`feed.names
 |---|---|
 | `/almighty connect` | The server's MCP address, the line to add it in each app, and links for apps that have install links. |
 | `/almighty approve` | List waiting sign-ins (app and address, never the code). |
-| `/almighty approve <code> [<name>] [owner]` | Approve the sign-in showing that code, optionally under a name of your choice; `owner` gives the app your rights as its ceiling ([permissions](permissions.md#your-own-app)). |
+| `/almighty approve <code> [<name> [owner]]` | Approve the sign-in showing that code, optionally under a name of your choice; `owner` gives the app your rights as its ceiling ([permissions](permissions.md#your-own-app)). |
 | `/almighty deny <code>` | Refuse a waiting sign-in. |
 | `/almighty agents` | Every agent with its last call and address. |
 | `/almighty reload` | Reread `policy.toml` and the agent token files. A file with a mistake is refused and the previous policy stays. |

@@ -49,7 +49,7 @@ plus notes that mods, datapacks and you leave for it.
 
 - **One permission system.** `config/almighty/policy.toml` sets who the owners are, how much each agent may do, and
   what it does unasked. Presets for a private, friends' or public server; roles from guest to owner; zones, hourly
-  quotas and land claims; LuckPerms nodes. Nobody grants more than they hold.
+  quotas and land claims; LuckPerms nodes. Roles are given only below one's own.
 - **Requests are not orders.** A player's request runs with that player's rights. Anything that touches other
   players or cannot be undone waits for the requester's own confirmation in chat; above their rights, only the kinds
   of request you list go to an admin.

@@ -280,8 +280,8 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 `map {center+size | from/to [x,z], below?, marks?}`, `look {from, to, look}`, `blocks {from, to, properties?}`,
 `build {ops}`, `undo {job}`, `jobs`, `job {id, wait?}`, `cancel {id}`, `area.prepare {from, to [x,z], ttl_seconds?, wait?}`,
 `area.release {id}`, `areas`, `events {after?, wait? ≤25, limit?}`,
-`script {code, args?, timeout_ms? ≤10000}` → `{ok, value | error+line, output, ms}`,
-`rule.add {event, script?, name?, every?, limit?, priority?, canceled?, budget_ms?, persist?}`, `rule.remove {id | name}`,
+`script {code | name, args?, timeout_ms? ≤10000}` → `{ok, value | error+line, output, ms}`,
+`rule.add {event, script? | when?+then?, name?, every?, limit?, priority?, canceled?, budget_ms?, persist?, ttl_hours?}`, `rule.remove {id | name}`,
 `rules`, `event.types {query, limit?}`, `bots`, `bot {name, after?}`,
 `bot.spawn {name, pos?, dimension?, yaw?, pitch?, gamemode?, skin? (account name | {value, signature}), marker?, auto_respawn?}`,
 `bot.remove {name}`, `bot.act {name, actions, replace?, wait?}`,
@@ -313,6 +313,22 @@ as an entity, `emit(data)` as an `emit` feed event, `fields(event)`, `player(nam
 stop), plus `args` for scripts, `event` and `rule` for rules. Common game classes are imported (`Scripts.IMPORTS`).
 A rule without a script writes event properties to the feed; a rule script's return value is ignored; only
 `gm.emit` writes to the feed.
+
+Declarative rules (`rules/Declarative`, plan 4.12; node `almighty.rules`, builder): `when` (conditions on the
+event's fields as a rule without a script reports them: equal, `ne`, `lt`, `gt`, `in`, `contains`, `exists`) and
+`then` (`cancel`, `emit`, `{say, to?, style?}`, `{command}`). `{path}` fills say text with any value, but `to` and
+commands only with plain names, ids and numbers (`Declarative.Unsafe`: chat text never becomes a command). A rule
+is bound to its creator (`creator` and `expires` in its saved spec, set by the server, never by parameters): the
+requester of the `rule.add` call, or the agent unasked; the owner's rules (console, internal, an owner's request,
+an agent whose floor is owner) have no TTL and no re-checks. Below owner the TTL is at most 7 days, and every
+fire asks `Guard` (`GmServer.ruleGuard`) again: no `almighty.rules` any more → the rule turns off; a cancel only
+where the creator may build (`build`, zones, claims; an event without a block or entity place needs the owner at
+add time); say with `speak.reply` or `speak.all`; commands as the creator (their own source and level under the
+ceiling, the agent at its floor's level at the event's place), through the deny list and `CommandZones`. Below
+admin, `rule.remove` removes only rules made for you. Owner-approved scripts: `script {name, args}` (node
+`almighty.scripts.run`, builder) runs `config/almighty/scripts/<name>.groovy` only while its SHA-256 matches the
+one `/almighty script approve <name>` pinned (`scripts/approved.json`); any edit needs a new approval. The script
+gets `requester` (UUID or null) and runs with the GM's full rights: it is the owner's code.
 
 A rule disables itself (`rule.off` with a reason; stays in `rules`) on: average time above `budget_ms` per tick
 over the last 20 ticks; one run over 20×`budget_ms` (at least 50 ms; the first such abort emits only `rule.error`);

@@ -130,6 +130,7 @@ public final class GmServer {
                 gate),
                 Api::readOnly);
         decisions.dispatch(dispatch);
+        rules.guard(ruleGuard(), System::currentTimeMillis);
         this.files = new ua.zentix.almighty.policy.ConfigFiles(GmServer.configDir == null ? server.getServerDirectory().resolve("config")
                 .resolve("almighty") : GmServer.configDir, policies, gate, ua.zentix.almighty.policy.ConfigFiles.digest(decisions));
         dispatch.requester((caller, params) -> {
@@ -400,6 +401,92 @@ public final class GmServer {
      * Who a command runs as (plan 4.3): in-process at level 4; unasked at the trust floor's level; for a request, as
      * that player (their entity, at the higher of their op level and their role's level, capped by the ceiling).
      */
+    /**
+     * Declarative rules act for their creator (plan 4.12), asked again at every fire: rules need almighty.rules now;
+     * a cancel only where the creator may build (zones, claims; an event without a place: only the owner); say and
+     * commands with the creator's own rights, commands at the creator's level and through zones.
+     */
+    private ua.zentix.almighty.rules.Guard ruleGuard() {
+        return new ua.zentix.almighty.rules.Guard() {
+            public boolean owner(ua.zentix.almighty.rules.Declarative.Creator c) {
+                return c.agent() == null || gate.role(c.agent(), c.player()) == ua.zentix.almighty.policy.Role.OWNER;
+            }
+
+            public String rules(ua.zentix.almighty.rules.Declarative.Creator c) {
+                return gate.holds(c.agent(), c.player(), ua.zentix.almighty.policy.Node.RULES) ? null : "no almighty.rules any more";
+            }
+
+            /** The event's place: a block event's position, else its entity's; null for an event without one. */
+            private Object[] place(net.neoforged.bus.api.Event e) {
+                if (e instanceof net.neoforged.neoforge.event.level.BlockEvent b && b.getLevel() instanceof net.minecraft.server.level.ServerLevel l) {
+                    return new Object[]{l, b.getPos()};
+                }
+                if (e instanceof net.neoforged.neoforge.event.entity.EntityEvent ee && ee.getEntity() != null
+                        && ee.getEntity().level() instanceof net.minecraft.server.level.ServerLevel l) {
+                    return new Object[]{l, ee.getEntity().blockPosition()};
+                }
+                return null;
+            }
+
+            public String cancel(ua.zentix.almighty.rules.Declarative.Creator c, net.neoforged.bus.api.Event e) {
+                if (owner(c)) return null;
+                Object[] at = place(e);
+                if (at == null) return "this event has no place in the world; server-wide cancels need the owner";
+                if (!gate.holds(c.agent(), c.player(), ua.zentix.almighty.policy.Node.BUILD)) return c.describe() + " may not build";
+                net.minecraft.server.level.ServerLevel level = (net.minecraft.server.level.ServerLevel) at[0];
+                net.minecraft.core.BlockPos pos = (net.minecraft.core.BlockPos) at[1];
+                int[] p = {pos.getX(), pos.getY(), pos.getZ()};
+                String zone = gate.zoneDenies(gate.role(c.agent(), c.player()), ua.zentix.almighty.policy.Node.BUILD,
+                        ua.zentix.almighty.world.Dims.id(level), p, p);
+                if (zone != null) return zone;
+                return claims.refusal(c.player(), level, p[0], p[2], p[0], p[2]);
+            }
+
+            public void say(ua.zentix.almighty.rules.Declarative.Creator c, String text, String to, String style) throws RpcException {
+                boolean all = to == null || !style.equals("chat");
+                if (!owner(c)) {
+                    if (text.contains(ua.zentix.almighty.act.Chat.RESERVED)) throw new RpcException(403, "policy", "Rule text may not carry " + ua.zentix.almighty.act.Chat.RESERVED);
+                    ua.zentix.almighty.policy.Node node = all ? ua.zentix.almighty.policy.Node.SPEAK_ALL : ua.zentix.almighty.policy.Node.SPEAK_REPLY;
+                    if (!gate.holds(c.agent(), c.player(), node)) throw new RpcException(403, "policy", c.describe() + " may not " + node.description());
+                }
+                JsonObject p = new JsonObject();
+                p.addProperty("text", text);
+                p.addProperty("style", style);
+                if (to != null) p.addProperty("to", to);
+                ua.zentix.almighty.act.Chat.say(server, new ua.zentix.almighty.bridge.Args(p));
+            }
+
+            public void command(ua.zentix.almighty.rules.Declarative.Creator c, net.neoforged.bus.api.Event e, String command) throws RpcException {
+                Object[] at = place(e);
+                net.minecraft.server.level.ServerLevel level = at == null ? server.overworld() : (net.minecraft.server.level.ServerLevel) at[0];
+                net.minecraft.world.phys.Vec3 pos = net.minecraft.world.phys.Vec3.atBottomCenterOf(at == null ? level.getSharedSpawnPos() : (net.minecraft.core.BlockPos) at[1]);
+                ua.zentix.almighty.act.CommandRunner.As as;
+                ua.zentix.almighty.policy.Role role = c.agent() == null ? ua.zentix.almighty.policy.Role.OWNER : gate.role(c.agent(), c.player());
+                if (role == ua.zentix.almighty.policy.Role.OWNER) {
+                    as = c.player() != null && server.getPlayerList().getPlayer(c.player()) == null ? ua.zentix.almighty.act.CommandRunner.As.GM
+                            : c.player() == null ? ua.zentix.almighty.act.CommandRunner.As.GM
+                            : new ua.zentix.almighty.act.CommandRunner.As(4, server.getPlayerList().getPlayer(c.player()));
+                } else if (c.player() != null) {
+                    // The creator's own source, at their level under the agent's ceiling (never a running approval's).
+                    net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(c.player());
+                    if (p == null) throw RpcException.conflict(c.name() + " is offline: the rule's command runs as them");
+                    int lvl = Math.max(server.getProfilePermissions(p.getGameProfile()), Nodes.role(p.getUUID()).commandLevel());
+                    as = new ua.zentix.almighty.act.CommandRunner.As(Math.min(lvl, policies.current().ceiling(c.agent()).commandLevel()), p);
+                } else {
+                    as = new ua.zentix.almighty.act.CommandRunner.As(role.commandLevel(), null);
+                }
+                if (role != ua.zentix.almighty.policy.Role.OWNER) {
+                    net.minecraft.commands.CommandSourceStack source = ua.zentix.almighty.act.CommandRunner.sourceFor(server, level, pos, as);
+                    ua.zentix.almighty.policy.CommandZones.check(server.getCommands().getDispatcher(), source, command, (node, dim, lo, hi) -> {
+                        String d = gate.zoneDenies(role, node, dim, lo, hi);
+                        if (d != null) throw new RpcException(403, "policy", d);
+                    });
+                }
+                ua.zentix.almighty.act.CommandRunner.runAs(server, level, pos, java.util.List.of(command), as);
+            }
+        };
+    }
+
     public ua.zentix.almighty.act.CommandRunner.As commandAs(Gate.Rights r) throws RpcException {
         if (r == null) return ua.zentix.almighty.act.CommandRunner.As.GM;
         if (r.ticket() == null) return new ua.zentix.almighty.act.CommandRunner.As(r.floor().commandLevel(), null);

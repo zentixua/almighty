@@ -102,7 +102,7 @@ public final class Gate implements Dispatch.Check {
             case "build", "undo", "cancel" -> Node.BUILD;
             case "area.prepare", "area.release" -> Node.AREA;
             case "command", "function" -> Node.COMMAND;
-            case "script" -> Node.ENGINE;
+            case "script" -> has(p, "code") || !has(p, "name") ? Node.ENGINE : Node.SCRIPTS_RUN;
             case "rule.add" -> has(p, "script") ? Node.ENGINE : Node.RULES;
             case "rule.remove" -> Node.RULES;
             case "bot.spawn" -> {
@@ -250,17 +250,36 @@ public final class Gate implements Dispatch.Check {
         if (caller.agent() == null) return;
         Rights r = rights(caller, params);
         if (r.effective() == Role.OWNER) return;
-        for (Policy.Zone z : policies.current().zones().values()) {
-            if (z.denies(node) && z.meets(dim, lo, hi)) {
-                throw new RpcException(403, "policy", "Zone " + z.name() + " denies " + node.key() + " here");
-            }
-        }
+        String denied = zoneDenies(r.effective(), node, dim, lo, hi);
+        if (denied != null) throw new RpcException(403, "policy", denied);
         if (params.has(ZONE_ONLY)) {
             for (Policy.Zone z : policies.current().zones().values()) {
                 if (z.agentMay().contains(node.id()) && z.holds(dim, lo, hi)) return;
             }
             throw new RpcException(403, "policy", "Not allowed: " + node.key() + " outside the zones where the agent may (agent_may)");
         }
+    }
+
+    /** Why a zone denies {@code node} over this box for these rights; null if none does (or for the owner). */
+    public String zoneDenies(Role effective, Node node, String dim, int[] lo, int[] hi) {
+        if (effective == Role.OWNER) return null;
+        for (Policy.Zone z : policies.current().zones().values()) {
+            if (z.denies(node) && z.meets(dim, lo, hi)) return "Zone " + z.name() + " denies " + node.key() + " here";
+        }
+        return null;
+    }
+
+    /** A rule creator's role now (plan 4.12): the agent's floor unasked, else the player's role under the ceiling. */
+    public Role role(String agent, java.util.UUID player) {
+        Policy p = policies.current();
+        return player == null ? p.floor(agent) : Role.min(Nodes.role(player), p.ceiling(agent));
+    }
+
+    /** Whether a rule creator holds {@code node} now (the same answer a call with their ticket would get). */
+    public boolean holds(String agent, java.util.UUID player, Node node) {
+        Policy p = policies.current();
+        return new Rights(agent, p.ceiling(agent), p.floor(agent), player == null ? null
+                : new Tickets.Ticket("rule", player, null, agent, 0, 0, Identity.verified(player))).holds(node, holder);
     }
 
     /** The node a call needs (for methods that check zones themselves). */

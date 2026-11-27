@@ -263,6 +263,76 @@ public final class ConfigFiles {
         return copy;
     }
 
+    /**
+     * Owner-approved scripts (plan 4.12): {@code scripts/<name>.groovy} runs by name only while its SHA-256 matches
+     * the one the owner pinned with {@code /almighty script approve <name>} ({@code scripts/approved.json}). Any edit
+     * of the file (by the owner, or anyone with file access) needs a new approval.
+     */
+    public String approvedScript(String name) throws RpcException {
+        Path p = resolve("scripts/" + name + ".groovy");
+        try {
+            if (!Files.isRegularFile(p)) throw RpcException.notFound("No script " + name + " in config/almighty/scripts");
+            String code = Files.readString(p, StandardCharsets.UTF_8);
+            String pinned = approvals().has(name) ? approvals().get(name).getAsString() : null;
+            if (pinned == null) throw new RpcException(403, "policy", "Script " + name + " is not approved: the owner runs /almighty script approve " + name);
+            if (!pinned.equals(fullSha(code))) throw new RpcException(403, "policy", "Script " + name + " changed since the owner approved it: /almighty script approve " + name + " again");
+            return code;
+        } catch (IOException e) {
+            throw new RpcException(500, "io", e.getMessage());
+        }
+    }
+
+    /** {@code /almighty script approve|revoke <name>}: pin or drop the file's hash. Returns null, or why not. */
+    public String approve(String name, boolean approve) {
+        synchronized (PolicyFile.LOCK) {
+            try {
+                Path p = resolve("scripts/" + name + ".groovy");
+                JsonObject all = approvals();
+                if (approve) {
+                    if (!Files.isRegularFile(p)) return "No script " + name + " in config/almighty/scripts";
+                    all.addProperty(name, fullSha(Files.readString(p, StandardCharsets.UTF_8)));
+                } else if (all.remove(name) == null) {
+                    return "Script " + name + " was not approved";
+                }
+                Path f = dir.resolve("scripts").resolve("approved.json");
+                Files.createDirectories(f.getParent());
+                Files.writeString(f, new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(all), StandardCharsets.UTF_8);
+                return null;
+            } catch (IOException | RpcException e) {
+                return e.getMessage();
+            }
+        }
+    }
+
+    /** Approved names (and whether each file still matches). */
+    public JsonObject approvedList() throws IOException {
+        JsonObject out = new JsonObject();
+        for (var e : approvals().entrySet()) {
+            Path p = dir.resolve("scripts").resolve(e.getKey() + ".groovy");
+            out.addProperty(e.getKey(), Files.isRegularFile(p) && e.getValue().getAsString().equals(fullSha(Files.readString(p, StandardCharsets.UTF_8)))
+                    ? "approved" : "changed or missing: approve again");
+        }
+        return out;
+    }
+
+    private JsonObject approvals() throws IOException {
+        Path f = dir.resolve("scripts").resolve("approved.json");
+        if (!Files.isRegularFile(f)) return new JsonObject();
+        try {
+            return com.google.gson.JsonParser.parseString(Files.readString(f, StandardCharsets.UTF_8)).getAsJsonObject();
+        } catch (RuntimeException e) {
+            throw new IOException("scripts/approved.json is not readable: " + e.getMessage());
+        }
+    }
+
+    static String fullSha(String text) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     /** A unique, sortable history name (two writes in one millisecond must not collide). */
     private static String stamp(Path h) {
         long t = System.currentTimeMillis();

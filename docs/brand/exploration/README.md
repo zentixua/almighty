@@ -1,5 +1,7 @@
 # Brand exploration (archive)
 
+**Follow-up:** the robot puppeteer (Artem's idea), tested blind against the approved mark: [`hanging-bot.png`](hanging-bot.png), [`hanging-bot.md`](hanging-bot.md).
+
 The rounds that led to the final mark in [`../README.md`](../README.md). Each round's sheet and verbatim blind reads are kept here. The scripts in `scripts/brand/` that made them now write into this folder.
 
 

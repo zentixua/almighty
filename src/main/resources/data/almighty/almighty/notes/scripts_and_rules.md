@@ -34,4 +34,4 @@ Component, BuiltInRegistries...). The returned value comes back as JSON; `printl
   restarts).
 - A rule turns itself off (`rule.off` in the feed, with the reason) when its average time per tick goes over
   `budget_ms` (default 5), one run takes over 20 x budget, 10 errors in a row, or it writes over 200 feed entries in
-  a second. Bots it drove stop. Fix it and add it again.
+  a second, or when its event fires off the server thread. Bots it drove stop. Fix it and add it again.

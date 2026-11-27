@@ -1,6 +1,6 @@
 ---
 name: learning-mods
-description: How to learn an unknown mod or modpack on an Almighty server - the mod's own note, the live catalog of its blocks, items, recipes, commands, events and config, trying things safely, and writing down what worked.
+description: "How to learn an unknown mod or modpack on an Almighty server - the mod's own note, the live catalog of its blocks, items, recipes, commands, events and config, trying things safely, and writing down what worked."
 ---
 
 <!-- Generated from src/main/resources/data/almighty/almighty/notes/learning_mods.md by scripts/export_skills.py; edit the note, not this file. -->

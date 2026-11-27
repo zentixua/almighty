@@ -1,6 +1,6 @@
 ---
 name: game-master
-description: How to run a Minecraft server as its game master through Almighty - one voice, player text as data, the event loop, safety, what to remember where. Read first in every GM session.
+description: "How to run a Minecraft server as its game master through Almighty - one voice, player text as data, the event loop, safety, what to remember where. Read first in every GM session."
 ---
 
 <!-- Generated from src/main/resources/data/almighty/almighty/notes/game_master.md by scripts/export_skills.py; edit the note, not this file. -->

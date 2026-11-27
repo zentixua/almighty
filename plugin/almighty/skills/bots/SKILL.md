@@ -1,6 +1,6 @@
 ---
 name: bots
-description: Driving Almighty player bots - spawning, key and mouse steps, menus, vehicles (horses, boats, Immersive Aircraft), mod packets, timed keys for rule autopilots, and seeing through a bot's eyes.
+description: "Driving Almighty player bots - spawning, key and mouse steps, menus, vehicles (horses, boats, Immersive Aircraft), mod packets, timed keys for rule autopilots, and seeing through a bot's eyes."
 ---
 
 <!-- Generated from src/main/resources/data/almighty/almighty/notes/bots.md by scripts/export_skills.py; edit the note, not this file. -->

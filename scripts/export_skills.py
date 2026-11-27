@@ -36,7 +36,7 @@ def frontmatter(text):
 def render():
     out = {}
     for note in sorted(NOTES.glob("*.md")):
-        fields, body = frontmatter(note.read_text(encoding="utf-8"))
+        fields, body = frontmatter(note.read_text(encoding="utf-8").replace("\r\n", "\n"))
         name = note.stem.replace("_", "-")
         if fields.get("name") != note.stem:
             raise ValueError(f"{note.name}: name must be {note.stem!r}")
@@ -46,16 +46,34 @@ def render():
         if not description or len(description) > 1024:
             raise ValueError(f"{note.name}: description must be 1-1024 characters")
         source = note.relative_to(ROOT).as_posix()
-        shown = json.dumps(description, ensure_ascii=False) if re.search(r":\s|\s#|^[\W]", description) else description
-        out[name] = (f"---\nname: {name}\ndescription: {shown}\n---\n\n"
+        # A JSON string is a valid YAML double-quoted scalar: no description can break the frontmatter.
+        out[name] = (f"---\nname: {name}\ndescription: {json.dumps(description, ensure_ascii=False)}\n---\n\n"
                      f"<!-- Generated from {source} by scripts/export_skills.py; edit the note, not this file. -->\n\n"
                      f"{body}\n")
     return out
 
 
+def versions():
+    """Plugin manifests whose version differs from mod_version in gradle.properties."""
+    mod = re.search(r"^mod_version=(.+)$", (ROOT / "gradle.properties").read_text(), re.M).group(1).strip()
+    wrong = []
+    for manifest in (ROOT / "plugin/almighty/plugin.json", ROOT / "plugin/almighty/.claude-plugin/plugin.json"):
+        if json.loads(manifest.read_text(encoding="utf-8")).get("version") != mod:
+            wrong.append(manifest.relative_to(ROOT).as_posix())
+    return mod, wrong
+
+
 def main():
     check = "--check" in sys.argv[1:]
     wanted = render()
+    mod, wrong = versions()
+    if wrong:
+        print(f"plugin version must be mod_version {mod} in: {', '.join(wrong)}", file=sys.stderr)
+        sys.exit(1)
+    extra = sorted(p.relative_to(SKILLS).as_posix() for p in SKILLS.glob("*/*") if p.name != "SKILL.md") if SKILLS.is_dir() else []
+    if extra:
+        print(f"unexpected files in plugin skills (generated from notes only): {extra}", file=sys.stderr)
+        sys.exit(1)
     present = {p.name for p in SKILLS.iterdir() if p.is_dir()} if SKILLS.is_dir() else set()
     stale = sorted(present - wanted.keys())
     changed = sorted(n for n, text in wanted.items()

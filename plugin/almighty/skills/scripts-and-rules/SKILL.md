@@ -1,6 +1,6 @@
 ---
 name: scripts-and-rules
-description: Groovy scripts and event rules in Almighty - what the script variables are, the rules that keep the server alive (no closures handed to the game, no chunk loads, no sleeping), budgets, and when a rule turns itself off.
+description: "Groovy scripts and event rules in Almighty - what the script variables are, the rules that keep the server alive (no closures handed to the game, no chunk loads, no sleeping), budgets, and when a rule turns itself off."
 ---
 
 <!-- Generated from src/main/resources/data/almighty/almighty/notes/scripts_and_rules.md by scripts/export_skills.py; edit the note, not this file. -->
@@ -36,4 +36,4 @@ Component, BuiltInRegistries...). The returned value comes back as JSON; `printl
   restarts).
 - A rule turns itself off (`rule.off` in the feed, with the reason) when its average time per tick goes over
   `budget_ms` (default 5), one run takes over 20 x budget, 10 errors in a row, or it writes over 200 feed entries in
-  a second. Bots it drove stop. Fix it and add it again.
+  a second, or when its event fires off the server thread. Bots it drove stop. Fix it and add it again.

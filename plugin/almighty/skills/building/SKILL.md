@@ -1,6 +1,6 @@
 ---
 name: building
-description: Building in the world with Almighty - build ops (fill, set, layers), undo, loading distant places, reading blocks back, and how to stay inside the tick budget.
+description: "Building in the world with Almighty - build ops (fill, set, layers), undo, loading distant places, reading blocks back, and how to stay inside the tick budget."
 ---
 
 <!-- Generated from src/main/resources/data/almighty/almighty/notes/building.md by scripts/export_skills.py; edit the note, not this file. -->
@@ -20,7 +20,8 @@ description: Building in the world with Almighty - build ops (fill, set, layers)
 - A build waits for its chunks by itself. To look at or read a place where no player is, first
   `area {action: "prepare", start: [x,z], end: [x,z], wait: 30}`; release it when done.
 - Check your work: `view {kind: "blocks", start, end}` returns the blocks as text in the same layer format as
-  `build`; `view {kind: "look", start, end, direction: "north"}` and `view {kind: "map", center, size}` return pictures.
+  `build` (fed back into `build`, `.` and `?` are not in the palette and leave blocks as they are: map air to
+  `air` in the palette to clear); `view {kind: "look", start, end, direction: "north"}` and `view {kind: "map", center, size}` return pictures.
 - Plan large structures as several builds (one per part) so a mistake can be undone alone.
 - `/fill` and `/clone` in `command` are for small changes; anything large belongs in `build`.
 - Ask before building over what players made; prefer empty land or the area the owner gave you.

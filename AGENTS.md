@@ -51,7 +51,7 @@ uv run mcp/almighty.py call status       # one bridge call (address and token at
 ```
 
 CI (GitHub Actions) checks every PR and push to `main`: GM toolkit, build, unit tests, GameTest; the jar is the
-`almighty-jar` artifact. Release: bump `mod_version` (`gradle.properties`), write `docs/releases/<version>.md`, merge
+`almighty-jar` artifact. Release: bump `mod_version` (`gradle.properties`) and both `plugin/almighty` manifests (CI checks), write `docs/releases/<version>.md`, merge
 into `main` and manually run `build` on `main` with `release=true`; the workflow releases `v<version>` with the jar.
 open-skies-friends picks the jar up by itself (its `update` workflow, every 3 hours; run it manually to get it at once).
 Immersive Aircraft and Sable are pinned there: change them in an open-skies-friends PR together with the pins here.

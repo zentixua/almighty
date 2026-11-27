@@ -12,9 +12,15 @@ import ua.zentix.almighty.bridge.Agents;
 import ua.zentix.almighty.bridge.Bridge;
 import ua.zentix.almighty.bridge.Dispatch;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.audit.Audit;
+import ua.zentix.almighty.audit.Pause;
 import ua.zentix.almighty.feed.Feed;
 import ua.zentix.almighty.feed.Inbox;
 import ua.zentix.almighty.mcp.Mcp;
+import ua.zentix.almighty.policy.Gate;
+import ua.zentix.almighty.policy.Nodes;
+import ua.zentix.almighty.policy.Policies;
+import ua.zentix.almighty.policy.Policy;
 import ua.zentix.almighty.policy.Tickets;
 import ua.zentix.almighty.policy.DenyList;
 import ua.zentix.almighty.rules.Rules;
@@ -47,6 +53,8 @@ public final class GmServer {
 
     /** GameTest jobs measure time with their own clock: ticks run without pauses, so wall-clock time is unsuitable. */
     public static LongSupplier clock = System::nanoTime;
+    /** {@code config/almighty} of the running server (policy, agents). */
+    private static Path configDir;
 
     private final MinecraftServer server;
     private final Feed feed = new Feed();
@@ -59,6 +67,11 @@ public final class GmServer {
     private final Dispatch dispatch;
     private final Tickets tickets = new Tickets(System::currentTimeMillis);
     private final Inbox inbox;
+    private final Pause pause = new Pause();
+    private final Policies policies;
+    private final Gate gate;
+    private static final java.util.Set<String> PAUSE_ALLOWS = java.util.Set.of("cancel", "area.release", "rule.remove", "bot.remove");
+    private final Audit audit;
     private Bridge bridge;
     private Mcp mcp;
     private long lastTick;
@@ -78,9 +91,28 @@ public final class GmServer {
         this.rules = new Rules(server, NeoForge.EVENT_BUS, feed, state,
                 server.getWorldPath(LevelResource.ROOT).resolve("almighty").resolve("rules.json"));
         this.bots = new Bots(this);
+        // GameTest keeps the audit in memory: no files in the test run directory.
+        this.audit = new Audit(server instanceof net.minecraft.gametest.framework.GameTestServer ? null
+                : server.getServerDirectory().resolve("logs").resolve("almighty"),
+                GmConfig.AUDIT_DAYS.get());
+        jobs.paused(pause::paused);
+        rules.paused(pause::all);
         this.inbox = new Inbox(server, feed, tickets, () -> bridge == null ? null : bridge.agents());
-        this.dispatch = new Dispatch(Api.methods(this), List.of((caller, method, params) -> DenyList.check(method, params)),
+        this.policies = new Policies(GmServer.configDir == null ? null : GmServer.configDir.resolve("policy.toml"));
+        // Bot names from a thread-safe set the bots keep (the gate runs on bridge threads).
+        this.gate = new Gate(policies, tickets, Nodes::holds, bots::isBotName);
+        this.dispatch = new Dispatch(Api.methods(this), List.of(
+                (caller, method, params) -> DenyList.check(method, params),
+                (caller, method, params) -> {
+                    // Cancelling, releasing and removing only reduce effects: allowed, so a paused agent can clean up.
+                    if (!Api.readOnly(method, params) && !PAUSE_ALLOWS.contains(method) && pause.paused(caller.name())) {
+                        throw new RpcException(423, "paused", "Paused by the owner (/almighty resume): only reading is allowed");
+                    }
+                },
+                gate),
                 Api::readOnly);
+        dispatch.listen((caller, method, params, text, result, error, nanos) ->
+                audit.ended(caller, method, params, text, result, error, nanos, Api.readOnly(method, params)));
     }
 
     /** This server's game master; null if the server has not started yet or has already stopped. */
@@ -90,9 +122,15 @@ public final class GmServer {
     }
 
     static GmServer start(MinecraftServer server, Path configDir) {
-        ua.zentix.almighty.policy.Identity.mode(ua.zentix.almighty.policy.Identity.Mode.parse(GmConfig.FEED_IDENTITY.get()));
+        // An existing install (its token predates this start) keeps the behaviour it had: preset private.
+        boolean existing = java.nio.file.Files.exists(configDir.resolve("token"));
+        GmServer.configDir = configDir;
         GmServer gm = new GmServer(server);
         current = gm;
+        gm.policies.load(existing ? Policy.Preset.PRIVATE : Policy.Preset.PRIVATE);
+        Nodes.start(server, gm.policies::current);
+        Nodes.refresh(server);
+        ua.zentix.almighty.policy.Identity.onlineMode(server.usesAuthentication());
         gm.rules.load();
         if (server.isDedicatedServer() && GmConfig.BRIDGE_ENABLED.get()) {
             try {
@@ -150,6 +188,7 @@ public final class GmServer {
         usedThisTick += System.nanoTime() - jobsStart;
         areas.tick(server.getTickCount());
         inbox.tick(server.getTickCount());
+        if (server.getTickCount() % 20 == 0) Nodes.refresh(server);
     }
 
     /** The GM budget per tick; a quarter of it while the lag guard holds, so builds and views slow down but go on. */
@@ -195,10 +234,12 @@ public final class GmServer {
         bots.stop();
         rules.stop();
         jobs.cancelAll();
+        audit.stop();
         areas.releaseAll();
     }
 
     static void stopped(MinecraftServer server) {
+        Nodes.stop(server);
         if (current != null && current.server == server) current = null;
     }
 
@@ -224,6 +265,35 @@ public final class GmServer {
 
     public Bots bots() {
         return bots;
+    }
+
+    public Policies policies() {
+        return policies;
+    }
+
+    public Gate gate() {
+        return gate;
+    }
+
+    public Audit audit() {
+        return audit;
+    }
+
+    public Pause pause() {
+        return pause;
+    }
+
+    /** Pause one agent (or, null, every agent): its calls with effects are refused, its jobs freeze, its bots stop. */
+    public int pause(String agent) {
+        pause.pause(agent);
+        int stopped = 0;
+        for (ua.zentix.almighty.bot.Bot bot : bots.all()) {
+            if (agent == null || bot.controller().equals(agent)) {
+                bot.stop("paused by the owner");
+                stopped++;
+            }
+        }
+        return stopped;
     }
 
     public Inbox inbox() {
@@ -262,13 +332,17 @@ public final class GmServer {
      */
     public <T> CompletableFuture<T> onMain(MainCall<T> call) {
         CompletableFuture<T> out = new CompletableFuture<>();
+        // The caller travels with the call: jobs and bots started on the server thread know which agent acts.
+        ua.zentix.almighty.bridge.Caller caller = Dispatch.current();
         Runnable run = () -> {
             if (stopped) {
                 out.completeExceptionally(RpcException.unavailable("The server is stopping"));
                 return;
             }
             try {
-                out.complete(call.run());
+                // Completed inside the caller's scope: continuations that run here (thenCompose on the server thread)
+                // still act as this caller, so a job they submit is tagged with the right agent.
+                Dispatch.as(caller, () -> out.complete(call.run()));
             } catch (VirtualMachineError e) {
                 if (!(e instanceof StackOverflowError)) throw e;
                 out.completeExceptionally(e);

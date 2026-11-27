@@ -1,5 +1,6 @@
 package ua.zentix.almighty.command;
 
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -23,8 +24,8 @@ import java.util.List;
 
 /**
  * Owner command {@code /almighty} (permission level 4: the console and level-4 operators): agents and their tokens.
- * Tokens are never printed: a command names the file that holds one. Later steps add {@code log}, {@code pause},
- * {@code role}, {@code confirm}, {@code undo}.
+ * Tokens are never printed: a command names the file that holds one. Also the red button ({@code pause},
+ * {@code resume}) and the audit ({@code log}). Later steps add {@code role}, {@code confirm}, {@code undo}.
  */
 public final class AlmightyCommand {
     private AlmightyCommand() {}
@@ -39,17 +40,38 @@ public final class AlmightyCommand {
     };
 
     private static void onRegister(RegisterCommandsEvent e) {
-        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("almighty").requires(s -> s.hasPermission(4));
-        root.then(Commands.literal("agents").executes(c -> agents(c.getSource())));
-        root.then(Commands.literal("agent")
+        // Owner subcommands need permission level 4 (the console, level-4 operators); whoami is for everyone.
+        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("almighty");
+        root.then(Commands.literal("whoami").executes(c -> whoami(c.getSource())));
+        root.then(owner("agents").executes(c -> agents(c.getSource())));
+        root.then(owner("agent")
                 .then(Commands.literal("add").then(Commands.argument("name", StringArgumentType.word())
                         .executes(c -> change(c, "add"))))
                 .then(Commands.literal("remove").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
                         .executes(c -> change(c, "remove")))));
-        root.then(Commands.literal("revoke").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
+        root.then(owner("revoke").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
                 .executes(c -> change(c, "revoke"))));
-        root.then(Commands.literal("reload").executes(c -> reload(c.getSource())));
+        root.then(owner("reload").executes(c -> reload(c.getSource())));
+        root.then(owner("pause").executes(c -> pause(c.getSource(), null, true))
+                .then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
+                        .executes(c -> pause(c.getSource(), StringArgumentType.getString(c, "name"), true))));
+        root.then(owner("resume").executes(c -> pause(c.getSource(), null, false))
+                .then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
+                        .executes(c -> pause(c.getSource(), StringArgumentType.getString(c, "name"), false))));
+        root.then(owner("log").executes(c -> log(c.getSource(), null, 10))
+                .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
+                        .executes(c -> log(c.getSource(), null, IntegerArgumentType.getInteger(c, "count"))))
+                .then(Commands.argument("who", StringArgumentType.word()).suggests(AGENTS)
+                        .executes(c -> log(c.getSource(), StringArgumentType.getString(c, "who"), 10))
+                        .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
+                                .executes(c -> log(c.getSource(), StringArgumentType.getString(c, "who"),
+                                        IntegerArgumentType.getInteger(c, "count"))))));
         e.getDispatcher().register(root);
+    }
+
+    /** An owner subcommand: permission level 4. */
+    private static LiteralArgumentBuilder<CommandSourceStack> owner(String name) {
+        return Commands.literal(name).requires(s -> s.hasPermission(4));
     }
 
     private static Bridge bridge(CommandSourceStack source) {
@@ -112,16 +134,82 @@ public final class AlmightyCommand {
         }
     }
 
+    /** The red button: pause (or resume) one agent or every agent. */
+    private static int pause(CommandSourceStack source, String agent, boolean on) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        String who = agent == null ? "every agent" : "agent " + agent;
+        if (on) {
+            int bots = gm.pause(agent);
+            gm.audit().owner(source.getTextName(), "pause", agent == null ? "all" : agent);
+            source.sendSuccess(() -> Component.literal("Paused " + who + ": calls with effects are refused, jobs wait, "
+                    + bots + " bot(s) stopped. /almighty resume" + (agent == null ? "" : " " + agent) + " to continue"), true);
+        } else {
+            gm.pause().resume(agent);
+            gm.audit().owner(source.getTextName(), "resume", agent == null ? "all" : agent);
+            source.sendSuccess(() -> Component.literal("Resumed " + who), true);
+        }
+        return 1;
+    }
+
+    /** The last entries of the audit log, optionally of one agent. */
+    private static int log(CommandSourceStack source, String who, int count) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        var entries = gm.audit().recent(count, e -> who == null || e.get("agent").getAsString().equals(who));
+        StringBuilder out = new StringBuilder("Almighty log (" + entries.size() + "):");
+        for (var el : entries) {
+            var e = el.getAsJsonObject();
+            String time = e.get("time").getAsString();
+            out.append("\n").append(time, Math.min(11, time.length()), Math.min(19, time.length())).append(' ')
+                    .append(e.get("agent").getAsString()).append(' ').append(e.get("method").getAsString()).append(' ')
+                    .append(e.get("outcome").getAsString());
+            if (e.has("job")) out.append(" job #").append(e.get("job").getAsLong());
+            String params = e.has("params") ? e.get("params").getAsString() : "";
+            if (!params.isEmpty() && !params.equals("{}")) out.append(' ').append(params.length() > 80 ? params.substring(0, 80) + "…" : params);
+        }
+        String text = out.toString();
+        source.sendSuccess(() -> Component.literal(text), false);
+        return entries.size();
+    }
+
     private static int reload(CommandSourceStack source) {
-        Bridge bridge = need(source);
-        if (bridge == null) return 0;
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        String why = gm.policies().reload();
+        gm.audit().owner(source.getTextName(), "reload", why == null ? "policy ok" : "policy refused: " + why);
+        if (why != null) {
+            source.sendFailure(Component.literal("policy.toml refused, the previous policy stays: " + why));
+        } else {
+            source.sendSuccess(() -> Component.literal("Policy reloaded: preset " + gm.policies().current().preset().id()
+                    + ", " + gm.policies().current().owners().size() + " owner(s)"), true);
+        }
+        Bridge bridge = gm.bridge();
+        if (bridge == null) return why == null ? 1 : 0;
         try {
             bridge.agents().reload();
             source.sendSuccess(() -> Component.literal("Agents reloaded: " + String.join(", ", bridge.agents().names())), true);
-            return 1;
+            return why == null ? 1 : 0;
         } catch (IOException e) {
             source.sendFailure(Component.literal("Could not read agent tokens: " + e.getMessage()));
             return 0;
         }
+    }
+
+    /** Who the server thinks you are: UUID (for owners in policy.toml), whether it is verified, your role. */
+    private static int whoami(CommandSourceStack source) {
+        if (!(source.getEntity() instanceof net.minecraft.server.level.ServerPlayer p)) {
+            source.sendSuccess(() -> Component.literal("The console is the owner by definition"), false);
+            return 1;
+        }
+        java.util.UUID id = p.getUUID();
+        boolean verified = ua.zentix.almighty.policy.Identity.verified(id);
+        String role = ua.zentix.almighty.policy.Nodes.role(id).id();
+        Component line = Component.literal("UUID ").append(Component.literal(id.toString()).withStyle(s -> s
+                        .withClickEvent(new net.minecraft.network.chat.ClickEvent(net.minecraft.network.chat.ClickEvent.Action.COPY_TO_CLIPBOARD, id.toString()))
+                        .withUnderlined(true)))
+                .append(Component.literal((verified ? ", verified" : ", not verified (offline UUID)") + ", role " + role));
+        source.sendSuccess(() -> line, false);
+        return 1;
     }
 }

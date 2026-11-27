@@ -38,13 +38,26 @@ public abstract class Job {
     private State state = State.WAITING;
     private String error;
 
+    private String agent = "internal";
+
     protected Job(String kind) {
         this.kind = kind;
     }
 
-    void assign(long id) {
+    void assign(long id, String agent) {
         this.id = id;
+        this.agent = agent;
         submitted();
+    }
+
+    /** Whether the job changes the world (builds, undos): only such jobs freeze while their agent is paused. */
+    public boolean effects() {
+        return false;
+    }
+
+    /** The agent whose call submitted the job ({@code internal} for scripts, rules and tests). */
+    public String agent() {
+        return agent;
     }
 
     /** The job has received an id and entered the queue (server thread). */
@@ -134,6 +147,7 @@ public abstract class Job {
         JsonObject out = new JsonObject();
         out.addProperty("id", id);
         out.addProperty("kind", kind);
+        out.addProperty("agent", agent);
         out.addProperty("state", state.id());
         if (error != null) out.addProperty("error", error);
         details(out);

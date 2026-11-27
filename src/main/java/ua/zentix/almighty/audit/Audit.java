@@ -73,7 +73,7 @@ public final class Audit {
 
     /** Record a finished call; {@code readOnly}: a successful read is not recorded. */
     public void ended(Caller caller, String method, JsonObject params, String paramsText, JsonElement result, Throwable error,
-                      long nanos, boolean readOnly) {
+                      long nanos, boolean readOnly, long change) {
         if (readOnly && error == null) return;
         JsonObject e = new JsonObject();
         e.addProperty("n", seq.incrementAndGet());
@@ -82,6 +82,7 @@ public final class Audit {
         e.addProperty("address", caller.address());
         e.addProperty("method", method);
         e.addProperty("params", paramsText);
+        if (change > 0) e.addProperty("change", change);
         if (params.has("for") && params.get("for").isJsonPrimitive()) e.addProperty("ticket", params.get("for").getAsString());
         if (error == null) {
             e.addProperty("outcome", "ok");

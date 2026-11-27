@@ -49,8 +49,8 @@ public final class AlmightyCommand {
         root.then(Commands.literal("deny").then(Commands.argument("nonce", StringArgumentType.word())
                 .executes(c -> decide(c.getSource(), StringArgumentType.getString(c, "nonce"), false))));
         root.then(Commands.literal("inbox").executes(c -> inbox(c.getSource())));
-        root.then(Commands.literal("undo").then(Commands.argument("job", IntegerArgumentType.integer(1))
-                .executes(c -> undo(c.getSource(), IntegerArgumentType.getInteger(c, "job")))));
+        root.then(Commands.literal("undo").then(Commands.argument("change", IntegerArgumentType.integer(1))
+                .executes(c -> undo(c.getSource(), IntegerArgumentType.getInteger(c, "change")))));
         root.then(owner("agents").executes(c -> agents(c.getSource())));
         root.then(owner("agent")
                 .then(Commands.literal("add").then(Commands.argument("name", StringArgumentType.word())
@@ -234,24 +234,26 @@ public final class AlmightyCommand {
         return n;
     }
 
-    /** Undo a build: the player it was built for, or the console / a level-4 operator. */
+    /** Undo a journal change: the player it was made for (typed by them), or the console / a level-4 operator. */
     private static int undo(CommandSourceStack source, int id) {
         GmServer gm = GmServer.of(source.getServer());
         if (gm == null) return 0;
-        var job = gm.jobs().get(id);
-        if (!(job instanceof ua.zentix.almighty.building.BuildJob build)) {
-            source.sendFailure(Component.literal("No build #" + id + " (the history keeps the last 50 jobs)"));
+        var meta = gm.journal().describe(id);
+        if (meta == null) {
+            source.sendFailure(Component.literal("No change " + id));
             return 0;
         }
-        boolean mine = source.getEntity() instanceof net.minecraft.server.level.ServerPlayer p && p.getUUID().equals(job.requester());
+        boolean mine = source.source instanceof net.minecraft.server.level.ServerPlayer p && meta.has("requester")
+                && p.getUUID().toString().equals(meta.get("requester").getAsString()) && !meta.get("method").getAsString().equals("undo");
         if (!mine && !source.hasPermission(4)) {
-            source.sendFailure(Component.literal("Build #" + id + " was not made for you"));
+            source.sendFailure(Component.literal("Change " + id + " was not made for you"));
             return 0;
         }
         try {
-            var undo = gm.jobs().submit(ua.zentix.almighty.building.BuildJob.undo(build, 2400));
-            gm.audit().owner(source.getTextName(), "undo", "build #" + id + " → job #" + undo.id());
-            source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("Undoing build #" + id + " (job #" + undo.id() + ")"), false);
+            gm.revert(id, null, new com.google.gson.JsonObject(), 0);
+            gm.audit().owner(source.getTextName(), "undo", "change " + id);
+            source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("Undoing change " + id
+                    + " (positions changed since are left as they are)"), false);
             return 1;
         } catch (ua.zentix.almighty.bridge.RpcException e) {
             source.sendFailure(Component.literal(e.getMessage()));

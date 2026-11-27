@@ -84,7 +84,7 @@ public final class Gate implements Dispatch.Check {
      */
     public static Node node(String method, JsonObject p, Predicate<String> isBot) throws RpcException {
         return switch (method) {
-            case "status", "map", "look", "blocks", "ships", "jobs", "job", "areas", "bots", "bot", "rules", "pending" -> Node.OBSERVE_WORLD;
+            case "status", "map", "look", "blocks", "ships", "jobs", "job", "areas", "bots", "bot", "rules", "pending", "changes" -> Node.OBSERVE_WORLD;
             case "entities" -> {
                 // Players are among entities: listing them needs observe.players unless the call asks for another type.
                 String type = str(p, "type");

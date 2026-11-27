@@ -75,7 +75,7 @@ public final class Api {
     /** Methods without effects on the world, whatever their parameters. */
     public static final java.util.Set<String> READ_ONLY = java.util.Set.of(
             "status", "players", "player", "entities", "blocks", "map", "look", "see", "jobs", "job", "areas",
-            "bots", "bot", "ships", "rules", "event.types", "events", "audit", "pending");
+            "bots", "bot", "ships", "rules", "event.types", "events", "audit", "pending", "changes");
 
     /** Items one player's requests may receive per hour below owner ({@code give}); configurable from step 9. */
     static final long GIVE_PER_HOUR = 128;
@@ -157,7 +157,10 @@ public final class Api {
         m.put("map", a -> view(gm, a, () -> map(server, a)));
         m.put("look", a -> view(gm, a, () -> new LookView(Dims.level(server, a), a.ints("from", 3), a.ints("to", 3), LookView.Look.parse(a.string("look")))));
         m.put("build", a -> build(gm, a));
+        m.put("changes", a -> CompletableFuture.completedFuture(gm.journal().list(a.integer("limit", 20, 1, 200))));
         m.put("undo", a -> {
+            // A journal change (any GM call or job: builds, commands, functions, scripts), conflict-aware.
+            if (a.has("change")) return gm.revert(a.longValue("change", 0, 1, Long.MAX_VALUE), a.caller(), a.raw(), waitSeconds(a));
             long id = a.integer("job", 1, Integer.MAX_VALUE);
             return gm.submit(() -> {
                 Job of = gm.jobs().get(id);

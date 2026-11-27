@@ -25,7 +25,7 @@ class GateTest {
     static final List<String> METHODS = List.of("status", "notes", "players", "player", "entities", "command", "function", "say",
             "blocks", "map", "look", "build", "undo", "jobs", "job", "cancel", "area.prepare", "area.release", "areas", "bots",
             "bot", "bot.spawn", "bot.remove", "bot.act", "see", "ships", "script", "rule.add", "rule.remove", "rules",
-            "event.types", "events", "audit", "give", "pending");
+            "event.types", "events", "audit", "give", "pending", "changes");
 
     private final Agents agents = Agents.of(Map.of("gm", "g".repeat(32), "mod", "m".repeat(32)));
     private final Caller gm = new Caller(agents.get("gm"), "127.0.0.1");

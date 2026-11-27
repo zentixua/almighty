@@ -219,7 +219,9 @@ public final class BuildJob extends Job {
         // Conflict-aware (journal revert): a position someone changed since is reported and left, before anything
         // about it (its container) is touched.
         if (plan == null && restore.expect != null && Block.getId(old) != restore.expect[restoreAt]) {
-            conflicts++;
+            // Already as it was before (the world lost the write in a crash, or someone restored it): nothing to do.
+            if (Block.getId(old) == restore.state[restoreAt]) unchanged++;
+            else conflicts++;
             return false;
         }
         // Initialize the fresh chunk's pending block entity so its data does not survive under the new block.

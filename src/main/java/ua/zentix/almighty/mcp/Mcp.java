@@ -51,12 +51,12 @@ public final class Mcp {
             }
         }, System::currentTimeMillis);
         int port = bridge.address().getPort();
-        SignInEndpoints endpoints = new SignInEndpoints(signIn, publicUrl, host, port, p -> notifyOwners(server, p));
+        SignInEndpoints endpoints = new SignInEndpoints(signIn, publicUrl, host, port, bridge.tls(), p -> notifyOwners(server, p));
         bridge.context("/mcp", new McpEndpoint(bridge, Api.LONG, Almighty.version(), endpoints::challenge));
         bridge.context("/.well-known/", endpoints);
         bridge.context("/oauth/", endpoints);
         String base = publicUrl != null && !publicUrl.isBlank() ? stripSlash(publicUrl.strip())
-                : "http://" + (host.equals("0.0.0.0") || host.equals("::") ? "127.0.0.1" : host.contains(":") ? "[" + host + "]" : host) + ":" + port;
+                : (bridge.tls() ? "https://" : "http://") + (host.equals("0.0.0.0") || host.equals("::") ? "127.0.0.1" : host.contains(":") ? "[" + host + "]" : host) + ":" + port;
         Mcp mcp = new Mcp(signIn, base + "/mcp", base.startsWith("https://"));
         LOG.info("Almighty ready - tell your AI agent: \"connect to my Minecraft server at {}\" (all ways: /almighty connect)", mcp.mcpUrl);
         return mcp;

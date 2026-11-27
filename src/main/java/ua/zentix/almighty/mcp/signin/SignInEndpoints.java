@@ -40,12 +40,19 @@ public final class SignInEndpoints implements HttpHandler {
     private static final int MAX_BODY = 64 * 1024;
 
     private final SignIn signIn;
+    private final String scheme;
     private final String publicUrl;
     private final String bridgeHost;
     private final int port;
     private final Consumer<SignIn.Pending> notifyOwners;
 
     public SignInEndpoints(SignIn signIn, String publicUrl, String bridgeHost, int port, Consumer<SignIn.Pending> notifyOwners) {
+        this(signIn, publicUrl, bridgeHost, port, false, notifyOwners);
+    }
+
+    /** {@code https}: the bridge itself speaks HTTPS, so its own addresses are https. */
+    public SignInEndpoints(SignIn signIn, String publicUrl, String bridgeHost, int port, boolean https, Consumer<SignIn.Pending> notifyOwners) {
+        this.scheme = https ? "https://" : "http://";
         this.signIn = signIn;
         this.publicUrl = publicUrl == null || publicUrl.isBlank() ? null : SignIn.stripSlash(publicUrl.strip());
         this.bridgeHost = bridgeHost;
@@ -123,10 +130,10 @@ public final class SignInEndpoints implements HttpHandler {
             if (host == null || !loopbackHost(host)) return publicUrl;
         }
         String host = exchange.getRequestHeaders().getFirst("Host");
-        if (host == null) return "http://127.0.0.1:" + port;
+        if (host == null) return scheme + "127.0.0.1:" + port;
         String name = host.startsWith("[") ? host.substring(0, host.indexOf(']') + 1) : host.contains(":") ? host.substring(0, host.lastIndexOf(':')) : host;
         if (!SignIn.loopback(name) && !name.equalsIgnoreCase(bridgeHost)) return null;
-        return "http://" + host;
+        return scheme + host;
     }
 
     private static boolean loopbackHost(String host) {

@@ -61,6 +61,7 @@ public final class Bridge {
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
     private final HttpServer http;
+    private final boolean tls;
     private final ExecutorService accept;
     private final ThreadPoolExecutor calls;
     private final ThreadPoolExecutor polls;
@@ -77,12 +78,30 @@ public final class Bridge {
 
     Bridge(InetSocketAddress address, Agents agents, Dispatch dispatch, Set<String> longMethods, Set<String> allowedOrigins,
            LongSupplier clockMillis) throws IOException {
+        this(address, agents, dispatch, longMethods, allowedOrigins, clockMillis, null);
+    }
+
+    /** With {@code tls} (from {@link Tls#context}) the bridge speaks HTTPS only; null: plain HTTP, as before. */
+    public Bridge(InetSocketAddress address, Agents agents, Dispatch dispatch, Set<String> longMethods, Set<String> allowedOrigins,
+                  javax.net.ssl.SSLContext tls) throws IOException {
+        this(address, agents, dispatch, longMethods, allowedOrigins, System::currentTimeMillis, tls);
+    }
+
+    Bridge(InetSocketAddress address, Agents agents, Dispatch dispatch, Set<String> longMethods, Set<String> allowedOrigins,
+           LongSupplier clockMillis, javax.net.ssl.SSLContext tls) throws IOException {
         this.agents = agents;
         this.dispatch = dispatch;
         this.longMethods = Set.copyOf(longMethods);
         this.allowedOrigins = Set.copyOf(allowedOrigins);
         this.guard = new AuthGuard(clockMillis);
-        this.http = HttpServer.create(address, 64);
+        if (tls == null) {
+            this.http = HttpServer.create(address, 64);
+        } else {
+            com.sun.net.httpserver.HttpsServer https = com.sun.net.httpserver.HttpsServer.create(address, 64);
+            https.setHttpsConfigurator(new com.sun.net.httpserver.HttpsConfigurator(tls));
+            this.http = https;
+        }
+        this.tls = tls != null;
         this.accept = pool("accept", ACCEPT_THREADS, Integer.MAX_VALUE);
         this.calls = pool("call", CALL_THREADS, QUEUE);
         this.polls = pool("poll", POLL_THREADS, QUEUE);
@@ -115,6 +134,11 @@ public final class Bridge {
 
     public InetSocketAddress address() {
         return http.getAddress();
+    }
+
+    /** Whether the bridge speaks HTTPS. */
+    public boolean tls() {
+        return tls;
     }
 
     public Agents agents() {

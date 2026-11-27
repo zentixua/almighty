@@ -37,6 +37,11 @@ public final class Almighty {
         bus.addListener(Almighty::onStopped);
     }
 
+    /** This mod's version, as in its jar. */
+    public static String version() {
+        return net.neoforged.fml.ModList.get().getModContainerById(ID).map(c -> c.getModInfo().getVersion().toString()).orElse("dev");
+    }
+
     private static void onStarted(ServerStartedEvent e) {
         GmServer.start(e.getServer(), FMLPaths.CONFIGDIR.get().resolve(ID));
     }

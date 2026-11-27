@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Store pages (docs/store): derive the CurseForge description and check the listing.
+"""Store pages (docs/store): assemble the Modrinth and CurseForge pages and check the listing.
 
-    python3 scripts/store.py           write docs/store/description.curseforge.md from description.md
-    python3 scripts/store.py --check   fail if it is stale or the listing is inconsistent (CI)
+    python3 scripts/store.py           write docs/store/modrinth.md and docs/store/curseforge.md
+    python3 scripts/store.py --check   fail if they are stale or the listing is inconsistent (CI)
 
-The CurseForge page is the Modrinth page with three changes: the CurseForge header banner, plain Markdown images
-instead of HTML <img> rows (CurseForge documents no HTML subset for its Markdown editor), and links to other mods' CurseForge
-pages instead of their Modrinth pages. Checks: modrinth.json fields and limits, every icon, gallery and banner file
-exists and fits Modrinth's size limits, images in the descriptions are absolute raw.githubusercontent URLs to files
-in this repository, no relative links, and the English and Russian descriptions have the same sections.
+Sources: description.md (English, with the images) and description.ru.md (the full Russian text, without images).
+A page is the English text, a rule, then the Russian text, as on Incoming's pages. The CurseForge page differs only
+in its header banner and in links to other mods' CurseForge pages. Checks: modrinth.json fields and limits, every
+icon, gallery and banner file exists and fits Modrinth's size limits, images are absolute raw.githubusercontent URLs
+to files in this repository, links are absolute, no HTML, the Russian text has the same sections and no images.
 """
 import json
 import re
@@ -40,22 +40,25 @@ MODRINTH_CATEGORIES = {
 ICON_LIMIT = 512 * 1024          # Modrinth project icon (the limit modrinth.sh enforces)
 GALLERY_LIMIT = 5 * 1024 * 1024  # Modrinth gallery image
 
-IMG_TAG = re.compile(r'<img src="([^"]+)" alt="([^"]*)"[^>]*>')
+SEPARATOR = "\n---\n\n"
+
+
+def modrinth_page(en: str, ru: str) -> str:
+    return en.rstrip("\n") + "\n" + SEPARATOR + ru
 
 
 def curseforge(text: str) -> str:
     text = text.replace(MODRINTH_BANNER, CURSEFORGE_BANNER)
-    out = []
-    for line in text.split("\n"):
-        images = IMG_TAG.findall(line)
-        if images and IMG_TAG.sub("", line).strip() == "":
-            out.append("\n\n".join(f"![{alt}]({src})" for src, alt in images))
-        else:
-            out.append(line)
-    text = "\n".join(out)
     for modrinth, cf in MOD_PAGES.items():
         text = text.replace(f"({modrinth})", f"({cf})")
     return text
+
+
+def pages() -> dict:
+    en = (STORE / "description.md").read_text(encoding="utf-8")
+    ru = (STORE / "description.ru.md").read_text(encoding="utf-8")
+    page = modrinth_page(en, ru)
+    return {"modrinth.md": page, "curseforge.md": curseforge(page)}
 
 
 def png_size(path: Path):
@@ -107,32 +110,31 @@ def check() -> list:
         if g.get("description") and len(g["description"]) > 2048:
             errors.append(f"modrinth.json: {g['file']} description is over 2048 characters")
 
-    pages = ["description.md", "description.ru.md", "description.curseforge.md"]
-    for page in pages:
-        text = (STORE / page).read_text(encoding="utf-8")
-        for url in re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)|<img src=\"([^\"]+)\"", text):
-            url = url[0] or url[1]
-            if not url.startswith(RAW):
-                errors.append(f"{page}: image {url} is not an absolute {RAW} URL")
+    for name in ("description.md", "description.ru.md"):
+        text = (STORE / name).read_text(encoding="utf-8")
+        for url in re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)", text):
+            if name == "description.ru.md":
+                errors.append(f"{name}: image {url}: images belong to the English part only")
+            elif not url.startswith(RAW):
+                errors.append(f"{name}: image {url} is not an absolute {RAW} URL")
             elif not (ROOT / url[len(RAW):]).is_file():
-                errors.append(f"{page}: image {url} has no file in the repository")
+                errors.append(f"{name}: image {url} has no file in the repository")
         for url in re.findall(r"\]\(([^)\s]+)\)", text):
-            if not re.match(r"https://", url):
-                errors.append(f"{page}: link {url} is not absolute https")
+            if not url.startswith("https://"):
+                errors.append(f"{name}: link {url} is not absolute https")
             elif url.startswith(BLOB) and not (ROOT / url[len(BLOB):].split("#")[0]).exists():
-                errors.append(f"{page}: link {url} has no file in the repository")
+                errors.append(f"{name}: link {url} has no file in the repository")
+        if re.search(r"<[A-Za-z/]", re.sub(r"`[^`]*`", "", text)):
+            errors.append(f"{name}: HTML (the CurseForge editor documents none; use Markdown)")
 
-    def sections(page):
-        return len(re.findall(r"^#{2,3} ", (STORE / page).read_text(encoding="utf-8"), re.M))
-    if sections("description.md") != sections("description.ru.md"):
-        errors.append("description.ru.md: sections differ from description.md "
-                      f"({sections('description.ru.md')} against {sections('description.md')})")
+    def headings(name):
+        return re.findall(r"^(#{1,3}) ", (STORE / name).read_text(encoding="utf-8"), re.M)
+    if headings("description.md") != headings("description.ru.md"):
+        errors.append("description.ru.md: its sections differ from description.md")
 
-    expected = curseforge((STORE / "description.md").read_text(encoding="utf-8"))
-    if (STORE / "description.curseforge.md").read_text(encoding="utf-8") != expected:
-        errors.append("description.curseforge.md is stale: run python3 scripts/store.py")
-    if "<" in re.sub(r"`[^`]*`", "", expected):
-        errors.append("description.curseforge.md: HTML left in the CurseForge page")
+    for name, text in pages().items():
+        if not (STORE / name).is_file() or (STORE / name).read_text(encoding="utf-8") != text:
+            errors.append(f"{name} is stale: run python3 scripts/store.py")
     return errors
 
 
@@ -142,9 +144,9 @@ def main() -> int:
         for e in errors:
             print(f"store: {e}", file=sys.stderr)
         return 1 if errors else 0
-    target = STORE / "description.curseforge.md"
-    target.write_text(curseforge((STORE / "description.md").read_text(encoding="utf-8")), encoding="utf-8")
-    print(f"wrote {target.relative_to(ROOT)}")
+    for name, text in pages().items():
+        (STORE / name).write_text(text, encoding="utf-8")
+        print(f"wrote docs/store/{name}")
     return 0
 
 

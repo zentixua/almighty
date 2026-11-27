@@ -1,7 +1,7 @@
 {
   "slug": "almighty",
   "title": "Almighty: AI Game Master",
-  "description": "Let an AI agent run your Minecraft server as game master: it sees the world, talks to players, builds with undo, runs events and plays with bot players, within the rights you set. Server-side, NeoForge and Fabric; players install nothing.",
+  "description": "An AI game master for your Minecraft server: it sees the world, talks to players, builds with undo and plays alongside you, within the rights you set. Server-side; players install nothing.",
   "categories": [
     "management",
     "utility",

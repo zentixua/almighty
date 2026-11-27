@@ -7,7 +7,8 @@
 #                                   is already in the project, to GITHUB_OUTPUT
 #   modrinth.sh submit              submit a draft (or rejected project) for review: status processing
 # Fields: docs/store/modrinth.json (missing key leaves the site field untouched; null clears it); page text:
-# docs/store/description.md. Skip icon/gallery files absent from the repository and already-uploaded images
+# docs/store/modrinth.md (English then Russian, assembled by scripts/store.py). Skip icon/gallery files absent
+# from the repository and already-uploaded images
 # (their file sha1 appears in the Modrinth CDN URL): reruns add only new images and remove site images
 # no longer listed.
 # Look up the project by slug using the token: only the team can see a draft.
@@ -17,7 +18,7 @@ set -euo pipefail
 
 API=${MODRINTH_API:-https://api.modrinth.com/v2}
 STORE_JSON=${STORE_JSON:-docs/store/modrinth.json}
-BODY_MD=${BODY_MD:-docs/store/description.md}
+BODY_MD=${BODY_MD:-docs/store/modrinth.md}
 OUT=${GITHUB_OUTPUT:-/dev/null}
 SUMMARY=${GITHUB_STEP_SUMMARY:-/dev/null}
 

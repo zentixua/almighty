@@ -89,8 +89,8 @@ open-skies-friends picks the jar up by itself (its `update` workflow, every 3 ho
 Immersive Aircraft and Sable are pinned there: change them in an open-skies-friends PR together with the pins here.
 Modrinth and CurseForge pages use the manually triggered `publish` workflow: `draft` (hidden Modrinth draft),
 `submit`, `release`; one file per node (`.github/scripts/release_nodes.sh`); fields: `docs/store/modrinth.json`;
-procedure: `docs/store/listing.md`. The CurseForge page is generated from the Modrinth one (`scripts/store.py`;
-CI `--check` also checks the summary, categories and every store image).
+procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/description.md` and `description.ru.md`
+(English, then Russian) by `scripts/store.py`; CI `--check` also checks the summary, categories and every store image.
 
 ## Architecture (`ua.zentix.almighty`)
 

@@ -22,6 +22,7 @@ public enum Node {
     RULES("rules", Role.BUILDER, "rules without scripts"),
     UNDO_ANY("undo.any", Role.ADMIN, "undo other agents' changes"),
     AUDIT("audit", Role.ADMIN, "read the audit log"),
+    APPROVE("approve", Role.ADMIN, "approve players' commands above their rights (ask_admin)"),
     // Commands run as the requester (or at the floor's permission level): vanilla's own checks decide what runs.
     COMMAND("command", Role.GUEST, "run commands and functions with the requester's own permission level"),
     ENGINE("engine", Role.OWNER, "scripts and rules with scripts (code in the server JVM)");

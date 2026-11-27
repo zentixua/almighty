@@ -340,10 +340,52 @@ public final class GmServer {
     public ua.zentix.almighty.act.CommandRunner.As commandAs(Gate.Rights r) throws RpcException {
         if (r == null) return ua.zentix.almighty.act.CommandRunner.As.GM;
         if (r.ticket() == null) return new ua.zentix.almighty.act.CommandRunner.As(r.floor().commandLevel(), null);
+        Confirmations.Pending approved = Confirmations.running();
+        if (approved != null && approved.kind == Confirmations.Kind.ADMIN && approved.decider != null) {
+            // An admin approved this one command: it runs as the player who asked, with the admin's level.
+            net.minecraft.server.level.ServerPlayer asker = server.getPlayerList().getPlayer(approved.requester);
+            net.minecraft.server.level.ServerPlayer admin = server.getPlayerList().getPlayer(approved.decider);
+            if (asker == null) throw RpcException.conflict(approved.requesterName + " is offline");
+            int level = Math.max(admin == null ? 0 : server.getProfilePermissions(admin.getGameProfile()), Nodes.role(approved.decider).commandLevel());
+            return new ua.zentix.almighty.act.CommandRunner.As(Math.min(level, r.ceiling().commandLevel()), asker);
+        }
         net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(r.ticket().player());
         if (p == null) throw RpcException.conflict(r.ticket().name() + " is offline: a request runs as its player, who must be online");
         int level = Math.max(server.getProfilePermissions(p.getGameProfile()), Nodes.role(p.getUUID()).commandLevel());
         return new ua.zentix.almighty.act.CommandRunner.As(Math.min(level, r.ceiling().commandLevel()), p);
+    }
+
+    /**
+     * {@code ask_admin} for commands (server thread): a request whose command is listed there and which the player's
+     * own source cannot run (vanilla refuses to parse it at their level) waits for an admin holding
+     * {@code almighty.approve}, instead of failing. Everything else runs, or fails, as the player.
+     */
+    public void askAdmin(ua.zentix.almighty.bridge.Caller caller, Gate.Rights r, String method, JsonObject params,
+                         ua.zentix.almighty.act.CommandRunner.As as) throws RpcException {
+        if (r == null || r.ticket() == null || as.player() == null || Confirmations.running() != null) return;
+        java.util.Set<String> listed = policies.current().safety().askAdmin();
+        if (listed.isEmpty()) return;
+        var dispatcher = server.getCommands().getDispatcher();
+        net.minecraft.commands.CommandSourceStack mine = as.player().createCommandSourceStack().withPermission(as.level());
+        for (String c : Confirmations.commands(method, params)) {
+            String text = c.strip().replaceFirst("^[/$]+", "");
+            boolean asked = false;
+            for (String k : Confirmations.kinds("command", commandParams(text))) if (listed.contains(k)) asked = true;
+            if (!asked) continue;
+            var parsed = dispatcher.parse(text, mine);
+            if (parsed.getReader().canRead() || parsed.getContext().getCommand() == null) {
+                Confirmations.Pending p = decisions.confirmations().ask(Confirmations.Kind.ADMIN, caller, method, params, null,
+                        ua.zentix.almighty.policy.Node.APPROVE, r.ticket().player(), r.ticket().name());
+                if (p.count() == 1) decisions.prompt(p);
+                throw Confirmations.waiting(p, "an admin");
+            }
+        }
+    }
+
+    private static JsonObject commandParams(String command) {
+        JsonObject o = new JsonObject();
+        o.addProperty("commands", command);
+        return o;
     }
 
     public Policies policies() {

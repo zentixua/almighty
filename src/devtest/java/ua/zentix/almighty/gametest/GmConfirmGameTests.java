@@ -119,6 +119,31 @@ public final class GmConfirmGameTests {
         h.succeed();
     }
 
+    /** Nobody speaks in another player's name: /gm from any source but the player's own typing mints nothing. */
+    @GameTest(template = "floor", batch = "gm_confirm")
+    public static void gmOnlyForTheTypist(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        ServerPlayer owner = player(h, "confirm-owner", UUID.randomUUID());
+        try {
+            long after = gm.feed().read(0, 4096, 0).get("next").getAsLong();
+            var server = h.getLevel().getServer();
+            server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), "execute as confirm-owner run gm give me op");
+            server.getCommands().performPrefixedCommand(owner.createCommandSourceStack().withSource(server), "gm hi");
+            for (JsonElement e : gm.feed().read(after, 100, 0).getAsJsonArray("events")) {
+                check(!e.getAsJsonObject().get("type").getAsString().equals("gm"), "a /gm not typed by the player was minted: " + e);
+            }
+            try {
+                gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"execute as confirm-owner run gm hi\"]}"));
+                throw new GameTestAssertException("the GM ran /gm");
+            } catch (RpcException e) {
+                check(e.code().equals("denied"), "deny list: " + e.getMessage());
+            }
+        } finally {
+            h.getLevel().getServer().getPlayerList().remove(owner);
+        }
+        h.succeed();
+    }
+
     private static String e2s(String s) {
         return s;
     }
@@ -129,8 +154,9 @@ public final class GmConfirmGameTests {
         Policy before = gm.policies().current();
         ServerPlayer guest = player(h, "confirm-guest", UUID.randomUUID());
         ServerPlayer admin = player(h, "confirm-admin", UUID.randomUUID());
+        ServerPlayer second = player(h, "confirm-guest2", UUID.randomUUID());
         try {
-            gm.policies().set(Policy.parse("preset = \"public\"\nidentity = \"proxy\"\n[safety]\nask_admin = [\"area.prepare\"]"));
+            gm.policies().set(Policy.parse("preset = \"public\"\nidentity = \"proxy\"\n[safety]\nask_admin = [\"area.prepare\", \"time\"]"));
             op(h, admin, 3);
             String t = ticket(h, gm, guest, "load the arena");
             try {
@@ -150,9 +176,25 @@ public final class GmConfirmGameTests {
             Confirmations.Pending p = gm.decisions().confirmations().get(id);
             check(gm.decisions().decide(p.nonce(), guest, true).startsWith("Not decided"), "the guest cannot approve themself");
             check(gm.decisions().decide(p.nonce(), admin, true).startsWith("Allowed"), "the admin approves");
+            // A listed command the guest's own level cannot run waits for an admin, then runs as the guest with the
+            // admin's level, for that one call.
+            String id2;
+            // Another guest: one player asks the admins at most once per 10 minutes.
+            String t2 = ticket(h, gm, second, "set the time");
+            try {
+                gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"time set 1234\"],\"for\":\"%s\"}", t2)).join();
+                throw new GameTestAssertException("a guest set the time");
+            } catch (java.util.concurrent.CompletionException e) {
+                check(e.getCause() instanceof RpcException r && r.status() == 202, "time waits for an admin: " + e.getCause());
+                id2 = ((RpcException) e.getCause()).details().get("id").getAsString();
+            }
+            Confirmations.Pending p2 = gm.decisions().confirmations().get(id2);
+            check(gm.decisions().decide(p2.nonce(), admin, true).startsWith("Allowed"), "the admin approves the command");
             h.succeedWhen(() -> {
                 String state = p.describe().get("state").getAsString();
                 check(state.equals("done"), "ran with the admin's rights: " + p.describe());
+                check(p2.describe().get("state").getAsString().equals("done") && h.getLevel().getDayTime() % 24000 == 1234,
+                        "time set with the admin's level: " + p2.describe() + " day time " + h.getLevel().getDayTime());
                 gm.areas().releaseAll();
             });
         } finally {
@@ -160,6 +202,7 @@ public final class GmConfirmGameTests {
             gm.policies().set(before);
             h.getLevel().getServer().getPlayerList().remove(guest);
             h.getLevel().getServer().getPlayerList().remove(admin);
+            h.getLevel().getServer().getPlayerList().remove(second);
         }
     }
 }

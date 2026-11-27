@@ -141,16 +141,24 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   the ceiling; the requester must be online. So node `command` is guest and vanilla's `requires` decide.
   `Caller.requester` (from a valid `for`, set in `Dispatch`) travels with the call: jobs record `requester`, and a
   receipt ("[Almighty] Done for you: … [Undo]") reaches that player after any call with effects; `/almighty undo
-  <job>` works for that player or level 4. `policy/Confirmations` + `Decisions` + `Prompts`: a request that is
-  irreversible for others (kill, clear, give, effect, ban, kick, op, tp … aimed at a selector other than `@s` or
-  another online name, anywhere in an `execute` chain) or in `[safety] confirm_first` → 202 `pending` with an id;
-  the server asks that player (prompt rendered from the parsed call, `[Allow]`/`[Deny]` buttons and the typed
-  `/almighty confirm <nonce>`; the agent never sees the nonce); only that player may answer; 2 minutes. A request
-  above the player's rights whose kind (command name or method) is in `[safety] ask_admin` → 202 for an admin:
-  merged with an identical waiting one, 1 per player per 10 minutes, 20 per hour, one digest line at most every
-  10 minutes to online holders of the node, `/almighty inbox`; it runs with the deciding admin's rights (a ticket
-  minted for them); 30 minutes. Owners' requests apply at once. The agent polls `pending {id, wait?}`; every
-  state change is a `confirmation` feed event. 5 policy refusals of one player's requests in 10 minutes cool
+  <job>` works for that player or level 4. `policy/Confirmations` + `Decisions` + `Prompts`: a request's command
+  waits for that player's confirmation unless every command in it is in the allowlist `SAFE` (time, weather, say,
+  msg, setblock, fill, clone, place …) or `SELF_ONLY` (tp, give, effect, clear, gamemode, kill …) aimed only at
+  the requester (`@s`, their name or UUID; no other selector, name, UUID or `execute on`); everything else (any
+  mod command, data, summon, function, schedule, ban …) is confirmed. Function macros are expanded before the
+  check and in the prompt. Also any kind in `[safety] confirm_first`. → 202 `pending` with an id; the server asks
+  that player (the exact call, `[Allow]`/`[Deny]` and the typed `/almighty confirm <nonce>`; never clipped: a call
+  too long to show is refused); only that player may answer; at most 3 waiting per player and 20 per agent;
+  2 minutes. A request above the player's rights whose kind is in `[safety] ask_admin` → 202 for an admin (for
+  commands: when the player's own source cannot parse it; the decider needs `almighty.approve`): merged with an
+  identical waiting one, 1 per player per 10 minutes, 20 per hour, one digest line at most every 10 minutes,
+  `/almighty inbox`; it runs as the requester with the admin's rights for that one call (`Pending.decider`; no
+  ticket is minted). Owners' requests apply at once. Below owner, commands may not carry
+  `run_command`/`suggest_command` or `[Almighty]` (forged prompts via tellraw, signs, books). `/gm` and
+  `/almighty confirm|deny` accept only the player's own typing (`source.source == player`); `/gm` is on the deny
+  list for GM commands (a GM bot's own `/gm` chat is allowed); `/almighty …` stays out of the feed. The agent
+  polls `pending {id, wait?}`; every state change is a `confirmation` feed event. 5 policy refusals of one player's
+  requests in 10 minutes cool
   their `/gm` down for 10 minutes (`Inbox.refused`).
 - `policy/DenyList`: built-in deny list (from `crash_guard.py`), refused for every agent and harness: `stop`, `reload`,
   `save-off`, `save-all flush`, `forceload add`, `tick rate` > 100, `almighty …` (agents and policy are the owner's),

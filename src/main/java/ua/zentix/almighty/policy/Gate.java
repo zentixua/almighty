@@ -156,6 +156,13 @@ public final class Gate implements Dispatch.Check {
     public Rights rights(Caller caller, JsonObject params) throws RpcException {
         Policy policy = policies.current();
         String agent = caller.name();
+        Confirmations.Pending running = Confirmations.running();
+        if (running != null && running.kind == Confirmations.Kind.ADMIN && running.decider != null) {
+            // One call an admin approved: their rights, for this call only (nothing is stored or handed out).
+            Tickets.Ticket approved = new Tickets.Ticket("approved", running.decider, running.deciderName, agent, 0,
+                    System.currentTimeMillis(), Identity.verified(running.decider));
+            return new Rights(agent, policy.ceiling(agent), policy.floor(agent), approved);
+        }
         Tickets.Ticket ticket = null;
         if (params.has("for")) {
             if (!params.get("for").isJsonPrimitive()) throw RpcException.badRequest("for: the ticket of the player's message");
@@ -172,10 +179,21 @@ public final class Gate implements Dispatch.Check {
         Rights r = rights(caller, params);
         if (method.equals("say") && replyToRequester(params, r.ticket)) node = Node.SPEAK_REPLY;
         boolean decided = Confirmations.running() != null;
+        // Below owner, commands may not plant buttons that run commands as whoever clicks, nor fake the server's prefix
+        // (tellraw, title, signs, books, data): a forged "[Almighty] … [Allow]" would run as the admin who clicks it.
+        if ((method.equals("command") || method.equals("function")) && r.effective() != Role.OWNER) {
+            for (String c : Confirmations.commands(method, params)) {
+                String low = c.toLowerCase(java.util.Locale.ROOT);
+                if (low.contains("run_command") || low.contains("suggest_command") || c.contains(ua.zentix.almighty.act.Chat.RESERVED)) {
+                    throw new RpcException(403, "policy", "Below owner, commands may not carry run_command/suggest_command clicks or "
+                            + ua.zentix.almighty.act.Chat.RESERVED);
+                }
+            }
+        }
         if (r.holds(node, holder)) {
             // Allowed, but irreversible for others (or listed in confirm_first): the requester confirms the exact call.
             if (!decided && confirmations != null && r.ticket != null && Nodes.role(r.ticket.player()) != Role.OWNER
-                    && Confirmations.needsRequester(method, params, r.ticket.name(), policies.current().safety().confirmFirst())) {
+                    && Confirmations.needsRequester(method, params, r.ticket.name(), r.ticket.player(), policies.current().safety().confirmFirst())) {
                 Confirmations.Pending p = confirmations.ask(Confirmations.Kind.REQUESTER, caller, method, params,
                         r.ticket.player(), node, r.ticket.player(), r.ticket.name());
                 prompter.prompt(p);

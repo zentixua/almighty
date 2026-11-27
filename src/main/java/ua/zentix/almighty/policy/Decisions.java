@@ -67,17 +67,9 @@ public final class Decisions {
             tell(p.requester, "Not allowed: " + p.text);
             return "Denied: " + p.text;
         }
+        // The exact parameters that were shown. An admin's approval is carried by the running confirmation itself
+        // (Pending.decider), never by a ticket in the parameters that could outlive this one call.
         JsonObject params = p.params.deepCopy();
-        if (p.kind == Confirmations.Kind.ADMIN) {
-            // The call runs with the deciding admin's rights (one call): a ticket minted for them, bound to the same agent.
-            if (by == null) {
-                params.remove("for");
-            } else {
-                String t = Tickets.newId();
-                tickets.mint(t, by.getUUID(), name, p.caller.name(), 0, Identity.verified(by.getUUID()));
-                params.addProperty("for", t);
-            }
-        }
         CompletableFuture<?> run = by == null && p.kind == Confirmations.Kind.ADMIN
                 ? Confirmations.run(p, dispatch, params, true) : Confirmations.run(p, dispatch, params, false);
         run.whenComplete((v, e) -> server.execute(() -> {

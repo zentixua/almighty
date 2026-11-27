@@ -47,10 +47,20 @@ public final class Confirmations {
 
     public enum State { WAITING, ALLOWED, DENIED, EXPIRED, DONE, FAILED }
 
-    /** Roots whose effects on others cannot be undone (blocks can; entities, items and players cannot). */
-    static final Set<String> IRREVERSIBLE = Set.of("kill", "clear", "give", "effect", "enchant", "experience", "xp", "ban",
-            "ban-ip", "kick", "op", "deop", "pardon", "pardon-ip", "whitelist", "damage", "item", "loot", "attribute",
-            "gamemode", "tp", "teleport", "spreadplayers", "spawnpoint", "ride", "advancement", "recipe", "team");
+    /**
+     * Commands a player's request may run without confirming (plan 4.2): their effects can be undone (blocks, once
+     * the change journal records them) or touch nobody. Everything else — kills, items, effects, bans, data,
+     * summons, functions, schedules, any mod command — waits for the requester, unless it is {@link #SELF_ONLY} and
+     * aimed at the requester alone. An allowlist, so commands nobody thought of are confirmed, not let through.
+     */
+    static final Set<String> SAFE = Set.of("time", "weather", "say", "me", "msg", "tell", "w", "teammsg", "tm", "list",
+            "locate", "playsound", "stopsound", "particle", "help", "trigger", "seed", "setblock", "fill", "clone", "place",
+            "fillbiome");
+    /** Commands that need no confirmation when they act only on the requester ({@code @s}, their name or UUID). */
+    static final Set<String> SELF_ONLY = Set.of("tp", "teleport", "give", "effect", "clear", "gamemode", "xp", "experience",
+            "enchant", "kill", "spawnpoint", "title", "ride", "attribute", "item", "advancement", "recipe");
+    static final int PER_REQUESTER = 3;
+    static final int PER_AGENT = 20;
 
     private static final Pattern WORD = Pattern.compile("\\S+");
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -70,11 +80,16 @@ public final class Confirmations {
         public final Node node;
         public final UUID requester;
         public final String requesterName;
+        /** The parameters as decided on (without the ticket), for merging identical admin requests. */
+        final JsonObject shown;
+        /** Admin kind: who allowed it; the call then runs with their rights, as the requester (one call). */
+        public volatile UUID decider;
+        public volatile String deciderName;
         final long expires;
         volatile State state = State.WAITING;
         volatile JsonElement result;
         volatile String decidedBy;
-        int count = 1;
+        volatile int count = 1;
         final CompletableFuture<JsonObject> done = new CompletableFuture<>();
 
         Pending(Kind kind, Caller caller, String method, JsonObject params, String text, UUID confirmer, Node node,
@@ -90,7 +105,14 @@ public final class Confirmations {
             this.node = node;
             this.requester = requester;
             this.requesterName = requesterName;
+            this.shown = params.deepCopy();
+            this.shown.remove("for");
             this.expires = expires;
+        }
+
+        /** How many identical requests this one stands for (admin kind). */
+        public int count() {
+            return count;
         }
 
         public String nonce() {
@@ -148,24 +170,24 @@ public final class Confirmations {
         return out;
     }
 
-    static List<String> commands(String method, JsonObject p) {
+    /** The commands a call runs; function lines with their macro arguments filled in (what really runs). */
+    public static List<String> commands(String method, JsonObject p) {
         List<String> out = new ArrayList<>();
         JsonElement e = p.get(method.equals("command") ? "commands" : "lines");
         if (e == null) return out;
-        if (e.isJsonPrimitive()) out.add(e.getAsString());
-        else if (e.isJsonArray()) for (JsonElement x : e.getAsJsonArray()) if (x.isJsonPrimitive()) out.add(x.getAsString());
+        JsonObject args = method.equals("function") && p.get("args") instanceof JsonObject o ? o : new JsonObject();
+        List<String> raw = new ArrayList<>();
+        if (e.isJsonPrimitive()) raw.add(e.getAsString());
+        else if (e.isJsonArray()) for (JsonElement x : e.getAsJsonArray()) if (x.isJsonPrimitive()) raw.add(x.getAsString());
+        for (String c : raw) {
+            // A macro line ($…) runs with its arguments filled in and without its $.
+            out.add(method.equals("function") && c.strip().startsWith("$") ? DenyList.expand(c.strip().substring(1), args) : c);
+        }
         return out;
     }
 
     private static List<String> segments(String c) {
-        List<String> out = new ArrayList<>();
-        String s = c.strip().replaceFirst("^[/$]+", "");
-        out.add(s);
-        if (s.toLowerCase(Locale.ROOT).startsWith("execute")) {
-            String[] parts = s.split("\\brun\\s+");
-            for (int i = 1; i < parts.length; i++) out.add(parts[i].strip());
-        }
-        return out;
+        return DenyList.segments(c);
     }
 
     private static String root(String seg) {
@@ -175,27 +197,42 @@ public final class Confirmations {
     }
 
     /**
-     * Whether a call needs its requester's confirmation: an irreversible command aimed at anyone but the requester
-     * (a selector other than {@code @s}, or another name), or a kind in {@code confirm_first}.
+     * Whether a call needs its requester's confirmation: any command not in {@link #SAFE}, unless it is
+     * {@link #SELF_ONLY} and every target is the requester; or a kind in {@code confirm_first}.
      */
     public static boolean needsRequester(String method, JsonObject p, String requesterName, Set<String> confirmFirst) {
+        return needsRequester(method, p, requesterName, null, confirmFirst);
+    }
+
+    public static boolean needsRequester(String method, JsonObject p, String requesterName, UUID requester, Set<String> confirmFirst) {
         for (String k : kinds(method, p)) if (confirmFirst.contains(k)) return true;
         if (!method.equals("command") && !method.equals("function")) return false;
         for (String c : commands(method, p)) {
-            boolean irreversible = false;
-            for (String seg : segments(c)) if (IRREVERSIBLE.contains(root(seg))) irreversible = true;
-            if (!irreversible) continue;
-            // Targets anywhere in the command count: "execute as @a run clear" clears everyone's inventory.
-            var m = WORD.matcher(c.strip().replaceFirst("^[/$]+", ""));
-            m.find();
-            while (m.find()) {
-                String w = m.group();
-                if (w.startsWith("@") && !w.equals("@s") && !w.startsWith("@s[")) return true;
-                if (w.matches("[A-Za-z0-9_]{3,16}") && !w.equalsIgnoreCase(requesterName) && looksLikePlayer(w)) return true;
+            boolean selfOnly = false;
+            for (String seg : segments(c)) {
+                String root = root(seg);
+                if (root.equals("execute") || root.equals("return")) continue;
+                if (SELF_ONLY.contains(root)) selfOnly = true;
+                else if (!SAFE.contains(root)) return true;
             }
-            // No target at all (kill, clear): aims at the source, i.e. the requester themself.
+            if (selfOnly && !onlySelf(c, requesterName, requester)) return true;
         }
         return false;
+    }
+
+    /** Every target in the command is the requester: no selector but {@code @s}, no other name or UUID, no {@code execute on}. */
+    private static boolean onlySelf(String c, String requesterName, UUID requester) {
+        var m = WORD.matcher(c.strip().replaceFirst("^[/$]+", ""));
+        String prev = "";
+        while (m.find()) {
+            String w = m.group();
+            if (w.startsWith("@") && !w.equals("@s") && !w.startsWith("@s[")) return false;
+            if (prev.equalsIgnoreCase("on")) return false;
+            if (w.matches("[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}") && (requester == null || !w.equalsIgnoreCase(requester.toString()))) return false;
+            if (w.matches("[A-Za-z0-9_]{3,16}") && !w.equalsIgnoreCase(requesterName) && looksLikePlayer(w)) return false;
+            prev = w;
+        }
+        return true;
     }
 
     /** Names are told from keywords by the server ({@link #players}); without one any name counts as another player. */
@@ -211,13 +248,20 @@ public final class Confirmations {
 
     /** The exact call as the decider sees it: commands verbatim, other calls as method and clipped parameters. */
     public static String render(String method, JsonObject p) {
+        String text;
         if (method.equals("command") || method.equals("function")) {
-            return String.join(" ; ", commands(method, p).stream().map(c -> c.startsWith("/") ? c : "/" + c).toList());
+            text = String.join(" ; ", commands(method, p).stream().map(c -> c.startsWith("/") ? c : "/" + c).toList());
+        } else {
+            JsonObject shown = p.deepCopy();
+            shown.remove("for");
+            text = method + " " + Dispatch.clipped(shown, MAX_SHOWN + 1);
         }
-        JsonObject shown = p.deepCopy();
-        shown.remove("for");
-        return method + " " + Dispatch.clipped(shown, 300);
+        // Shown verbatim, never styled by the text itself.
+        return text.replace("§", "").replace('\n', ' ').replace('\r', ' ');
     }
+
+    /** A call too long to show in full is refused rather than shown clipped (the decider must see all of it). */
+    static final int MAX_SHOWN = 1000;
 
     /** Wait for the requester: 202 {@code pending} with the id (never the nonce). */
     public synchronized Pending ask(Kind kind, Caller caller, String method, JsonObject params, UUID confirmer, Node node,
@@ -225,9 +269,23 @@ public final class Confirmations {
         long now = clockMillis.getAsLong();
         expire(now);
         String text = render(method, params);
+        if (text.length() > MAX_SHOWN) throw RpcException.badRequest("This call is too long to show a person for confirmation; split it");
+        JsonObject shown = params.deepCopy();
+        shown.remove("for");
+        if (kind == Kind.REQUESTER) {
+            int mine = 0, agent = 0;
+            for (Pending p : byId.values()) {
+                if (p.state != State.WAITING) continue;
+                if (p.requester.equals(requester)) mine++;
+                if (p.caller.name().equals(caller.name())) agent++;
+            }
+            if (mine >= PER_REQUESTER) throw new RpcException(429, "ask_limit", requesterName + " already has " + mine + " questions waiting");
+            if (agent >= PER_AGENT) throw new RpcException(429, "ask_limit", "Too many questions waiting for players");
+        }
         if (kind == Kind.ADMIN) {
             for (Pending p : byId.values()) {
-                if (p.kind == Kind.ADMIN && p.state == State.WAITING && p.text.equals(text) && p.caller.name().equals(caller.name())) {
+                if (p.kind == Kind.ADMIN && p.state == State.WAITING && p.shown.equals(shown) && p.method.equals(method)
+                        && p.caller.name().equals(caller.name())) {
                     p.count++;
                     return p;
                 }
@@ -242,6 +300,7 @@ public final class Confirmations {
             asks.addLast(now);
         }
         if (byId.size() >= MAX) byId.values().removeIf(p -> p.state != State.WAITING);
+        if (byId.size() >= MAX) throw new RpcException(429, "ask_limit", "Too many questions waiting");
         Pending p = new Pending(kind, caller, method, params, text, confirmer, node, requester, requesterName,
                 now + (kind == Kind.ADMIN ? ADMIN_TTL_MS : REQUESTER_TTL_MS));
         byId.put(p.id, p);
@@ -295,6 +354,10 @@ public final class Confirmations {
             if (p.kind == Kind.ADMIN && !(Identity.verified(byUuid) && holds.test(p.node))) return "you do not hold " + p.node.key();
         }
         p.decidedBy = byName;
+        if (p.kind == Kind.ADMIN) {
+            p.decider = byUuid;
+            p.deciderName = byName;
+        }
         p.state = allow ? State.ALLOWED : State.DENIED;
         if (!allow) p.done.complete(p.describe());
         return null;
@@ -305,6 +368,7 @@ public final class Confirmations {
      * {@code console}: the console decided an admin request, so the call runs in-process, as the console would.
      */
     public static CompletableFuture<JsonElement> run(Pending p, Dispatch dispatch, JsonObject params, boolean console) {
+        Pending outer = RUNNING.get();
         RUNNING.set(p);
         try {
             Caller as = console ? Caller.INTERNAL : p.caller.withRequester(null);
@@ -319,7 +383,8 @@ public final class Confirmations {
             p.done.complete(p.describe());
             return CompletableFuture.failedFuture(e);
         } finally {
-            RUNNING.remove();
+            if (outer == null) RUNNING.remove();
+            else RUNNING.set(outer);
         }
     }
 

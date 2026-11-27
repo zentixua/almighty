@@ -33,21 +33,45 @@ class ConfirmationsTest {
         return p;
     }
 
+    private static JsonObject fn(String line, String argsJson) {
+        JsonObject p = new JsonObject();
+        p.add("lines", JsonParser.parseString("[\"" + line.replace("\"", "\\\"") + "\"]"));
+        p.add("args", JsonParser.parseString(argsJson));
+        return p;
+    }
+
     @Test
-    void irreversibleForOthersNeedsTheRequester() {
+    void onlyKnownSafeCommandsSkipConfirmation() {
         Confirmations.players(n -> n.equalsIgnoreCase("Bob"));
-        assertTrue(Confirmations.needsRequester("command", cmd("kill @e[type=zombie]"), "Alex", Set.of()));
-        assertTrue(Confirmations.needsRequester("command", cmd("give Bob diamond 64"), "Alex", Set.of()));
-        assertTrue(Confirmations.needsRequester("command", cmd("execute as @a run clear"), "Alex", Set.of()), "chains");
-        assertTrue(Confirmations.needsRequester("command", cmd("minecraft:ban Bob"), "Alex", Set.of()), "namespaced");
-        assertFalse(Confirmations.needsRequester("command", cmd("give @s diamond 1"), "Alex", Set.of()), "on oneself");
-        assertFalse(Confirmations.needsRequester("command", cmd("give Alex diamond 1"), "Alex", Set.of()));
-        assertFalse(Confirmations.needsRequester("command", cmd("kill"), "Alex", Set.of()), "no target: the requester");
-        assertFalse(Confirmations.needsRequester("command", cmd("time set day"), "Alex", Set.of()), "reversible");
-        assertFalse(Confirmations.needsRequester("command", cmd("give @s diamond_sword"), "Alex", Set.of()), "item names are not players");
+        UUID me = UUID.randomUUID();
+        for (String c : new String[]{"kill @e[type=zombie]", "give Bob diamond 64", "execute as @a run clear", "minecraft:ban Bob",
+                "ban Offline", "deop Somebody", "return run kill @a", "kill 069a79f4-44e9-4726-a5be-fca90e38aaf5",
+                "execute on passengers run kill @s", "summon zombie", "data merge block 0 0 0 {}", "mymod:explode", "function x:y",
+                "schedule function x:y 1t", "gamerule keepInventory false", "transfer some.host"}) {
+            assertTrue(Confirmations.needsRequester("command", cmd(c), "Alex", me, Set.of()), c);
+        }
+        for (String c : new String[]{"give @s diamond 1", "give Alex diamond 1", "kill", "time set day", "give @s diamond_sword",
+                "tp @s 0 64 0", "setblock 0 64 0 stone", "execute positioned 0 64 0 run setblock ~ ~ ~ stone", "say hi",
+                "kill " + me}) {
+            assertFalse(Confirmations.needsRequester("command", cmd(c), "Alex", me, Set.of()), c);
+        }
+        assertTrue(Confirmations.needsRequester("function", fn("$kill $(t)", "{\"t\":\"@a\"}"), "Alex", me, Set.of()),
+                "macros are expanded before checking");
+        assertEquals("/kill @a", Confirmations.render("function", fn("$kill $(t)", "{\"t\":\"@a\"}")), "and shown as they run");
         assertTrue(Confirmations.needsRequester("build", new JsonObject(), "Alex", Set.of("build")), "confirm_first");
         assertTrue(Confirmations.needsRequester("command", cmd("time set day"), "Alex", Set.of("time")));
         Confirmations.players(n -> true);
+    }
+
+    @Test
+    void requesterQuestionsAreLimited() throws Exception {
+        for (int i = 0; i < Confirmations.PER_REQUESTER; i++) c.ask(Confirmations.Kind.REQUESTER, gm, "command", cmd("kill @e" + i), alex, Node.COMMAND, alex, "Alex");
+        assertEquals(429, assertThrows(RpcException.class, () -> c.ask(Confirmations.Kind.REQUESTER, gm, "command", cmd("kill @a"),
+                alex, Node.COMMAND, alex, "Alex")).status(), "one player gets at most a few questions at once");
+        assertEquals(400, assertThrows(RpcException.class, () -> c.ask(Confirmations.Kind.REQUESTER, gm, "command",
+                cmd("say " + "x".repeat(Confirmations.MAX_SHOWN)), UUID.randomUUID(), Node.COMMAND, UUID.randomUUID(), "B")).status(),
+                "a call too long to show in full is refused, never shown clipped");
+        assertFalse(Confirmations.render("command", cmd("say a§cb\nc")).contains("§"), "shown verbatim");
     }
 
     @Test

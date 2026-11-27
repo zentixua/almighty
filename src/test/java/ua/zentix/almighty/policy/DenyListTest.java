@@ -27,7 +27,7 @@ class DenyListTest {
             "clone 0 0 0 1 1 1 20480000 0 0", "setblock 0 0 20000001 stone", "place feature tree 20000000 70 0",
             "spreadplayers 20000000 0 1 10 false @a", "forceload query 20000000 0",
             "almighty revoke gm", "almighty agent add sneaky", "/almighty reload",
-            "execute run almighty agent remove gm"})
+            "execute run almighty agent remove gm", "gm hello", "execute as Owner run gm op me", "return run stop"})
     void deniedCommands(String command) {
         assertNotNull(DenyList.command(command), command);
     }
@@ -36,7 +36,7 @@ class DenyListTest {
     @ValueSource(strings = {
             "stopsound @a", "reloadx", "save-all", "save-on", "forceload remove 0 0", "forceload query 0 0",
             "tick rate 100", "tick rate 20", "tick freeze", "tp @s 19999999 64 0", "say stop the server",
-            "give @s stone 20000000", "time set 20000000", "execute as @a run say hi", "gm hello",
+            "give @s stone 20000000", "time set 20000000", "execute as @a run say hi",
             "say don't run stop", "tellraw @a \"run reload now\""})
     void allowedCommands(String command) {
         assertNull(DenyList.command(command), command);

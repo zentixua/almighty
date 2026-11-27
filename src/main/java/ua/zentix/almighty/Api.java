@@ -98,11 +98,19 @@ public final class Api {
         m.put("entities", a -> gm.onMain(() -> Observe.entities(server, a)));
         m.put("command", a -> {
             ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
-            return gm.onMain(() -> CommandRunner.commands(server, a, gm.commandAs(r)));
+            return gm.onMain(() -> {
+                CommandRunner.As as = gm.commandAs(r);
+                gm.askAdmin(a.caller(), r, "command", a.raw(), as);
+                return CommandRunner.commands(server, a, as);
+            });
         });
         m.put("function", a -> {
             ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
-            return gm.onMain(() -> CommandRunner.function(server, a, gm.commandAs(r)));
+            return gm.onMain(() -> {
+                CommandRunner.As as = gm.commandAs(r);
+                gm.askAdmin(a.caller(), r, "function", a.raw(), as);
+                return CommandRunner.function(server, a, as);
+            });
         });
         m.put("pending", a -> gm.decisions().pending(a.caller().name(), a.string("id"), a.integer("wait", 0, 0, MAX_WAIT))
                 .thenApply(o -> (JsonElement) o));

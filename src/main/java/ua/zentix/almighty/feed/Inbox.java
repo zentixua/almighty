@@ -139,6 +139,9 @@ public final class Inbox {
     public void tick(int tickCount) {
         if (tickCount % 1200 == 0) {
             addressing.prune();
+            long nowMs = System.currentTimeMillis();
+            cooled.values().removeIf(until -> until < nowMs);
+            refusals.values().removeIf(d -> d.isEmpty() || nowMs - d.peekLast() >= COOL_MS);
             long now = System.currentTimeMillis();
             toldAway.values().removeIf(t -> now - t >= AWAY_EVERY_MS);
         }

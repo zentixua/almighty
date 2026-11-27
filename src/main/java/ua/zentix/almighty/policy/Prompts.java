@@ -55,7 +55,9 @@ public final class Prompts {
 
     /** One admin request in {@code /almighty inbox}. */
     public static Component inboxLine(Confirmations.Pending p) {
-        return prefix().append(Component.literal(p.requesterName + " asks " + GmConfig.NAME.get() + ": ").withStyle(ChatFormatting.WHITE))
+        String how = p.method.equals("command") || p.method.equals("function")
+                ? " asks " + GmConfig.NAME.get() + " to run as " + p.requesterName + ", with your rights: " : " asks " + GmConfig.NAME.get() + ": ";
+        return prefix().append(Component.literal(p.requesterName + how).withStyle(ChatFormatting.WHITE))
                 .append(Component.literal(p.text).withStyle(ChatFormatting.YELLOW))
                 .append(Component.literal(p.count > 1 ? " (×" + p.count + ") " : " "))
                 .append(button("Allow", "/almighty confirm " + p.nonce(), ChatFormatting.GREEN)).append(" ")

@@ -36,11 +36,12 @@ public final class GmJournalGameTests {
         if (!ok) throw new GameTestAssertException(what);
     }
 
+    /** The newest change: each test runs in its own batch, so no other test's change is newer. */
     private static long newest(GmServer gm) {
         return gm.journal().list(1).get(0).getAsJsonObject().get("id").getAsLong();
     }
 
-    @GameTest(template = "floor", batch = "gm_journal", timeoutTicks = 200)
+    @GameTest(template = "floor", batch = "gm_journal_1", timeoutTicks = 200)
     public static void commandWritesRevertConflictAware(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);
         BlockPos a = h.absolutePos(new BlockPos(1, 2, 1)), b = h.absolutePos(new BlockPos(3, 2, 3));
@@ -62,7 +63,7 @@ public final class GmJournalGameTests {
         });
     }
 
-    @GameTest(template = "floor", batch = "gm_journal", timeoutTicks = 200)
+    @GameTest(template = "floor", batch = "gm_journal_2", timeoutTicks = 200)
     public static void scriptWritesAreRecorded(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);
         BlockPos p = h.absolutePos(new BlockPos(5, 2, 5));
@@ -76,7 +77,7 @@ public final class GmJournalGameTests {
     }
 
     /** Redstone wire updates its own position while placed: the revert must still be exact (no false conflict). */
-    @GameTest(template = "floor", batch = "gm_journal", timeoutTicks = 200)
+    @GameTest(template = "floor", batch = "gm_journal_3", timeoutTicks = 200)
     public static void selfRewritingBlocksRevertExactly(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);
         BlockPos block = h.absolutePos(new BlockPos(6, 2, 1)), wire = block.east();
@@ -95,7 +96,7 @@ public final class GmJournalGameTests {
     }
 
     /** One command writing in two places far apart: the revert splits by region instead of leasing everything between. */
-    @GameTest(template = "floor", batch = "gm_journal", timeoutTicks = 300)
+    @GameTest(template = "floor", batch = "gm_journal_4", timeoutTicks = 300)
     public static void spreadOutChangesRevert(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);
         BlockPos near = h.absolutePos(new BlockPos(7, 2, 7)), far = near.offset(400, 0, 0);

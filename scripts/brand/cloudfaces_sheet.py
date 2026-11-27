@@ -7,7 +7,7 @@ from cards import card, ALMIGHTY_TAGS
 from finalists import caption
 from cloudfaces import FACES, base
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand')
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand', 'exploration')
 SUMMARY = 'An AI agent runs your Minecraft server as a game master, within the permissions you give it.'
 
 

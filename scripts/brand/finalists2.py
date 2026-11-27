@@ -9,7 +9,7 @@ from finalists import caption
 from round5 import r1_living_block, r2b_block_head, r6b_monogram, r5_puppeteer
 import concepts32
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand')
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand', 'exploration')
 SUMMARY = 'An AI agent runs your Minecraft server as a game master, within the permissions you give it.'
 FIN = [
     (r1_living_block, 'living-block', 'Living command block: the block every player knows as admin power, awake, the agent\'s eyes in its panel.'),

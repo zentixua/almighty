@@ -5,7 +5,7 @@ from pix import Layer, hexc, up
 from fonts import draw_text, SMALL
 from marks2 import MARKS2, SKETCHES
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand')
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand', 'exploration')
 BG, FACE, MUTED, ACC = hexc('#0C0B14'), hexc('#ECEFF4'), hexc('#AEB6C6'), hexc('#7BEBCF')
 
 

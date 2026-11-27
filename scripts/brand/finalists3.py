@@ -10,7 +10,7 @@ from round5 import r2b_block_head
 from round6 import k5_visor_cloud_strings, k4_cloud_strings_island, k3_crowned_face, k1_cloud_face
 import clouds32
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand')
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand', 'exploration')
 SUMMARY = 'An AI agent runs your Minecraft server as a game master, within the permissions you give it.'
 ROWS = [
     (r2b_block_head, 'block-head', 'Benchmark no. 2, block head: the current favourite, a head built from a command block with a terminal face.'),

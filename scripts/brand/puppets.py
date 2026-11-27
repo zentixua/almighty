@@ -6,7 +6,7 @@ from art import c, mix, finish, INK
 from marks2 import island, hand2, TILE, cube
 from fonts import draw_text, SMALL
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand')
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand', 'exploration')
 
 
 def player(m, cx, top, arms_up=True):

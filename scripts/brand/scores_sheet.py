@@ -3,7 +3,7 @@ Needs the scoring results (results.json) and the pool icons produced in the scor
 import json, os, shutil, sys
 from PIL import Image, ImageDraw, ImageFont
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand')
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand', 'exploration')
 F = '/usr/share/fonts/truetype/dejavu/'
 
 

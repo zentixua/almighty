@@ -5,7 +5,7 @@ from pix import Layer, hexc, up
 from fonts import wordmark, draw_text, text_width, SMALL
 from marks import mark, INK, REGENT, GRASP, SOVEREIGN, PROMPT
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand')
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand', 'exploration')
 TAGLINE = 'INFINITE POWER. CONTROLLED USE.'
 SUB = 'AN AI GAME MASTER FOR YOUR SERVER'
 

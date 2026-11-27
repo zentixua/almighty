@@ -7,7 +7,7 @@ from art import c
 from cand import t2_theater_screen, f1_theater_screen_doll, t1_theater_ai
 from cards import card, ALMIGHTY_TAGS
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand')
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand', 'exploration')
 FINALISTS = [
     (t2_theater_screen, 'stage-screen', 'Stage, screen puppeteer: on a puppet stage, a screen with the agent\'s eyes works a player on strings; the player\'s eyes carry its light.'),
     (f1_theater_screen_doll, 'stage-marionette', 'Stage, marionette: the same screen puppeteer works a wooden block-built marionette with lit eyes, one knee lifted by its string.'),

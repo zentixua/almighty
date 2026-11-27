@@ -63,6 +63,15 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 - `Almighty`: subscriptions; `GmServer`: state of one server run (`ServerStartedEvent` … `ServerStoppedEvent`):
   feed, jobs, chunks, bridge. The bridge runs only on a dedicated server (`isDedicatedServer`), not in singleplayer or GameTest.
 - `mcp/`: the MCP endpoint (`McpEndpoint`), both protocol eras (`McpProtocol`), tool definitions and routing (`Tools`).
+- `mcp/signin/`: keyless sign-in, the mod as a minimal OAuth 2.1 server on the bridge port (`/.well-known/*`,
+  `/oauth/register|authorize|status|token`): PKCE S256, public clients, DCR and Client ID Metadata Documents (Codex
+  `https://chatgpt.com/oauth/codex/client.json`, Claude Code `https://claude.ai/oauth/claude-code-client-metadata`;
+  `ClientMetadata` fetches HTTPS only, no private addresses, 16 KB, 5 s), RFC 9207 `iss`, refresh rotation. Consent:
+  the login page shows a 4-digit code; the owner types `/almighty approve <code> [name]` (console or level-4
+  operator); notices never show the code. An approved client becomes an ordinary agent (its access token is the
+  agent's token, `config/almighty/agents/<name>.token`); sign-in only ever rotates agents it created. State:
+  `config/almighty/oauth/` (clients, hashed refresh tokens). `/almighty connect`: address, per-product lines and
+  secret-free links (`mcp/Connect`). The issuer is `bridge.public_url` or the request's loopback/bridge host.
 - `bridge/`: Java's own HTTP (`com.sun.net.httpserver`): `POST /rpc` `{"method", "params"}` → `{"ok": true, "result"}`
   or `{"ok": false, "error": {code, message}}`. Threads: a 4-thread accept pool checks the request and hands it to a
   bounded call pool (8 threads) or long-poll pool (16 threads, methods in `Api.LONG`); a full queue (64) → 503.

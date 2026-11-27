@@ -28,6 +28,7 @@ public final class Almighty {
         IEventBus bus = NeoForge.EVENT_BUS;
         FeedListeners.register(bus);
         GmCommand.register(bus);
+        ua.zentix.almighty.mcp.signin.SignInCommand.register(bus);
         AlmightyCommand.register(bus);
         Bots.register(bus);
         bus.addListener(Almighty::onStarted);

@@ -13,7 +13,7 @@ import ua.zentix.almighty.bridge.Bridge;
 import ua.zentix.almighty.bridge.Dispatch;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.feed.Feed;
-import ua.zentix.almighty.mcp.McpEndpoint;
+import ua.zentix.almighty.mcp.Mcp;
 import ua.zentix.almighty.rules.Rules;
 import ua.zentix.almighty.work.Job;
 import ua.zentix.almighty.work.Jobs;
@@ -51,6 +51,7 @@ public final class GmServer {
     private final Bots bots;
     private final Dispatch dispatch;
     private Bridge bridge;
+    private Mcp mcp;
     private long lastTick;
 
     private GmServer(MinecraftServer server) {
@@ -78,7 +79,7 @@ public final class GmServer {
                 InetSocketAddress address = new InetSocketAddress(GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PORT.get());
                 Agents agents = Agents.load(configDir);
                 gm.bridge = new Bridge(address, agents, gm.dispatch, Api.LONG, new HashSet<>(GmConfig.BRIDGE_ALLOWED_ORIGINS.get()));
-                gm.bridge.context("/mcp", new McpEndpoint(gm.bridge, Api.LONG, Almighty.version(), null));
+                gm.mcp = Mcp.mount(server, gm.bridge, configDir, GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PUBLIC_URL.get());
                 gm.bridge.start();
                 LOG.info("Almighty bridge listening on {}; agents {} (token of {} in {})", gm.bridge.address(), agents.names(),
                         Agents.DEFAULT, configDir.resolve("token").toAbsolutePath());
@@ -155,6 +156,11 @@ public final class GmServer {
     /** The method table behind every transport (the single choke point for checks). */
     public Dispatch dispatch() {
         return dispatch;
+    }
+
+    /** MCP and sign-in on the bridge port; null when the bridge is not running. */
+    public Mcp mcp() {
+        return mcp;
     }
 
     /** The running bridge; null on integrated servers, in GameTest or when disabled. */

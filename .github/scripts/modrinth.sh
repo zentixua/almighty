@@ -85,7 +85,7 @@ submit() {
 }
 
 page() {
-  local step=$1 id sha file i n q
+  local step=$1 id sha file i n q url
   case "$step:$status" in
     draft:none)
       # New projects must be drafts: Modrinth otherwise requires versions, and only the team sees them before review.
@@ -127,7 +127,8 @@ page() {
     echo "::notice::Modrinth: icon $file is not in the repository yet"
   fi
 
-  # Gallery: new images only (Modrinth rejects duplicates); captions for uploaded images are on the site.
+  # Gallery: upload new images (Modrinth rejects duplicates); for images already on the site, set the caption,
+  # featured flag and order from modrinth.json.
   n=$(jq '.gallery // [] | length' "$STORE_JSON")
   for ((i = 0; i < n; i++)); do
     file=$(jq -r ".gallery[$i].file" "$STORE_JSON")
@@ -136,21 +137,23 @@ page() {
       continue
     fi
     sha=$(sha1sum "$file" | cut -d' ' -f1)
-    if jq -e --arg s "$sha" 'any(.gallery[]?; ((.url // "") + " " + (.raw_url // "")) | contains($s))' \
-        "$tmp/project.json" > /dev/null; then
-      echo "gallery: $file already exists"
-      continue
-    fi
-    image "$file" 5242880
     q=$(jq -r --argjson i "$i" '.gallery[$i] | "featured=\(.featured // false)"
       + (if .title then "&title=\(.title | @uri)" else "" end)
       + (if .description then "&description=\(.description | @uri)" else "" end)' "$STORE_JSON")
+    url=$(jq -r --arg s "$sha" 'first(.gallery[]? | select(((.url // "") + " " + (.raw_url // "")) | contains($s))
+      | .url) // empty' "$tmp/project.json")
+    if [ -n "$url" ]; then
+      call PATCH "/project/$id/gallery?url=$(jq -rn --arg u "$url" '$u | @uri')&ordering=$i&$q" 204
+      echo "gallery: $file already exists, caption updated"
+      continue
+    fi
+    image "$file" 5242880
     call POST "/project/$id/gallery?ext=$ext&ordering=$i&$q" 204 -H "Content-Type: $ctype" --data-binary @"$file"
     echo "gallery: $file"
   done
 
   # Site gallery must match modrinth.json: remove images whose sha1 is absent from its files.
-  local keep=() url k found
+  local keep=() k found
   for ((i = 0; i < n; i++)); do
     file=$(jq -r ".gallery[$i].file" "$STORE_JSON")
     if [ -f "$file" ]; then keep+=("$(sha1sum "$file" | cut -d' ' -f1)"); fi

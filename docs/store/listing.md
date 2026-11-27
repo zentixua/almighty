@@ -11,10 +11,11 @@ Fields to paste into the project forms, and what the publish workflow uploads. N
 | [modrinth.json](modrinth.json) | Modrinth fields, icon, CurseForge avatar, gallery (read by the publish workflow) |
 
 Edit description.md and description.ru.md together, then run `python3 scripts/store.py`. CI runs
-`python3 scripts/store.py --check`: both pages are current, the summary fits and matches this file, the categories
-exist, every icon, gallery and page image is a file in the repository within Modrinth's size limits, images are
-absolute `raw.githubusercontent.com/zentixua/almighty/main/...` URLs, links are absolute, there is no HTML, and the
-Russian text has the same headings and no images.
+`python3 scripts/store.py --check`: both pages are current and `modrinth.md` is within Modrinth's 65,536 characters;
+the summary fits and matches this file; the categories exist; the icon, CurseForge avatar (400×400) and gallery
+files exist within Modrinth's size limits, with one featured image and captions; the two banners exist at their
+brand sizes; page images are absolute `raw.githubusercontent.com/zentixua/almighty/main/...` URLs to files here;
+links are absolute; there is no HTML; and the Russian text has the same headings and no images.
 
 ## Page style
 
@@ -79,7 +80,8 @@ publish workflow uploads each as its own file named `Almighty <version> (<game v
 | `almighty-<v>+26.3-fabric.jar` | Fabric Loader 0.20.1+ | 26.3 | 25 | Fabric API | LuckPerms, Open Parties and Claims |
 
 Java and the optional list come from each node's `gradle.properties` (`java_version`, `compat_*` keys; the publish
-workflow's `plan` job). FTB Chunks is not on
+workflow's `plan` job). `plan` reads `versions/*/gradle.properties` from the branch the run starts on, not from the
+release tag: run it from `main` (or the release's own commit) so the nodes match the jars. FTB Chunks is not on
 Modrinth, so it is listed on CurseForge only (`ftb-chunks-forge` for NeoForge, `ftb-chunks-fabric` for Fabric).
 
 ## Disclosure
@@ -187,8 +189,9 @@ CurseForge.
   every jar to Modrinth and CurseForge.
 
 Each file is marked server-only, with its node's loader, game version, Java and dependencies (table above). An image
-removed from `gallery` is removed from the site on the next `draft` or `release`; captions of uploaded images are
-changed on the site. A Modrinth failure on any file stops the run before CurseForge gets anything. After a failed
+removed from `gallery` is removed from the site on the next `draft` or `release`, and images already on the site
+get their caption, featured flag and order from `modrinth.json` again. A Modrinth failure on any file stops the run
+before CurseForge gets anything. After a failed
 CurseForge upload, use **Re-run failed jobs** on that run: starting `submit` or `release` again uploads to CurseForge
 again the files it already has (Modrinth skips jars it already has).
 

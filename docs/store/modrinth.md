@@ -31,8 +31,8 @@ how much of that it may do, for whom and where. Players install nothing.
 - **A request is not an order:** when a player asks for something, the game master acts with that player's rights,
   never more.
 - **Presets:** a new server starts as `friends`: anyone may talk to the game master, and on its own it acts as a
-  member would. On a public server, use `public`: on its own it acts as a guest would. On `private`, only the owners
-  talk to it.
+  member would. On a public server, use `public`: on its own it acts as a guest would. `private` is for a server where
+  only the owners talk to it: on its own, the game master acts with its full rights.
 - **Confirmation:** something that affects other players and cannot be undone waits until the player who asked
   presses [Allow] in chat. A request beyond the player's rights is refused, unless you list its kind under
   `ask_admin`; then an admin can approve it with one click.
@@ -62,11 +62,12 @@ how much of that it may do, for whom and where. Players install nothing.
 
 Almighty is remote control of your server by an AI agent that you, the owner, run. It opens a small web endpoint on
 the server, by default only on `127.0.0.1`, the server machine itself. An app you choose connects to it and signs in
-with a four-digit code that you type on the server; no app gets in without it, and you can revoke one at any time
-with `/almighty revoke`. The endpoint is reachable from the internet only if you put it there: use your own HTTPS
+with a four-digit code that you type on the server, or with a token you made for it with `/almighty agent add`;
+no app gets in otherwise, and you can revoke one at any time with `/almighty revoke`. The endpoint is reachable from the internet only if you put it there: use your own HTTPS
 reverse proxy or tunnel, or give it your certificate, and never open a plain port.
 
-Running Groovy scripts is for the owner only, on every preset. With scripts on, the owner's agent can run any code
+By default, only the owner may run Groovy scripts, on every preset (a permissions plugin can grant it to others,
+and builders may run scripts the owner approved by name). With scripts on, the owner's agent can run any code
 on the server machine with the rights of the user running the server: files, processes, network. Set
 `scripts.enabled = false` if you do not need them. The server itself goes online only to read a signing-in app's
 public description and to look up a Minecraft skin when the agent asks for a bot with a player's skin.
@@ -126,7 +127,7 @@ running server. To explain more, ship a note at `data/<namespace>/almighty/notes
   server. The mod itself contains no AI model and sends nothing to any AI service.
 - **External system interactions:** the web endpoint described above; the sign-in, which reads the signing-in app's
   public HTTPS description; Mojang profile lookups for bot skins given as an account name; and code on the server
-  machine through Groovy scripts, on by default for the owner's agent only.
+  machine through Groovy scripts, on by default and, unless you grant them, for the owner's agent only.
 - **Images:** the icon and banners are pixel art drawn by small programs, with no image generation; the other
   pictures are rendered by the mod itself on a server.
 
@@ -169,8 +170,8 @@ Almighty подключает к серверу ИИ-агента, наприм�
 
 - **Просьба — не приказ:** когда игрок о чём-то просит, ведущий действует с правами этого игрока, и не больше.
 - **Пресеты:** новый сервер начинает с `friends`: говорить с ведущим может любой, а сам по себе он действует как
-  участник. На публичном сервере ставьте `public`: сам по себе он действует как гость. На `private` с ним говорят
-  только владельцы.
+  участник. На публичном сервере ставьте `public`: сам по себе он действует как гость. `private` — для сервера, где с
+  ведущим говорят только владельцы: сам по себе он действует со всеми своими правами.
 - **Подтверждение:** то, что затрагивает других игроков и не отменяется, ждёт, пока попросивший нажмёт [Allow] в
   чате. Просьба сверх прав игрока отклоняется, если только вы не впишете её вид в `ask_admin`; тогда её одним
   нажатием может одобрить админ.
@@ -199,12 +200,14 @@ Almighty подключает к серверу ИИ-агента, наприм�
 
 Almighty — это управление вашим сервером со стороны ИИ-агента, которого запускаете вы, владелец. Мод открывает на
 сервере небольшой веб-вход, по умолчанию только на `127.0.0.1`, то есть на самой машине сервера. Выбранное вами
-приложение подключается к нему и входит по четырёхзначному коду, который вы вводите на сервере; без него не войдёт
-ни одно приложение, а отозвать доступ можно в любой момент командой `/almighty revoke`. Из интернета вход доступен,
+приложение подключается к нему и входит по четырёхзначному коду, который вы вводите на сервере, или по токену,
+который вы сделали для него командой `/almighty agent add`; иначе не войдёт ни одно приложение, а отозвать доступ
+можно в любой момент командой `/almighty revoke`. Из интернета вход доступен,
 только если вы сами его туда вывели: через свой обратный прокси или туннель с HTTPS или со своим сертификатом, но
 никогда не открытым портом.
 
-Скрипты Groovy запускает только владелец, на любом пресете. При включённых скриптах агент владельца может выполнить
+По умолчанию скрипты Groovy запускает только владелец, на любом пресете (плагин прав может разрешить их другим, а
+строители могут запускать скрипты, которые владелец одобрил по имени). При включённых скриптах агент владельца может выполнить
 любой код на машине сервера с правами пользователя, от которого запущен сервер: файлы, процессы, сеть. Если они не
 нужны, задайте `scripts.enabled = false`. Сам сервер выходит в сеть, только чтобы прочитать публичное описание
 входящего приложения и найти скин Minecraft, когда агент просит бота со скином игрока.
@@ -265,7 +268,7 @@ Parties and Claims или FTB Chunks приваты соблюдаются. Бл
   сервере. В самом моде нет модели ИИ, и он ничего не отправляет ни в какой ИИ-сервис.
 - **Внешние системы:** веб-вход, описанный выше; вход приложения, при котором читается его публичное описание по
   HTTPS; запросы профилей Mojang для скинов ботов, заданных именем аккаунта; и код на машине сервера через скрипты
-  Groovy, по умолчанию включённые только для агента владельца.
+  Groovy, по умолчанию включённые и, если вы не разрешили иначе, доступные только агенту владельца.
 - **Картинки:** иконка и баннеры — пиксель-арт, нарисованный небольшими программами, без генерации изображений;
   остальные картинки нарисовал сам мод на сервере.
 

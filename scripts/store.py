@@ -6,9 +6,12 @@
 
 Sources: description.md (English, with the images) and description.ru.md (the full Russian text, without images).
 A page is the English text, a rule, then the Russian text, as on Incoming's pages. The CurseForge page differs only
-in its header banner and in links to other mods' CurseForge pages. Checks: modrinth.json fields and limits, every
-icon, gallery and banner file exists and fits Modrinth's size limits, images are absolute raw.githubusercontent URLs
-to files in this repository, links are absolute, no HTML, the Russian text has the same sections and no images.
+in its header banner and in links to other mods' CurseForge pages. Checks: both pages are current and the Modrinth
+page is within its 65,536 characters; modrinth.json: summary length (and the same summary in listing.md), known
+categories, links to this repository, an existing wiki file, the icon, CurseForge avatar (400x400) and gallery files
+exist within Modrinth's size limits, one featured image, captions present; the two banners exist at their brand
+sizes; page images are absolute raw.githubusercontent URLs to files here; links are absolute https; no HTML; the
+Russian text has the same headings and no images.
 """
 import json
 import re
@@ -39,6 +42,7 @@ MODRINTH_CATEGORIES = {
 }
 ICON_LIMIT = 512 * 1024          # Modrinth project icon (the limit modrinth.sh enforces)
 GALLERY_LIMIT = 5 * 1024 * 1024  # Modrinth gallery image
+MODRINTH_BODY_LIMIT = 65536      # Modrinth project body, characters
 
 SEPARATOR = "\n---\n\n"
 
@@ -86,7 +90,8 @@ def check() -> list:
     for key in ("source_url", "issues_url", "wiki_url"):
         if meta.get(key) and not meta[key].startswith("https://github.com/zentixua/almighty"):
             errors.append(f"modrinth.json: {key} is not this repository")
-    if meta.get("wiki_url", "").startswith(BLOB) and not (ROOT / meta["wiki_url"][len(BLOB):]).exists():
+    wiki = meta.get("wiki_url") or ""
+    if wiki.startswith(BLOB) and not (ROOT / wiki[len(BLOB):]).exists():
         errors.append(f"modrinth.json: wiki_url {meta['wiki_url']} has no file")
 
     files = [(meta["icon"], ICON_LIMIT)] + [(g["file"], GALLERY_LIMIT) for g in meta.get("gallery", [])]
@@ -132,7 +137,15 @@ def check() -> list:
     if headings("description.md") != headings("description.ru.md"):
         errors.append("description.ru.md: its sections differ from description.md")
 
+    # The banners at the top of the pages: present, PNG, the brand sizes (whole-factor pixel art).
+    for url, size in ((MODRINTH_BANNER, (1920, 480)), (CURSEFORGE_BANNER, (1600, 400))):
+        path = ROOT / url[len(RAW):]
+        if not path.is_file() or png_size(path) != size:
+            errors.append(f"{url[len(RAW):]}: missing or not a {size[0]}x{size[1]} PNG")
+
     for name, text in pages().items():
+        if name == "modrinth.md" and len(text) > MODRINTH_BODY_LIMIT:
+            errors.append(f"modrinth.md is {len(text)} characters, over Modrinth's {MODRINTH_BODY_LIMIT}")
         if not (STORE / name).is_file() or (STORE / name).read_text(encoding="utf-8") != text:
             errors.append(f"{name} is stale: run python3 scripts/store.py")
     return errors

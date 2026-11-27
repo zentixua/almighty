@@ -76,7 +76,10 @@ More: [Getting started](docs/guide/getting-started.md) · [Connect your app](doc
   for any bridge method by name. The 32 bridge methods are listed in [AGENTS.md](AGENTS.md) (in English).
 - Any player can write to the game master privately with `/gm <text>`. Other players and operators do not see the
   message, and the agent can answer that player alone. If the game master is unavailable, the reply follows the
-  player's language: Russian for `ru_ru`, English otherwise, without a client mod.
+  player's language: Russian for `ru_ru`, English otherwise, without a client mod. The server itself decides which
+  chat lines are meant for the game master (its name, an ongoing conversation, or a player alone online), limits each
+  player to 20 such messages an hour, and tells the player when the game master is away. With several agents,
+  `/gm @<agent> <text>` picks one.
 - [`mcp/gm/`](mcp/gm/README.md) is a kit for running the game master as one Claude Code session: a chat channel that
   wakes the session when players address it, a hook that blocks calls known to crash a server, and recipes.
 

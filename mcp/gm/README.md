@@ -1,7 +1,7 @@
 # Game master on Claude Code
 
 This kit runs the game master of a server as one Claude Code session with all its tools. The world is reached
-through the MCP adapter [`../almighty.py`](../almighty.py); this directory adds the rest. Whatever belongs to one
+through the mod's own MCP endpoint (`http://127.0.0.1:25650/mcp`); this directory adds the rest. Whatever belongs to one
 server (its CLAUDE.md, skills, recipes, session settings) lives in that session's working directory.
 
 | Part | File | How it is connected |
@@ -114,7 +114,8 @@ The channel is not on the official allowlist. A managed policy can allow it (`al
 ```
 
 Start the session with `claude --mcp-config mcp.json --channels plugin:almighty-chat@almighty`, where `mcp.json`
-runs the adapter (`almighty.py mcp`) under the name `almighty`. The channel needs Node.js 20 or newer.
+connects to the mod under the name `almighty`: `{"mcpServers": {"almighty": {"type": "http", "url":
+"http://127.0.0.1:25650/mcp", "headers": {"Authorization": "Bearer ${ALMIGHTY_TOKEN}"}}}}`. The channel needs Node.js 20 or newer.
 
 ## Tests
 

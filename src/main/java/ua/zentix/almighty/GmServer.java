@@ -8,9 +8,10 @@ import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 import ua.zentix.almighty.bot.Bots;
+import ua.zentix.almighty.bridge.Agents;
 import ua.zentix.almighty.bridge.Bridge;
+import ua.zentix.almighty.bridge.Dispatch;
 import ua.zentix.almighty.bridge.RpcException;
-import ua.zentix.almighty.bridge.Token;
 import ua.zentix.almighty.feed.Feed;
 import ua.zentix.almighty.rules.Rules;
 import ua.zentix.almighty.work.Job;
@@ -20,6 +21,7 @@ import ua.zentix.almighty.world.Areas;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -46,6 +48,7 @@ public final class GmServer {
     private final Map<String, Object> state = new LinkedHashMap<>();
     private final Rules rules;
     private final Bots bots;
+    private final Dispatch dispatch;
     private Bridge bridge;
     private long lastTick;
 
@@ -56,6 +59,7 @@ public final class GmServer {
         this.rules = new Rules(server, NeoForge.EVENT_BUS, feed, state,
                 server.getWorldPath(LevelResource.ROOT).resolve("almighty").resolve("rules.json"));
         this.bots = new Bots(this);
+        this.dispatch = new Dispatch(Api.methods(this));
     }
 
     /** This server's game master; null if the server has not started yet or has already stopped. */
@@ -64,16 +68,18 @@ public final class GmServer {
         return gm != null && gm.server == server ? gm : null;
     }
 
-    static GmServer start(MinecraftServer server, Path tokenFile) {
+    static GmServer start(MinecraftServer server, Path configDir) {
         GmServer gm = new GmServer(server);
         current = gm;
         gm.rules.load();
         if (server.isDedicatedServer() && GmConfig.BRIDGE_ENABLED.get()) {
             try {
                 InetSocketAddress address = new InetSocketAddress(GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PORT.get());
-                gm.bridge = new Bridge(address, Token.load(tokenFile), Api.methods(gm));
+                Agents agents = Agents.load(configDir);
+                gm.bridge = new Bridge(address, agents, gm.dispatch, Api.LONG, new HashSet<>(GmConfig.BRIDGE_ALLOWED_ORIGINS.get()));
                 gm.bridge.start();
-                LOG.info("Almighty bridge listening on {}; token in {}", gm.bridge.address(), tokenFile.toAbsolutePath());
+                LOG.info("Almighty bridge listening on {}; agents {} (token of {} in {})", gm.bridge.address(), agents.names(),
+                        Agents.DEFAULT, configDir.resolve("token").toAbsolutePath());
             } catch (IOException | RuntimeException e) {
                 LOG.error("Almighty bridge failed to start", e);
                 gm.bridge = null;
@@ -142,6 +148,16 @@ public final class GmServer {
 
     public Bots bots() {
         return bots;
+    }
+
+    /** The method table behind every transport (the single choke point for checks). */
+    public Dispatch dispatch() {
+        return dispatch;
+    }
+
+    /** The running bridge; null on integrated servers, in GameTest or when disabled. */
+    public Bridge bridge() {
+        return bridge;
     }
 
     /** The {@code state} variable for scripts and rules. */

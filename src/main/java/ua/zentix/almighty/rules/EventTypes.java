@@ -86,6 +86,11 @@ public final class EventTypes {
         return result;
     }
 
+    /** All game-bus events: class name (with {@code $}) to mod id, sorted. */
+    public static Map<String, String> all() {
+        return new TreeMap<>(index());
+    }
+
     /** Short name: class without its package, nested classes separated by dots ({@code BlockEvent.BreakEvent}). */
     public static String shortName(String className) {
         return className.substring(className.lastIndexOf('.') + 1).replace('$', '.');

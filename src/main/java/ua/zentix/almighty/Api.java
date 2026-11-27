@@ -25,7 +25,8 @@ import ua.zentix.almighty.bridge.Method;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.building.BuildJob;
 import ua.zentix.almighty.building.BuildPlan;
-import ua.zentix.almighty.notes.Notes;
+import ua.zentix.almighty.knowledge.Knowledge;
+import ua.zentix.almighty.knowledge.Notes;
 import ua.zentix.almighty.rules.EventTypes;
 import ua.zentix.almighty.rules.Rules;
 import ua.zentix.almighty.script.Json;
@@ -62,6 +63,9 @@ public final class Api {
     /** The longest one-shot script: the server thread is blocked for that duration. */
     static final int MAX_SCRIPT_MS = 10_000;
     private static final Logger LOG = LogUtils.getLogger();
+    /** Methods that may wait for seconds (feed long poll, job waits): served by the bridge's long-poll pool. */
+    public static final java.util.Set<String> LONG = java.util.Set.of(
+            "events", "job", "build", "undo", "area.prepare", "map", "look", "see", "bot.act", "bot.spawn");
 
     private Api() {}
 
@@ -69,7 +73,8 @@ public final class Api {
         MinecraftServer server = gm.server();
         Map<String, Method> m = new LinkedHashMap<>();
         m.put("status", a -> gm.onMain(() -> Observe.status(gm)));
-        m.put("notes", a -> gm.onMain(() -> Notes.read(server.getResourceManager())));
+        // World notes are unconfirmed until the gate knows when an agent acts with the owner's authority.
+        m.put("notes", a -> Knowledge.notes(gm, a, new Notes.Author(a.caller().name(), null, false)));
         m.put("players", a -> gm.onMain(() -> Observe.players(server)));
         m.put("player", a -> gm.onMain(() -> Observe.player(server, a)));
         m.put("entities", a -> gm.onMain(() -> Observe.entities(server, a)));

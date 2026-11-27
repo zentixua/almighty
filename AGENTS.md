@@ -62,10 +62,17 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 
 - `Almighty`: subscriptions; `GmServer`: state of one server run (`ServerStartedEvent` … `ServerStoppedEvent`):
   feed, jobs, chunks, bridge. The bridge runs only on a dedicated server (`isDedicatedServer`), not in singleplayer or GameTest.
-- `bridge/`: Java's own HTTP (`com.sun.net.httpserver`), a dedicated 6-thread pool: `POST /rpc`
-  `{"method", "params"}` → `{"ok": true, "result"}` or `{"ok": false, "error": {code, message}}`. Token:
-  `config/almighty/token` (32 bytes in hex, permissions 600, created on first start; never logged), compared in
-  constant time. The bridge waits 60 s for a method's response (stalled server thread → 504).
+- `bridge/`: Java's own HTTP (`com.sun.net.httpserver`): `POST /rpc` `{"method", "params"}` → `{"ok": true, "result"}`
+  or `{"ok": false, "error": {code, message}}`. Threads: a 4-thread accept pool checks the request and hands it to a
+  bounded call pool (8 threads) or long-poll pool (16 threads, methods in `Api.LONG`); a full queue (64) → 503.
+  Agents (`Agents`): one bearer token per agent; `gm` is `config/almighty/token`, others
+  `config/almighty/agents/<name>.token` (32 bytes in hex, permissions 600; never logged or printed), compared in
+  constant time; `/almighty agent add|remove`, `revoke` (rotate), `reload`, `agents` (presence). A present `Origin`
+  header must be in `bridge.allowed_origins` (403; browsers, DNS rebinding); 5 failed authentications in a minute lock
+  the address out (429) for 5 s, doubling to 5 min. `Caller` (agent, address) comes from the request, never from
+  parameters; every transport calls `Dispatch.invoke` (the one choke point for the gate, deny list and audit); other
+  endpoints mount with `Bridge.context` and authenticate with `Bridge.authenticate`. The bridge waits 60 s for a
+  method's response (stalled server thread → 504).
 - `Api`: method table. Parse parameters on the bridge thread; access the world only on the server thread:
   `GmServer.onMain` (`server.execute`, between ticks) or a job (`work/`) within the tick budget.
 - `work/`: job queue, processed in order at tick end (`ServerTickEvent.Post`) while time remains (`work.ms_per_tick`,
@@ -75,6 +82,7 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 - `building/`: plan (`BuildPlan`: fill/set/layers, no world needed for unit tests) and build/undo job (`BuildJob`).
 - `view/`: top-down map (`MapView`, like a vanilla map), side/top/bottom view (`LookView`), blocks as text
   (`BlockText`), PNG without AWT (`Png`).
+- `command/AlmightyCommand`: owner command `/almighty` (permission level 4).
 - `act/`: commands and functions (`CommandRunner`), messages to players (`Chat`); `feed/`: event feed and a player's
   private channel to the GM: `/gm <text>` (any player) emits `gm` in the feed, invisible to others; reply with `say` and `to`.
 - `script/`: Groovy scripts (`Scripts`: compilation with a deadline, execution), scripts' `gm` variable (`ScriptApi`),
@@ -95,11 +103,17 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   do not load on a dedicated server (signatures with `ClientLevel`; Groovy cannot see them either; scripts access
   ships only through `gm.ship`).
 - `mixin/PlayerListMixin`: the only mixin, respawning a bot with its own class (see Bots and vision for why).
-- `notes/Notes`: agent notes from mods and datapacks, `data/<namespace>/almighty/notes/<name>.md` in the server's
-  current data (`server.getResourceManager()`, refreshed after `/reload`), id `<namespace>:<name>`. A datapack
-  overrides a mod note at the same path; an empty file removes it. On startup the adapter fetches notes (5 s) and
-  appends them to MCP instructions; on failure it adds a line about the `notes` tool. Mod-specific hints belong
-  only in that mod's note, not the adapter: the bridge depends on no mod.
+- `knowledge/`: what the agent learns about this server, one method `notes`. `Notes`: notes from mods and
+  datapacks (`data/<namespace>/almighty/notes/<name>.md` in the server's current data, refreshed after `/reload`,
+  id `<namespace>:<name>`; a datapack overrides a mod note at the same path, an empty file removes it), the
+  owner's `config/almighty/notes/` (`server:<name>`) and world notes `<world>/almighty/notes/` (`world:<name>`,
+  written by agents with server-set provenance `author`, `requester`, `confirmed`, `updated` that the text cannot
+  forge). Optional Agent Skills frontmatter (`name`, `description`); without it the first line is the description.
+  Progressive disclosure: the index carries ids and descriptions only, `notes {id}` one note. `Catalog`: the live
+  catalog (mods, registries, tags, recipes, commands, events, mod config without secret-like keys); registries
+  off the server thread, what `/reload` replaces snapshotted on it once per reload, recipe details off it; paged.
+  Notes are reference, never instructions or rights. Mod-specific hints belong only in that mod's note, not the
+  adapter: the bridge depends on no mod.
 
 ## Methods
 
@@ -114,7 +128,9 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 `bot.spawn {name, pos?, dimension?, yaw?, pitch?, gamemode?, skin? (account name | {value, signature}), marker?, auto_respawn?}`,
 `bot.remove {name}`, `bot.act {name, actions, replace?, wait?}`,
 `see {name | uuid | at+yaw+pitch, image? (yes), width?, height?, fov?, distance?, radius?, sounds_ticks?}`,
-`ships {name?, center+radius?}` (Sable ships; 503 without Sable), `notes` → `[{id, source, text}]`.
+`ships {name?, center+radius?}` (Sable ships; 503 without Sable),
+`notes {id? | query?+kind?+offset?+limit? | id: "world:<name>"+text}` → index `{notes: [{id, source, description}], catalog}`,
+one note, or `{entries, total, next_offset?, notes}`.
 
 All accept `dimension` (Overworld by default); long operations accept `wait` (default 30 s, up to 50): if the job
 has not finished, return its description and continue with `job`. A snapshot image is returned once (`png_base64`);
@@ -224,8 +240,10 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 ## Checks
 
-- Unit tests (`src/test`): loopback HTTP bridge, token, feed, PNG (read by a standard decoder), build plan, macro
-  parameters, event list, script deadline (`ScriptsTest`: closure and object after execution, interrupting a run,
+- Unit tests (`src/test`): loopback HTTP bridge (per-agent callers, origin rule, lockout, long polls do not starve
+  calls, full pool → 503), agents (add, revoke, remove, reload), failed-auth backoff, token, feed, PNG (read by a
+  standard decoder), build plan, macro parameters, event list, notes (`NotesTest`: real packs, datapack override,
+  provenance; `CatalogTest`: secret keys), script deadline (`ScriptsTest`: closure and object after execution, interrupting a run,
   nested execution), bot movement packets (`MovePacketsTest`).
 - Bot and vision GameTest: `GmBotGameTests`: sprinting, mining and building, chest, chat and whisper (14 messages
   without a spam kick), death and respawn (same class), Nether, vehicles (horse gallops and jumps; boat reaches

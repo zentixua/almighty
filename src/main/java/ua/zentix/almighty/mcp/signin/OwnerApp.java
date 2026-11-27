@@ -7,7 +7,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.regex.Pattern;
 
 /**
  * The owner's own app (plan 4.2 "owner client"): at approval the owner may say the app is theirs, and it gets their
@@ -19,12 +18,25 @@ import java.util.regex.Pattern;
 public final class OwnerApp {
     private OwnerApp() {}
 
+    /** Why the agent cannot be granted (the file already lists it, or cannot be read as a policy); null if it can. */
+    public static String listed(Path policyFile, String agent) throws IOException {
+        if (!Files.isRegularFile(policyFile)) return null;
+        try {
+            Policy p = Policy.parse(Files.readString(policyFile, StandardCharsets.UTF_8));
+            if (p.agents().containsKey(agent)) {
+                return "Agent " + agent + " is already listed in " + policyFile.getFileName() + ": set its ceiling there, then /almighty reload";
+            }
+            return null;
+        } catch (Policy.Invalid e) {
+            return policyFile.getFileName() + " is not valid now (" + e.getMessage() + "); fix it first";
+        }
+    }
+
     /** Adds the agent with ceiling owner; returns null, or why nothing was changed. */
     public static String grant(Path policyFile, String agent) throws IOException {
         String old = Files.isRegularFile(policyFile) ? Files.readString(policyFile, StandardCharsets.UTF_8) : "";
-        if (Pattern.compile("(?m)^\\s*\\[\\s*agents\\.\"?" + Pattern.quote(agent) + "\"?\\s*]").matcher(old).find()) {
-            return "Agent " + agent + " is already listed in " + policyFile.getFileName() + ": set its ceiling there, then /almighty reload";
-        }
+        String listed = listed(policyFile, agent);
+        if (listed != null) return listed;
         String text = old + (old.isEmpty() || old.endsWith("\n") ? "" : "\n")
                 + "\n# Added by /almighty approve ... owner: the owner's own app, with the owner's rights.\n"
                 + "[agents." + agent + "]\nceiling = \"owner\"\n";

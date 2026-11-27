@@ -72,6 +72,14 @@ public final class SignInCommand {
         if (mcp == null) return 0;
         GmServer gm = GmServer.of(source.getServer());
         try {
+            if (owner) {
+                // Checked before the approval, so a refused grant never leaves an app connected with fewer rights than asked.
+                String listed = OwnerApp.listed(gm.policies().file(), name);
+                if (listed != null) {
+                    source.sendFailure(Component.literal(listed));
+                    return 0;
+                }
+            }
             String agent = mcp.signIn().approve(StringArgumentType.getString(c, "code"), name);
             String rights;
             if (owner) {
@@ -80,8 +88,8 @@ public final class SignInCommand {
                 rights = refused != null ? " " + refused + "." : error != null ? " The policy did not reload: " + error + "."
                         : " It has your rights (ceiling owner in policy.toml).";
             } else {
-                rights = " It has " + gm.policies().current().ceiling(agent).id() + " rights; to give your own app your rights: "
-                        + "/almighty approve <code> " + agent + " owner.";
+                rights = " It has " + gm.policies().current().ceiling(agent).id() + " rights. If it is your own app, sign it in again "
+                        + "and approve with /almighty approve <code> " + agent + " owner.";
             }
             String text = "Approved: it connects as agent " + agent + "." + rights + " End it any time with /almighty agent remove " + agent;
             source.sendSuccess(() -> Component.literal(text).withStyle(ChatFormatting.GREEN), true);

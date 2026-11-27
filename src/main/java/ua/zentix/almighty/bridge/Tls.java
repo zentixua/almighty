@@ -54,6 +54,7 @@ public final class Tls {
             }
         }
         if (key == null) throw new GeneralSecurityException(keyFile + ": not an RSA, EC or Ed25519 key");
+        matches(key, chain.get(0), keyFile, certFile);
         KeyStore store = KeyStore.getInstance("PKCS12");
         store.load(null, null);
         char[] none = new char[0];
@@ -63,6 +64,29 @@ public final class Tls {
         SSLContext ssl = SSLContext.getInstance("TLS");
         ssl.init(kmf.getKeyManagers(), null, null);
         return ssl;
+    }
+
+    /** The key signs what the certificate's public key verifies: a mismatch is a clear error at start, not at handshake. */
+    private static void matches(PrivateKey key, Certificate cert, Path keyFile, Path certFile) throws GeneralSecurityException {
+        String algorithm = switch (key.getAlgorithm()) {
+            case "RSA" -> "SHA256withRSA";
+            case "EC" -> "SHA256withECDSA";
+            default -> "Ed25519";
+        };
+        byte[] probe = "almighty".getBytes(StandardCharsets.US_ASCII);
+        java.security.Signature sign = java.security.Signature.getInstance(algorithm);
+        sign.initSign(key);
+        sign.update(probe);
+        byte[] signature = sign.sign();
+        java.security.Signature verify = java.security.Signature.getInstance(algorithm);
+        try {
+            verify.initVerify(cert.getPublicKey());
+            verify.update(probe);
+            if (verify.verify(signature)) return;
+        } catch (GeneralSecurityException e) {
+            // A key of another type than the certificate: a mismatch too.
+        }
+        throw new GeneralSecurityException(keyFile + " is not the key of the first certificate in " + certFile);
     }
 
     static List<byte[]> blocks(String pem, String type) {

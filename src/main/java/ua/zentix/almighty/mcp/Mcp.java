@@ -51,6 +51,13 @@ public final class Mcp {
             }
 
             @Override
+            public boolean elevated(String name) {
+                ua.zentix.almighty.GmServer gm = ua.zentix.almighty.GmServer.of(server);
+                if (gm == null) return false;
+                return gm.policies().current().ceiling(name).compareTo(ua.zentix.almighty.policy.Policy.defaultCeiling(name)) > 0;
+            }
+
+            @Override
             public String current(String name) throws IOException {
                 var a = agents.get(name);
                 return a == null || a.file() == null ? null : Files.readString(a.file(), StandardCharsets.UTF_8).strip();

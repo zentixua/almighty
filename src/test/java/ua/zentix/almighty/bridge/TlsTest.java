@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * HTTPS from the owner's PEM files: the bridge answers over TLS with that certificate, plain HTTP gets no answer, and
- * keys in formats the JDK cannot read say how to convert them. The fixture is a throwaway self-signed certificate for
+ * keys in formats the JDK cannot read say how to convert them, and a key that is not the certificate's is refused at start. The fixture is a throwaway self-signed certificate for
  * localhost and 127.0.0.1 (src/test/resources/tls), not a secret.
  */
 class TlsTest {
@@ -82,6 +82,8 @@ class TlsTest {
         Files.writeString(pkcs1, "-----BEGIN EC PRIVATE KEY-----\nAAAA\n-----END EC PRIVATE KEY-----\n");
         Exception e = assertThrows(java.security.GeneralSecurityException.class, () -> Tls.context(cert, pkcs1));
         assertTrue(e.getMessage().contains("openssl pkcs8"), e.getMessage());
+        Exception mismatch = assertThrows(java.security.GeneralSecurityException.class, () -> Tls.context(cert, copy("other-key.pem")));
+        assertTrue(mismatch.getMessage().contains("is not the key"), mismatch.getMessage());
         Path empty = tmp.resolve("none.pem");
         Files.writeString(empty, "nothing");
         assertThrows(java.security.GeneralSecurityException.class, () -> Tls.context(empty, copy("key.pem")));

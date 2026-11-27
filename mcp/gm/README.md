@@ -1,14 +1,19 @@
 # Game master on Claude Code
 
-This kit runs the game master of a server as one Claude Code session with all its tools. The world is reached
-through the MCP adapter [`../almighty.py`](../almighty.py); this directory adds the rest. Whatever belongs to one
-server (its CLAUDE.md, skills, recipes, session settings) lives in that session's working directory.
+Optional extras for running the game master as one Claude Code session. Nothing here is needed to connect an agent:
+any app connects to the mod's own MCP endpoint (`http://127.0.0.1:25650/mcp`) and signs in with a code
+([guide](../../docs/guide/getting-started.md)), and the game master skills come from the
+[Almighty plugin](../../plugin/almighty/README.md). Whatever belongs to one server (its CLAUDE.md, skills, recipes,
+session settings) lives in that session's working directory.
 
-| Part | File | How it is connected |
+| Part | File | Status |
 |---|---|---|
-| Chat channel | `almighty-chat/`, a Claude Code plugin in the `almighty` marketplace (this directory) | `--channels plugin:almighty-chat@almighty` |
-| Crash guard hook | `crash_guard.py` | PreToolUse on `mcp__almighty__.*` in the session's `.claude/settings.json` |
-| Recipes | `recipes.py`: format and runner | a command from the server's skill |
+| Chat channel | `almighty-chat/`, a Claude Code plugin in the `almighty` marketplace (repository root) | Optional, Claude Code only: wakes the session the moment a player writes (`--channels plugin:almighty-chat@almighty`). Other apps poll `events {wait}` ([Game master mode](../../docs/guide/game-master.md)). |
+| Crash guard hook | `crash_guard.py` | Retired for new setups: the server refuses the same calls for every app (`policy/DenyList`). Kept, and kept in step with the server's list, so existing sessions whose settings point at it keep working; its owner prompt for `op`, `ban` and `kick` stays until the server's own confirmations replace it. |
+| Recipes | `recipes.py`: format and runner | Retired for new setups: write what worked into a world note (`notes {id: "world:<name>", text}`) or a skill. Kept for existing recipe directories. |
+
+`GM_OWNERS` (below) is a setting of the chat channel only: whom its permission requests go to. Nothing else needs
+it.
 
 ## Chat channel
 
@@ -101,7 +106,7 @@ return !server.overworld().isRaining()
 
 ```sh
 (cd mcp/gm/almighty-chat && npm ci)
-claude plugin marketplace add /path/to/almighty/mcp/gm && claude plugin install almighty-chat@almighty
+claude plugin marketplace add /path/to/almighty && claude plugin install almighty-chat@almighty
 ```
 
 The channel is not on the official allowlist. A managed policy can allow it (`allowedChannelPlugins` with the
@@ -114,7 +119,8 @@ The channel is not on the official allowlist. A managed policy can allow it (`al
 ```
 
 Start the session with `claude --mcp-config mcp.json --channels plugin:almighty-chat@almighty`, where `mcp.json`
-runs the adapter (`almighty.py mcp`) under the name `almighty`. The channel needs Node.js 20 or newer.
+connects to the mod under the name `almighty`: `{"mcpServers": {"almighty": {"type": "http", "url":
+"http://127.0.0.1:25650/mcp", "headers": {"Authorization": "Bearer ${ALMIGHTY_TOKEN}"}}}}`. The channel needs Node.js 20 or newer.
 
 ## Tests
 

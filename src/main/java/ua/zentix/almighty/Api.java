@@ -25,7 +25,8 @@ import ua.zentix.almighty.bridge.Method;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.building.BuildJob;
 import ua.zentix.almighty.building.BuildPlan;
-import ua.zentix.almighty.notes.Notes;
+import ua.zentix.almighty.knowledge.Knowledge;
+import ua.zentix.almighty.knowledge.Notes;
 import ua.zentix.almighty.rules.EventTypes;
 import ua.zentix.almighty.rules.Rules;
 import ua.zentix.almighty.script.Json;
@@ -62,14 +63,36 @@ public final class Api {
     /** The longest one-shot script: the server thread is blocked for that duration. */
     static final int MAX_SCRIPT_MS = 10_000;
     private static final Logger LOG = LogUtils.getLogger();
+    /** Methods that may wait for seconds (feed long poll, job waits): served by the bridge's long-poll pool. */
+    public static final java.util.Set<String> LONG = java.util.Set.of(
+            "events", "job", "build", "undo", "area.prepare", "map", "look", "see", "bot.act", "bot.spawn");
+
+    /** Whether a call has no effects: idempotency keys are ignored for it. {@code notes} with {@code text} writes a note. */
+    public static boolean readOnly(String method, JsonObject params) {
+        return READ_ONLY.contains(method) || (method.equals("notes") && !params.has("text"));
+    }
+
+    /** Methods without effects on the world, whatever their parameters. */
+    public static final java.util.Set<String> READ_ONLY = java.util.Set.of(
+            "status", "players", "player", "entities", "blocks", "map", "look", "see", "jobs", "job", "areas",
+            "bots", "bot", "ships", "rules", "event.types", "events", "audit");
 
     private Api() {}
 
     public static Map<String, Method> methods(GmServer gm) {
         MinecraftServer server = gm.server();
         Map<String, Method> m = new LinkedHashMap<>();
-        m.put("status", a -> gm.onMain(() -> Observe.status(gm)));
-        m.put("notes", a -> gm.onMain(() -> Notes.read(server.getResourceManager())));
+        m.put("status", a -> {
+            // The caller's rights (with for: what that player's request allows); computed here, not on the server thread.
+            JsonObject rights = a.caller().agent() == null ? null : gm.gate().describe(a.caller(), a.raw());
+            return gm.onMain(() -> {
+                JsonObject s = Observe.status(gm).getAsJsonObject();
+                if (rights != null) s.add("rights", rights);
+                return s;
+            });
+        });
+        // World notes are unconfirmed until the gate knows when an agent acts with the owner's authority.
+        m.put("notes", a -> Knowledge.notes(gm, a, new Notes.Author(a.caller().name(), null, false)));
         m.put("players", a -> gm.onMain(() -> Observe.players(server)));
         m.put("player", a -> gm.onMain(() -> Observe.player(server, a)));
         m.put("entities", a -> gm.onMain(() -> Observe.entities(server, a)));
@@ -85,6 +108,8 @@ public final class Api {
             return gm.submit(() -> {
                 Job of = gm.jobs().get(id);
                 if (!(of instanceof BuildJob build)) throw RpcException.notFound("No build #" + id + " (the history keeps the last 50 jobs)");
+                if (!of.agent().equals(a.caller().name())) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.UNDO_ANY,
+                        "build #" + id + " is agent " + of.agent() + "'s");
                 return BuildJob.undo(build, CHUNK_WAIT_TICKS);
             }, waitSeconds(a));
         });
@@ -104,6 +129,8 @@ public final class Api {
             return gm.onMain(() -> {
                 Job job = gm.jobs().get(id);
                 if (job == null) throw RpcException.notFound("No job #" + id);
+                if (!job.agent().equals(a.caller().name())) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.UNDO_ANY,
+                        "job #" + id + " is agent " + job.agent() + "'s");
                 if (!gm.jobs().cancel(id)) throw RpcException.conflict("Job #" + id + " has already finished: " + job.state().id());
                 return job.describe();
             });
@@ -164,12 +191,25 @@ public final class Api {
             int limit = a.integer("limit", 50, 1, 500);
             return CompletableFuture.completedFuture(Json.from(EventTypes.search(query, limit)));
         });
+        m.put("audit", a -> {
+            int limit = a.integer("limit", 50, 1, 1000);
+            String agent = a.string("agent", null), method = a.string("method", null);
+            return CompletableFuture.completedFuture(gm.audit().recent(limit, e ->
+                    (agent == null || e.get("agent").getAsString().equals(agent))
+                            && (method == null || e.get("method").getAsString().equals(method))));
+        });
         m.put("events", a -> {
             long after = a.longValue("after", 0, 0, Long.MAX_VALUE);
             int wait = a.integer("wait", 0, 0, 25);
             int limit = a.integer("limit", 200, 1, 1000);
+            // mine: messages routed to other agents are left out (each message reaches one agent).
+            boolean mine = a.bool("mine", false);
+            String me = a.caller().agent() == null ? null : a.caller().agent().name();
             try {
-                return CompletableFuture.completedFuture(gm.feed().read(after, limit, wait * 1000L));
+                JsonObject page = gm.feed().read(after, limit, wait * 1000L, e -> !mine || me == null
+                        || !e.has("agent") || e.get("agent").getAsString().equals(me));
+                if (a.caller().agent() != null) a.caller().agent().read(page.get("next").getAsLong());
+                return CompletableFuture.completedFuture(page);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw RpcException.unavailable("The bridge is stopping");

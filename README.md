@@ -1,14 +1,40 @@
-![Almighty](docs/brand/banner/readme-banner-1280x320.png)
+<p align="center"><img src="docs/brand/banner/readme-banner-1280x320.png" alt="Almighty"></p>
 
-# Almighty
+<h1 align="center">Almighty</h1>
 
-English · [Русский](README.ru.md)
+<p align="center"><b>An AI game master for your Minecraft server.</b><br>
+Connect Claude Code, Codex (also in the ChatGPT desktop app), Cursor, VS Code or a local model, and it plays game
+master on your NeoForge server: it sees the world, talks to players, builds with undo, runs events and drives its own
+bot players.</p>
 
-An AI game master for your Minecraft server.
+<p align="center">
+Minecraft 1.21.1 · NeoForge 21.1.264+ · server-side only, players install nothing · GPL-3.0<br>
+English · <a href="README.ru.md">Русский</a>
+</p>
 
-Almighty is a server-side NeoForge mod for Minecraft 1.21.1. It opens a local HTTP bridge through which an AI agent,
-such as Claude Code, runs the game on the server without a game client. Players install nothing: the mod has no
-blocks, items or network packets of its own.
+<p align="center">
+<img src="docs/media/eye.png" width="32%" alt="What a bot sees">
+<img src="docs/media/map.png" width="32%" alt="The map view">
+<img src="docs/media/look.png" width="32%" alt="A side view of a building">
+</p>
+
+## Quick start
+
+1. Put `almighty-<version>.jar` from the [releases](https://github.com/zentixua/almighty/releases) into the server's
+   `mods/` folder and start it. The console says: `Almighty ready - tell your AI agent: "connect to my Minecraft
+   server at http://127.0.0.1:25650/mcp"`.
+2. Tell your agent exactly that. It adds the server itself.
+3. Your agent opens a sign-in page with a four-digit code. Type `/almighty approve <code> <name> owner` in the game
+   (as an operator) or in the console (`owner`: it is your own app and acts with your rights). Done: no tokens, no
+   config files, no extra software.
+
+More: [Getting started](docs/guide/getting-started.md) · [Connect your app](docs/guide/connect/README.md) ·
+[Game master mode](docs/guide/game-master.md) · [Hosting](docs/guide/hosting.md) · [Guide](docs/guide/README.md)
+
+> **Security.** A connected agent has operator rights and, with scripts on, runs code on the server machine. The
+> bridge listens only on `127.0.0.1` by default, every app signs in with a code you type on the server, and known
+> server-crashing commands are refused for every agent. Read [Security](docs/guide/security.md) before opening the
+> server to people you do not know.
 
 ## What the agent can do
 
@@ -39,43 +65,51 @@ blocks, items or network packets of its own.
   start it. The bridge takes `POST /rpc` with `{"method": ..., "params": {...}}` and the header
   `Authorization: Bearer <token>`.
 - On first start the mod writes a random token to `config/almighty/token` (32 bytes as hex; on Linux and macOS only
-  the file's owner can read it). The token is not written to the log.
+  the file's owner can read it). The token is not written to the log. It belongs to the agent `gm`; each further agent
+  gets its own token with `/almighty agent add <name>` (in `config/almighty/agents/<name>.token`), and
+  `/almighty agents` shows who called last and from where.
+- Requests from web browsers (with an `Origin` header) are refused unless that origin is listed in
+  `bridge.allowed_origins`. Five wrong tokens within a minute lock the sending address out for a while.
 - The world is read and changed only on the server thread: between ticks, or by jobs that get a fixed time per tick
   (`work.ms_per_tick`, 3 ms by default). Large builds and pictures do not stall the server.
-- The agent connects through the MCP adapter [`mcp/almighty.py`](mcp/almighty.py). It has 14 tools: `status`,
-  `entities`, `command`, `say`, `script`, `rule`, `events`, `view`, `build`, `area`, `job`, `bot`, `notes`, and `call`
-  for any bridge method by name. The 32 bridge methods are listed in [AGENTS.md](AGENTS.md) (in English).
+- The same port serves MCP at `/mcp` (Streamable HTTP, both the current and the earlier protocol versions), so any
+  MCP app connects by address, with no adapter. Apps sign in with the standard MCP login: the server shows a
+  four-digit code on its sign-in page and the owner types `/almighty approve <code>`. The agent gets 14 tools:
+  `status`, `entities`, `command`, `say`, `script`, `rule`, `events`, `view`, `build`, `area`, `job`, `bot`, `notes`,
+  and `call` for any bridge method by name ([Tools](docs/guide/tools.md)). The bridge methods are listed in
+  [AGENTS.md](AGENTS.md) (in English).
 - Any player can write to the game master privately with `/gm <text>`. Other players and operators do not see the
   message, and the agent can answer that player alone. If the game master is unavailable, the reply follows the
-  player's language: Russian for `ru_ru`, English otherwise, without a client mod.
-- [`mcp/gm/`](mcp/gm/README.md) is a kit for running the game master as one Claude Code session: a chat channel that
-  wakes the session when players address it, a hook that blocks calls known to crash a server, and recipes.
+  player's language: Russian for `ru_ru`, English otherwise, without a client mod. The server itself decides which
+  chat lines are meant for the game master (its name, an ongoing conversation, or a player alone online), limits each
+  player to 20 such messages an hour, and tells the player when the game master is away. With several agents,
+  `/gm @<agent> <text>` picks one.
+- The [Almighty plugin](plugin/almighty/README.md) (optional, for Claude Code, Codex, Cursor and VS Code) brings the
+  game master skills and the server entry. [`mcp/gm/`](mcp/gm/README.md) adds, for Claude Code only, a chat channel
+  that wakes the session the moment a player writes. Its crash-guard hook and recipe runner are no longer needed:
+  the server refuses crash-prone calls for every app itself.
 
 ## Notes for other mods
 
-A mod or datapack can leave the agent a note on how to use its mechanics: its commands, rules and pitfalls. The note
-is a Markdown file `data/<namespace>/almighty/notes/<name>.md` in the mod's or datapack's data, with the id
-`<namespace>:<name>`. The adapter appends the server's notes to its instructions when it connects, and the `notes`
-tool returns the current ones, for example after `/reload`. A datapack overrides a mod's note by using the same path;
-an empty file removes the note. The mod does not depend on Almighty: without it, the file is ignored.
+The agent learns any modpack from the running server: `notes {query: "<mod id>"}` returns the mod's blocks with
+states, items, recipes, commands, events and config values. A mod or datapack can also leave the agent a note on how
+to use its mechanics: a Markdown file `data/<namespace>/almighty/notes/<name>.md`, optionally with Agent Skills front
+matter (`name`, `description`). Agents see an index and read a note when they need it; a datapack overrides a mod's
+note at the same path; an empty file removes it. Without Almighty the file is ignored. Details:
+[For mod and datapack authors](docs/guide/for-mod-authors.md).
 
 ## Install
 
 1. Use a Minecraft 1.21.1 server with NeoForge 21.1.264 or newer. Put `almighty-<version>.jar` from the
-   [releases](https://github.com/zentixua/almighty/releases) into the server's `mods/` folder.
-2. Start the server once. It creates `config/almighty-common.toml` and `config/almighty/token`.
-3. On the agent's machine, install [uv](https://docs.astral.sh/uv/), get the adapter from the repository at the
-   release tag, and add it to Claude Code:
-   ```sh
-   git clone --branch v<version> https://github.com/zentixua/almighty
-   claude mcp add almighty -e ALMIGHTY_TOKEN_FILE=/path/to/server/config/almighty/token \
-     -- uv run /path/to/almighty/mcp/almighty.py mcp
-   ```
-   Keep the name `almighty`: the hook and the chat channel in `mcp/gm` match tools named `mcp__almighty__*`.
-   If the bridge runs on another machine, add `-e ALMIGHTY_URL=http://<address>:25650`. The token can also be passed
-   directly in `ALMIGHTY_TOKEN`.
+   [releases](https://github.com/zentixua/almighty/releases) into the server's `mods/` folder and start it.
+2. Tell your agent app: `connect to my Minecraft server at http://127.0.0.1:25650/mcp`, or add it yourself as its
+   page says ([Connect your agent](docs/guide/connect/README.md)).
+3. Approve the sign-in with the code from the page: `/almighty approve <code>`.
 
-The adapter also works from the command line, with the same environment variables:
+For scripts and CI without a browser, give an agent a token (`/almighty agent add <name>`) and pass it from an
+environment variable ([headless](docs/guide/connect/headless.md)). The command line
+[`mcp/almighty.py`](mcp/almighty.py) (`call`, `follow`, and a stdio relay for apps without HTTP) is optional and needs
+[uv](https://docs.astral.sh/uv/):
 
 ```sh
 uv run mcp/almighty.py call status                                      # one call, JSON answer
@@ -92,6 +126,10 @@ uv run mcp/almighty.py follow                                           # event 
 | `bridge.enabled` | `true` | Start the HTTP bridge on a dedicated server. |
 | `bridge.host` | `"127.0.0.1"` | Address the bridge listens on. |
 | `bridge.port` | `25650` | Bridge port. |
+| `bridge.public_url` | `""` | The public HTTPS address when a reverse proxy or tunnel puts the bridge on the internet (cloud apps). |
+| `bridge.allowed_origins` | `[]` | Browser origins allowed to call the bridge; requests from other web pages are refused. |
+| `bridge.tls_cert`, `bridge.tls_key` | `""` | Your certificate (PEM chain) and key (PKCS#8 PEM): the bridge then speaks only HTTPS. |
+| `bridge.integrated` | `false` | Also start the bridge in single-player and LAN worlds (loopback only). |
 | `work.ms_per_tick` | `3.0` | Time per server tick for builds, undos and pictures, in ms (0.5 to 20). |
 | `work.build_max_blocks` | `2000000` | Maximum number of block positions in one build. |
 | `work.max_chunks` | `1500` | Maximum number of chunks the agent keeps loaded at once: builds and prepared areas, counting a ring of neighbouring chunks. |
@@ -113,8 +151,24 @@ access to the bridge like shell access to the server machine.
 - Keep `bridge.host` on loopback (`127.0.0.1`, the default) or on a network that only the server owner can reach, for
   example the address of a Docker container whose port is not published. The bridge speaks plain HTTP; do not expose
   its port to the internet.
-- Keep the token secret. Anyone who has it controls the server. To replace it, delete `config/almighty/token` and
-  restart the server.
+- Keep the tokens secret. Anyone who has one controls the server. To replace a token, run `/almighty revoke <agent>`
+  in the console: the old token stops working at once and the new one is in the same file.
+- Who may make the game master do what is set in `config/almighty/policy.toml` (written with comments on first
+  start; `/almighty reload` after editing). `preset = "private"` (the default for existing and new servers in this
+  version) keeps everything as before. `friends` and `public` make the game master act, unasked, as a member or a
+  guest would; a player's request then runs with that player's rights. Owners are listed by UUID (`/almighty whoami`
+  shows yours). Each capability is a permission node `almighty.<capability>`, so LuckPerms can grant them.
+- Every game master call that changes something, and every refused call, is written to
+  `logs/almighty/audit-<date>.jsonl` (kept 30 days, `audit.days`). `/almighty log [agent|player] [count]` shows the
+  latest in game or in the console. `/almighty pause [agent]` is the red button: that agent (or every agent) can
+  only look until `/almighty resume`, its builds wait and its bots stop.
+- Some commands and calls are refused for every agent because they crash, freeze or stop the server: `stop`,
+  `reload`, `save-off`, `save-all flush`, `forceload add`, `tick rate` above 100, `/almighty` (agents and tokens are
+  the owner's), and building, loading or teleporting at Sable ship plot coordinates. Scripts that take chunk tickets,
+  load chunks synchronously, start threads, register listeners, sleep, exit the JVM or start processes are refused
+  too. The owner can still run such commands in the console.
+- Game master work shares a fixed time per tick (`work.ms_per_tick`). When the server lags (average tick above 50 ms
+  for 10 seconds, at 20 ticks per second), game master work gets a quarter of its time until the server recovers.
 - To turn scripts off, set `scripts.enabled = false`. The `script` method and rules with a script are then refused,
   and saved rules with a script do not load. Commands and rules without a script still work.
 - To turn the bridge off, set `bridge.enabled = false`.

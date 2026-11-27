@@ -1,3 +1,5 @@
 {
-  "almighty.gm.unavailable": "The game master is not running on this server"
+  "almighty.gm.unavailable": "The game master is not running on this server",
+  "almighty.gm.away": "The game master is away right now; your message is kept.",
+  "almighty.gm.slow_down": "Too many messages to the game master; try again later."
 }

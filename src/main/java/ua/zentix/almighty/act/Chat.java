@@ -14,6 +14,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 import ua.zentix.almighty.GmConfig;
+import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
 
@@ -68,17 +69,54 @@ public final class Chat {
             default -> throw RpcException.badRequest("style: chat, title, subtitle or actionbar");
         }
         if (!style.equals("chat") || args.has("to")) LOG.info("GM ({}): {}", style, text.getString());
+        // A reply opens a conversation: the players' next lines reach the GM without its name.
+        if (GmServer.of(server) instanceof GmServer gm) gm.inbox().replied(args.has("to") ? to : null);
         JsonObject out = new JsonObject();
         out.addProperty("players", to.size());
         return out;
     }
 
+    /** The prefix of the server's own confirmations and receipts; agent text below owner may not carry it. */
+    public static final String RESERVED = "[Almighty]";
+
     private static Component text(MinecraftServer server, Args args) throws RpcException {
+        boolean owner = owner(server, args);
+        Component c;
         if (args.has("component")) {
-            JsonElement json = args.raw().get("component");
-            return ComponentSerialization.CODEC.parse(server.registryAccess().createSerializationContext(JsonOps.INSTANCE), json)
+            JsonElement json = args.raw().get("component").deepCopy();
+            // Below owner (plan 4.8): no buttons that run or type commands as the clicker (on 1.21.1 a run_command
+            // click runs without a prompt). Stripped in the JSON, so translation arguments are covered too.
+            if (!owner) strip(json);
+            c = ComponentSerialization.CODEC.parse(server.registryAccess().createSerializationContext(JsonOps.INSTANCE), json)
                     .getOrThrow(error -> RpcException.badRequest("component: " + error));
+        } else {
+            c = Component.literal(args.string("text"));
         }
-        return Component.literal(args.string("text"));
+        if (!owner && c.getString().contains(RESERVED)) {
+            throw new RpcException(403, "policy", "Text may not contain " + RESERVED + " (reserved for the server's own messages)");
+        }
+        return c;
+    }
+
+    /** Whether this call speaks with owner rights (in-process calls do). */
+    private static boolean owner(MinecraftServer server, Args args) throws RpcException {
+        if (args.caller().agent() == null) return true;
+        GmServer gm = GmServer.of(server);
+        return gm != null && gm.gate().rights(args.caller(), args.raw()).effective() == ua.zentix.almighty.policy.Role.OWNER;
+    }
+
+    /** Remove {@code run_command}/{@code suggest_command} click events at any depth of a JSON text component. */
+    static void strip(JsonElement e) {
+        if (e instanceof com.google.gson.JsonArray a) {
+            for (JsonElement x : a) strip(x);
+        } else if (e instanceof JsonObject o) {
+            for (String key : new String[]{"clickEvent", "click_event"}) {
+                if (o.get(key) instanceof JsonObject click && click.get("action") != null && click.get("action").isJsonPrimitive()) {
+                    String action = click.get("action").getAsString();
+                    if (action.equals("run_command") || action.equals("suggest_command")) o.remove(key);
+                }
+            }
+            for (var entry : o.entrySet()) strip(entry.getValue());
+        }
     }
 }

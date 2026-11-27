@@ -12,10 +12,21 @@ public final class GmConfig {
     public static final ModConfigSpec.BooleanValue BRIDGE_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> BRIDGE_HOST;
     public static final ModConfigSpec.IntValue BRIDGE_PORT;
+    public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> BRIDGE_ALLOWED_ORIGINS;
+    public static final ModConfigSpec.ConfigValue<String> BRIDGE_PUBLIC_URL;
+    public static final ModConfigSpec.ConfigValue<String> BRIDGE_TLS_CERT;
+    public static final ModConfigSpec.ConfigValue<String> BRIDGE_TLS_KEY;
+    public static final ModConfigSpec.BooleanValue BRIDGE_INTEGRATED;
     public static final ModConfigSpec.DoubleValue WORK_MS_PER_TICK;
     public static final ModConfigSpec.IntValue BUILD_MAX_BLOCKS;
     public static final ModConfigSpec.IntValue MAX_CHUNKS;
     public static final ModConfigSpec.IntValue LAG_MS;
+    public static final ModConfigSpec.IntValue AUDIT_DAYS;
+    public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> FEED_NAMES;
+    public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> FEED_TYPO_NAMES;
+    public static final ModConfigSpec.IntValue FEED_GM_MESSAGES;
+    public static final ModConfigSpec.ConfigValue<String> FEED_DEFAULT_AGENT;
+    public static final ModConfigSpec.IntValue FEED_AWAY_SECONDS;
     public static final ModConfigSpec.BooleanValue SCRIPTS_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> NAME;
     public static final ModConfigSpec.IntValue BOTS_MAX;
@@ -31,6 +42,21 @@ public final class GmConfig {
                         "the host can reach (for example, the address of a Docker container whose port is not published).")
                 .define("host", "127.0.0.1");
         BRIDGE_PORT = b.comment("Bridge port.").defineInRange("port", 25650, 1, 65535);
+        BRIDGE_ALLOWED_ORIGINS = b.comment("Browser origins allowed to call the bridge (for example \"https://example.org\"). Requests from a browser",
+                        "page carry an Origin header and are refused unless it is listed here; agents and command-line clients send none.")
+                .defineListAllowEmpty("allowed_origins", java.util.List.of(), () -> "", o -> o instanceof String);
+        BRIDGE_PUBLIC_URL = b.comment("The bridge's public address when a reverse proxy or tunnel puts it on the internet, for example",
+                        "\"https://mc.example.org\" (cloud agents such as claude.ai need public HTTPS). Sign-in links and the address the",
+                        "agent is given use it. Empty: the bridge's own address.")
+                .define("public_url", "");
+        BRIDGE_TLS_CERT = b.comment("HTTPS: a PEM certificate chain file (for example a reverse proxy's or Let's Encrypt's fullchain.pem), relative",
+                        "to the server directory. With tls_key set, the bridge speaks only HTTPS. Empty: plain HTTP (fine on loopback).")
+                .define("tls_cert", "");
+        BRIDGE_TLS_KEY = b.comment("HTTPS: the matching unencrypted PKCS#8 PEM private key (BEGIN PRIVATE KEY, for example privkey.pem).")
+                .define("tls_key", "");
+        BRIDGE_INTEGRATED = b.comment("Also start the bridge on the integrated server of single-player and LAN worlds (for mod developers and",
+                        "filming). Loopback only: with another host the bridge does not start there.")
+                .define("integrated", false);
         b.pop();
         b.push("work");
         WORK_MS_PER_TICK = b.comment("Time per server tick for builds, undos and image views, in ms.")
@@ -44,6 +70,24 @@ public final class GmConfig {
         b.push("feed");
         LAG_MS = b.comment("Emit a lag event when more than this many ms pass between two server ticks.")
                 .defineInRange("lag_ms", 1000, 100, 60_000);
+        FEED_NAMES = b.comment("Words that address the game master in public chat (any case; repeated letters are ignored). Empty: the",
+                        "game master's name (name below).")
+                .defineListAllowEmpty("names", java.util.List.of(), () -> "claude", o -> o instanceof String t && !t.isBlank());
+        FEED_TYPO_NAMES = b.comment("Longer names also recognized with one typo (first letter exact). Use only names with no real word one",
+                        "letter away.")
+                .defineListAllowEmpty("typo_names", java.util.List.of(), () -> "claude", o -> o instanceof String t && !t.isBlank());
+        FEED_GM_MESSAGES = b.comment("How many messages one player may address to the game master per hour; more are answered by the server",
+                        "(\"slow down\") and never reach the agent.")
+                .defineInRange("gm_messages", 20, 1, 10_000);
+        FEED_DEFAULT_AGENT = b.comment("Agent that receives messages addressed to the game master; /gm @<agent> <text> picks another.")
+                .define("default_agent", "gm");
+        FEED_AWAY_SECONDS = b.comment("If the agent has not read a message this many seconds after it arrived, the server tells the player",
+                        "the game master is away (the message is kept).")
+                .defineInRange("away_seconds", 30, 5, 3600);
+        b.pop();
+        b.push("audit");
+        AUDIT_DAYS = b.comment("Days of audit log kept in logs/almighty/audit-<date>.jsonl (every GM call with effects and every refusal).")
+                .defineInRange("days", 30, 1, 3650);
         b.pop();
         b.push("scripts");
         SCRIPTS_ENABLED = b.comment("Game master scripts (Groovy): the script method and rules with a script. Turn off if a rule disrupts the",

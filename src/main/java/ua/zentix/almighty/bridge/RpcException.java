@@ -4,6 +4,7 @@ package ua.zentix.almighty.bridge;
 public final class RpcException extends Exception {
     private final int status;
     private final String code;
+    private com.google.gson.JsonObject details;
 
     public RpcException(int status, String code, String message) {
         super(message);
@@ -25,6 +26,21 @@ public final class RpcException extends Exception {
 
     public static RpcException unavailable(String message) {
         return new RpcException(503, "unavailable", message);
+    }
+
+    /** Extra fields for the error object (for example the {@code allowed} hint of a policy refusal). */
+    public RpcException detail(String key, com.google.gson.JsonElement value) {
+        if (details == null) details = new com.google.gson.JsonObject();
+        details.add(key, value);
+        return this;
+    }
+
+    public RpcException detail(String key, String value) {
+        return detail(key, new com.google.gson.JsonPrimitive(value));
+    }
+
+    public com.google.gson.JsonObject details() {
+        return details;
     }
 
     public int status() {

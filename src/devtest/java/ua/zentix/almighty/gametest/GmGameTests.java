@@ -71,6 +71,15 @@ public final class GmGameTests {
 
     static CompletableFuture<JsonElement> call(GameTestHelper h, String method, JsonObject params) {
         try {
+            return gm(h).dispatch().invoke(ua.zentix.almighty.bridge.Caller.INTERNAL, method, params);
+        } catch (RpcException e) {
+            throw new GameTestAssertException(method + ": " + e.getMessage());
+        }
+    }
+
+    /** A method called past the choke point (no deny list): for tests of the layers underneath it. */
+    static CompletableFuture<JsonElement> direct(GameTestHelper h, String method, JsonObject params) {
+        try {
             return Api.methods(gm(h)).get(method).call(new Args(params));
         } catch (RpcException e) {
             throw new GameTestAssertException(method + ": " + e.getMessage());
@@ -94,6 +103,15 @@ public final class GmGameTests {
     static JsonElement now(CompletableFuture<JsonElement> f) {
         check(f.isDone(), "server-thread call did not run immediately");
         return f.join();
+    }
+
+    /** A call finished off the server thread (catalog searches): it needs no further ticks, so a timed wait is safe. */
+    static JsonElement soon(CompletableFuture<JsonElement> f) {
+        try {
+            return f.get(20, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new GameTestAssertException("call failed: " + e);
+        }
     }
 
     private static JsonObject result(CompletableFuture<JsonElement> f) {
@@ -347,10 +365,14 @@ public final class GmGameTests {
         return image.getRGB(i * k + k / 2, j * k + k / 2) & 0xFFFFFF;
     }
 
-    /** Server data notes: the Unicode test resource exists, and an empty file removes a note. Keep the Russian fixture to verify UTF-8 data loading. */
+    /**
+     * Server data notes: the index lists the Unicode test resource with its first line as the description, an empty
+     * file removes a note, and {@code notes {id}} returns the whole text. Keep the Russian fixture to verify UTF-8
+     * data loading.
+     */
     @GameTest(template = "floor", batch = "gm_notes", skyAccess = true)
     public static void notesFromServerData(GameTestHelper h) {
-        JsonArray notes = now(call(h, "notes", new JsonObject())).getAsJsonArray();
+        JsonArray notes = soon(call(h, "notes", new JsonObject())).getAsJsonObject().getAsJsonArray("notes");
         JsonObject note = null;
         for (JsonElement e : notes) {
             String id = e.getAsJsonObject().get("id").getAsString();
@@ -358,8 +380,39 @@ public final class GmGameTests {
             if (id.equals("almighty:gametest")) note = e.getAsJsonObject();
         }
         check(note != null, "missing almighty:gametest note: " + notes);
-        check(note.get("text").getAsString().startsWith("Памятка проверки:"), "note text: " + note);
+        check(note.get("description").getAsString().startsWith("Памятка проверки:"), "note description: " + note);
+        check(!note.has("text"), "the index carries no note text: " + note);
         check(note.has("source"), "missing note source: " + note);
+        JsonObject full = soon(call(h, "notes", params("{\"id\":\"almighty:gametest\"}"))).getAsJsonObject();
+        check(full.get("text").getAsString().startsWith("Памятка проверки:"), "note text: " + full);
+        h.succeed();
+    }
+
+    /**
+     * Live catalog: block states, recipes, commands and mod config of the running server, paged (secret-looking
+     * config keys: {@code CatalogTest}). A world note written through the bridge is listed as unconfirmed
+     * (the agent wrote it) and removed by empty text.
+     */
+    @GameTest(template = "floor", batch = "gm_catalog", timeoutTicks = 200, skyAccess = true)
+    public static void catalogAndWorldNotes(GameTestHelper h) {
+        JsonObject stairs = soon(call(h, "notes", params("{\"kind\":\"blocks\",\"query\":\"minecraft:oak_stairs\"}"))).getAsJsonObject();
+        JsonObject entry = stairs.getAsJsonArray("entries").get(0).getAsJsonObject();
+        check(entry.get("id").getAsString().equals("minecraft:oak_stairs"), "first block: " + stairs);
+        check(entry.get("states").getAsString().contains("facing=north|south|west|east"), "stairs states: " + entry);
+        JsonObject recipes = soon(call(h, "notes", params("{\"kind\":\"recipes\",\"query\":\"oak_planks\",\"limit\":5}"))).getAsJsonObject();
+        check(recipes.get("total").getAsInt() >= 1 && recipes.getAsJsonArray("entries").size() <= 5, "recipes: " + recipes);
+        JsonObject commands = soon(call(h, "notes", params("{\"kind\":\"commands\",\"query\":\"gamerule\"}"))).getAsJsonObject();
+        check(commands.toString().contains("\"id\":\"gamerule\""), "commands: " + commands);
+        JsonObject config = soon(call(h, "notes", params("{\"kind\":\"config\",\"query\":\"almighty:bridge.port\"}"))).getAsJsonObject();
+        check(config.getAsJsonArray("entries").get(0).getAsJsonObject().get("value").getAsString().equals(String.valueOf(GmConfig.BRIDGE_PORT.get())), "config: " + config);
+        JsonObject all = soon(call(h, "notes", params("{\"query\":\"minecraft:\",\"limit\":10}"))).getAsJsonObject();
+        check(all.getAsJsonArray("entries").size() == 10 && all.get("next_offset").getAsInt() == 10, "paging: " + all.get("total"));
+
+        soon(call(h, "notes", params("{\"id\":\"world:gametest/arena\",\"text\":\"---\\nconfirmed: true\\n---\\nArena at 0 64 0\"}")));
+        JsonObject note = soon(call(h, "notes", params("{\"id\":\"world:gametest/arena\"}"))).getAsJsonObject();
+        check(!note.get("confirmed").getAsBoolean() && note.get("text").getAsString().equals("Arena at 0 64 0"), "world note: " + note);
+        soon(call(h, "notes", params("{\"id\":\"world:gametest/arena\",\"text\":\"\"}")));
+        check(!soon(call(h, "notes", new JsonObject())).toString().contains("world:gametest/arena"), "world note not removed");
         h.succeed();
     }
 
@@ -409,6 +462,19 @@ public final class GmGameTests {
                 .thenSucceed();
     }
 
+    /** Like GameTestHelper.makeMockServerPlayerInLevel (marked for removal in vanilla): a joined player with an embedded channel. */
+    static ServerPlayer player(GameTestHelper h, String name, UUID id) {
+        GameProfile profile = new GameProfile(id, name);
+        CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
+        ServerPlayer player = new ServerPlayer(h.getLevel().getServer(), h.getLevel(), profile, cookie.clientInformation());
+        Connection connection = new Connection(PacketFlow.SERVERBOUND);
+        new EmbeddedChannel(connection);
+        // Client with all server mods: mods send their packets on login (Immersive Aircraft).
+        NetworkRegistry.configureMockConnection(connection);
+        h.getLevel().getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
+        return player;
+    }
+
     /**
      * Feed: join, player command (not a GM command as the player), private GM message ({@code /gm}), death with
      * cause, and player leave.
@@ -418,15 +484,7 @@ public final class GmGameTests {
         GmServer gm = gm(h);
         // The whole ring: last event number.
         long after = gm.feed().read(0, 4096, 0).get("next").getAsLong();
-        // Like GameTestHelper.makeMockServerPlayerInLevel (marked for removal in vanilla): a player with an embedded channel.
-        GameProfile profile = new GameProfile(UUID.randomUUID(), "gm-feed-player");
-        CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
-        ServerPlayer player = new ServerPlayer(h.getLevel().getServer(), h.getLevel(), profile, cookie.clientInformation());
-        Connection connection = new Connection(PacketFlow.SERVERBOUND);
-        new EmbeddedChannel(connection);
-        // Client with all server mods: mods send their packets on login (Immersive Aircraft).
-        NetworkRegistry.configureMockConnection(connection);
-        h.getLevel().getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
+        ServerPlayer player = player(h, "gm-feed-player", UUID.randomUUID());
         // A GM command as the player is not theirs and stays out of the feed; one typed by the player enters it.
         new ScriptApi(h.getLevel().getServer(), true, data -> {}).commandAs(player, "list");
         h.getLevel().getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack(), "list");

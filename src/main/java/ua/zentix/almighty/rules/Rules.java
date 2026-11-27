@@ -69,6 +69,13 @@ public final class Rules {
     private long next = 1;
     private boolean loading;
 
+    /** While true (the owner paused every agent), rules with a script do not run: the red button stops autopilots too. */
+    private java.util.function.BooleanSupplier paused = () -> false;
+
+    public void paused(java.util.function.BooleanSupplier paused) {
+        this.paused = paused;
+    }
+
     public Rules(MinecraftServer server, IEventBus bus, Feed feed, Map<String, Object> state, Path store) {
         this.server = server;
         this.bus = bus;
@@ -308,6 +315,7 @@ public final class Rules {
 
         void fire(Event event) {
             if (off != null || running) return;
+            if (spec.script() != null && paused.getAsBoolean()) return;
             if (!server.isSameThread()) {
                 if (!wrongThread) {
                     wrongThread = true;

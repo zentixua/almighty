@@ -11,9 +11,20 @@ import java.util.List;
 /** Call parameters: validated reads; errors use {@link RpcException#badRequest} with the parameter name. */
 public final class Args {
     private final JsonObject json;
+    private final Caller caller;
 
     public Args(JsonObject json) {
+        this(json, Caller.INTERNAL);
+    }
+
+    public Args(JsonObject json, Caller caller) {
         this.json = json == null ? new JsonObject() : json;
+        this.caller = caller == null ? Caller.INTERNAL : caller;
+    }
+
+    /** Who made the call (set by the transport, never by parameters). */
+    public Caller caller() {
+        return caller;
     }
 
     public boolean has(String name) {

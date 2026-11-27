@@ -1,5 +1,6 @@
 package ua.zentix.almighty.feed;
 
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.minecraft.network.chat.Component;
 
@@ -10,23 +11,28 @@ import java.util.Locale;
 
 /** Server-selected fallbacks let unmodified clients read the mod's translations. */
 final class GmMessages {
-    private static final String UNAVAILABLE = "almighty.gm.unavailable";
-    private static final String ENGLISH = load("en_us");
-    private static final String RUSSIAN = load("ru_ru");
+    private static final JsonObject ENGLISH = load("en_us");
+    private static final JsonObject RUSSIAN = load("ru_ru");
 
     private GmMessages() {}
 
     static Component unavailable(String language) {
-        String fallback = language.toLowerCase(Locale.ROOT).startsWith("ru_") ? RUSSIAN : ENGLISH;
-        return Component.translatableWithFallback(UNAVAILABLE, fallback);
+        return get("almighty.gm.unavailable", language);
     }
 
-    private static String load(String language) {
+    /** A translated line: the client's own translation if it has the mod, else English or Russian by its language. */
+    static Component get(String key, String language, Object... args) {
+        JsonObject table = language.toLowerCase(Locale.ROOT).startsWith("ru_") ? RUSSIAN : ENGLISH;
+        String fallback = table.has(key) ? table.get(key).getAsString() : ENGLISH.get(key).getAsString();
+        return Component.translatableWithFallback(key, fallback, args);
+    }
+
+    private static JsonObject load(String language) {
         String path = "/assets/almighty/lang/" + language + ".json";
         var stream = GmMessages.class.getResourceAsStream(path);
         if (stream == null) throw new IllegalStateException("Missing language resource: " + path);
         try (var reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
-            return JsonParser.parseReader(reader).getAsJsonObject().get(UNAVAILABLE).getAsString();
+            return JsonParser.parseReader(reader).getAsJsonObject();
         } catch (IOException e) {
             throw new IllegalStateException("Cannot read language resource: " + path, e);
         }

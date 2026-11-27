@@ -76,4 +76,36 @@ class FeedTest {
         assertEquals(0, page.getAsJsonArray("events").size());
         assertEquals(1, page.get("next").getAsLong(), "next request uses the same sequence number");
     }
+
+    @Test
+    void agentSeesOnlyItsOwnMessages() throws Exception {
+        Feed feed = new Feed();
+        JsonObject toBuilder = new JsonObject();
+        toBuilder.addProperty("agent", "builder");
+        JsonObject toGm = new JsonObject();
+        toGm.addProperty("agent", "gm");
+        feed.add("gm", toBuilder);
+        feed.add("join", new JsonObject());
+        long last = feed.add("gm", toGm);
+        JsonObject page = feed.read(0, 100, 0, e -> !e.has("agent") || e.get("agent").getAsString().equals("gm"));
+        assertEquals(2, page.getAsJsonArray("events").size(), "the builder's message is left out");
+        assertEquals(last, page.get("next").getAsLong());
+        // Waiting skips other agents' messages: only an own message ends the wait early.
+        Thread t = new Thread(() -> {
+            try {
+                Thread.sleep(100);
+                feed.add("gm", toBuilder);
+                Thread.sleep(100);
+                feed.add("gm", toGm);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        t.start();
+        JsonObject waited = feed.read(last, 100, 5000, e -> !e.has("agent") || e.get("agent").getAsString().equals("gm"));
+        t.join();
+        assertEquals(1, waited.getAsJsonArray("events").size());
+        assertEquals("gm", waited.getAsJsonArray("events").get(0).getAsJsonObject().get("agent").getAsString());
+        assertEquals(last + 2, waited.get("next").getAsLong(), "next covers the skipped event");
+    }
 }

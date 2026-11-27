@@ -1,0 +1,17 @@
+{
+  "name": "almighty",
+  "plugins": [
+    {
+      "name": "almighty",
+      "source": {
+        "source": "local",
+        "path": "./plugin/almighty"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

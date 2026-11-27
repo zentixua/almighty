@@ -34,6 +34,12 @@ jobs:
       - name: GM toolkit (mcp/gm)
         run: python3 -m unittest discover -s mcp/gm/tests
 
+      - name: Plugin skills match the notes in the jar
+        run: python3 scripts/export_skills.py --check
+
+      - name: Tools page matches the tool definitions
+        run: python3 scripts/gen_tools_md.py --check
+
       - name: MCP adapter syntax
         run: python3 -m py_compile mcp/almighty.py
 

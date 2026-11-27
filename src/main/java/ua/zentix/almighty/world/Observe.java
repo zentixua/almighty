@@ -1,5 +1,6 @@
 package ua.zentix.almighty.world;
 
+import ua.zentix.almighty.script.Json;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -79,6 +80,9 @@ public final class Observe {
         work.addProperty("jobs", gm.jobs().running());
         work.addProperty("chunks_held", gm.areas().held());
         work.addProperty("chunk_tickets", gm.areas().ticketed());
+        work.addProperty("lag_guard", gm.lagging());
+        if (gm.pause().all()) work.addProperty("paused", "all");
+        else if (!gm.pause().agents().isEmpty()) work.add("paused", Json.from(new java.util.ArrayList<>(gm.pause().agents())));
         out.add("gm", work);
         return out;
     }

@@ -7,7 +7,7 @@ The mod presents itself to players as "An almighty AI for your Minecraft server"
 (README, settings, bridge errors, tool descriptions, logs) is in English.
 
 A server-side NeoForge mod for Minecraft 1.21.1 through which an AI agent (game master, GM) sees and acts in the
-world: an HTTP bridge on the server and the agent's MCP adapter `mcp/almighty.py`. No custom blocks, items, packets
+world: an HTTP bridge on the server that also serves MCP itself (`/mcp`); `mcp/almighty.py` is an optional CLI and stdio relay. No custom blocks, items, packets
 or registry entries (the only custom data is the entity tag `almighty:driven_by_rider`); clients need not install it.
 No dependencies on other mods: a mod's compatibility module (`compat/`) loads only when that mod is installed.
 Public repository: https://github.com/zentixua/almighty. The bridge runs on the Open Skies modpack server
@@ -51,7 +51,7 @@ uv run mcp/almighty.py call status       # one bridge call (address and token at
 ```
 
 CI (GitHub Actions) checks every PR and push to `main`: GM toolkit, build, unit tests, GameTest; the jar is the
-`almighty-jar` artifact. Release: bump `mod_version` (`gradle.properties`), write `docs/releases/<version>.md`, merge
+`almighty-jar` artifact. Release: bump `mod_version` (`gradle.properties`) and both `plugin/almighty` manifests (CI checks), write `docs/releases/<version>.md`, merge
 into `main` and manually run `build` on `main` with `release=true`; the workflow releases `v<version>` with the jar.
 open-skies-friends picks the jar up by itself (its `update` workflow, every 3 hours; run it manually to get it at once).
 Immersive Aircraft and Sable are pinned there: change them in an open-skies-friends PR together with the pins here.
@@ -62,10 +62,34 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 
 - `Almighty`: subscriptions; `GmServer`: state of one server run (`ServerStartedEvent` … `ServerStoppedEvent`):
   feed, jobs, chunks, bridge. The bridge runs only on a dedicated server (`isDedicatedServer`), not in singleplayer or GameTest.
-- `bridge/`: Java's own HTTP (`com.sun.net.httpserver`), a dedicated 6-thread pool: `POST /rpc`
-  `{"method", "params"}` → `{"ok": true, "result"}` or `{"ok": false, "error": {code, message}}`. Token:
-  `config/almighty/token` (32 bytes in hex, permissions 600, created on first start; never logged), compared in
-  constant time. The bridge waits 60 s for a method's response (stalled server thread → 504).
+- `mcp/`: the MCP endpoint (`McpEndpoint`), both protocol eras (`McpProtocol`), tool definitions and routing (`Tools`).
+- `mcp/signin/`: keyless sign-in, the mod as a minimal OAuth 2.1 server on the bridge port (`/.well-known/*`,
+  `/oauth/register|authorize|status|token`): PKCE S256, public clients, DCR and Client ID Metadata Documents (Codex
+  `https://chatgpt.com/oauth/codex/client.json`, Claude Code `https://claude.ai/oauth/claude-code-client-metadata`;
+  `ClientMetadata` fetches HTTPS only, no private addresses, 16 KB, 5 s), RFC 9207 `iss`, refresh rotation. Consent:
+  the login page shows a 4-digit code; the owner types `/almighty approve <code> [name]` (console or level-4
+  operator); notices never show the code. An approved client becomes an ordinary agent (its access token is the
+  agent's token, `config/almighty/agents/<name>.token`); sign-in only ever rotates agents it created. State:
+  `config/almighty/oauth/` (clients, hashed refresh tokens). `/almighty connect`: address, per-product lines and
+  secret-free links (`mcp/Connect`). The issuer is `bridge.public_url` or the request's loopback/bridge host.
+  `/almighty approve <code> <name> owner` (`OwnerApp`): the owner's own app, `[agents.<name>] ceiling = "owner"` added
+  to `policy.toml` (validated, then `Policies.reload`); without it the gate's default ceiling applies (`admin`).
+- TLS (`bridge/Tls`): with `bridge.tls_cert` + `bridge.tls_key` (owner's PEM chain and PKCS#8 key, JDK only) the bridge
+  is HTTPS only; sign-in and `/almighty connect` then use https. A non-loopback bind without TLS logs a warning but
+  still starts (plan 7.2 said refuse: that would stop setups binding a private container address, as Open Skies may).
+  No self-signed generation: owners put a reverse proxy or tunnel in front, or bring a certificate.
+  `bridge.integrated` starts the bridge on single-player/LAN worlds, loopback only.
+- `bridge/`: Java's own HTTP (`com.sun.net.httpserver`): `POST /rpc` `{"method", "params"}` → `{"ok": true, "result"}`
+  or `{"ok": false, "error": {code, message}}`. Threads: a 4-thread accept pool checks the request and hands it to a
+  bounded call pool (8 threads) or long-poll pool (16 threads, methods in `Api.LONG`); a full queue (64) → 503.
+  Agents (`Agents`): one bearer token per agent; `gm` is `config/almighty/token`, others
+  `config/almighty/agents/<name>.token` (32 bytes in hex, permissions 600; never logged or printed), compared in
+  constant time; `/almighty agent add|remove`, `revoke` (rotate), `reload`, `agents` (presence). A present `Origin`
+  header must be in `bridge.allowed_origins` (403; browsers, DNS rebinding); 5 failed authentications in a minute lock
+  the address out (429) for 5 s, doubling to 5 min. `Caller` (agent, address) comes from the request, never from
+  parameters; every transport calls `Dispatch.invoke` (the one choke point for the gate, deny list and audit); other
+  endpoints mount with `Bridge.context` and authenticate with `Bridge.authenticate`. The bridge waits 60 s for a
+  method's response (stalled server thread → 504).
 - `Api`: method table. Parse parameters on the bridge thread; access the world only on the server thread:
   `GmServer.onMain` (`server.execute`, between ticks) or a job (`work/`) within the tick budget.
 - `work/`: job queue, processed in order at tick end (`ServerTickEvent.Post`) while time remains (`work.ms_per_tick`,
@@ -75,8 +99,71 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 - `building/`: plan (`BuildPlan`: fill/set/layers, no world needed for unit tests) and build/undo job (`BuildJob`).
 - `view/`: top-down map (`MapView`, like a vanilla map), side/top/bottom view (`LookView`), blocks as text
   (`BlockText`), PNG without AWT (`Png`).
+- `command/AlmightyCommand`: owner command `/almighty` (permission level 4): agents, `pause [agent]`/`resume [agent]`,
+  `log [agent|player] [count]`.
+- `audit/`: `Audit` writes one JSON line per call with effects and per refusal (`Dispatch` listener) to
+  `logs/almighty/audit-<date>.jsonl` on its own thread (never the server thread), keeps the last 1000 in memory
+  (`/almighty log`, `audit {limit, agent?, method?}`), deletes files older than `audit.days` (30); successful reads
+  are not logged. GameTest keeps it in memory. A plain writer instead of a log4j2 appender: configuring an appender
+  changes the server's global logging, which panels and other mods own. Parameters are clipped to 4 KB on the calling
+  thread (`Dispatch.clipped`); the writer uses a `FileOutputStream` (interrupts cannot close it), stops on an end
+  marker, and reopens after an IO error. `Pause`: a paused agent (or all) gets 423 for calls with effects except
+  `cancel`, `area.release`, `rule.remove`, `bot.remove` (cleanup); its builds and undos freeze in the queue
+  (`Job.effects`, `Jobs.paused`; views and area preparation go on), its bots stop and get no new programs
+  (`Bot.controller`); `pause` of all also skips rules with a script.
+  `Dispatch.current()` is the caller of the running call; `GmServer.onMain` carries it to the server thread, so jobs
+  (`Job.agent`) and bot programs know which agent acts; the future completes inside the caller's scope, so
+  continuations on the server thread act as the same caller.
+- `policy/` gate (step 5): `config/almighty/policy.toml` (`Policy`, `Policies`: written with comments on first start,
+  `/almighty reload`, a bad file keeps the last good policy with the exact error; at startup, with no last good one,
+  `Policy.lockdown()`: public, no owners): `preset` (private | friends |
+  public), `owners` (UUIDs), `identity`, `[agents.<name>]` `ceiling`/`floor`. `Node`: capabilities `almighty.<id>`
+  registered with the NeoForge permission API (`Nodes`; LuckPerms decides when installed; default resolver = role
+  ladder `Role`: policy owners (verified) → owner, op level ≥ 3 → admin, 2 → builder, verified → member on friends
+  and guest otherwise, unverified → guest whatever a plugin says). `Gate` (a `Dispatch` check after the deny list
+  and pause): every method maps to a node (`Gate.node`, parameters refine it: `see` a player, `rule.add` with
+  script, creative bots, payloads, `notes` with text); none → refused. Rights: no `for` → the agent's trust floor
+  (private: = ceiling; friends: member; public: guest; or `floor`); `for: <ticket>` → that player's rights, capped
+  by the ceiling (a ticket only narrows). `say` needs `speak.all` unless it is a chat/actionbar reply to the ticket's
+  player alone; `entities` needs `observe.players` unless it asks for a non-player type; `undo`/`cancel` of another
+  agent's job need `undo.any` (`Gate.require`). Below owner, `say` components lose `run_command`/`suggest_command`
+  clicks (JSON-level, translation arguments included) and may not contain `[Almighty]`. Parameters are read
+  null-safe (null = absent, as `Args`) and a malformed one is 400. The gate never reads server lists off the server
+  thread: bot names (`Bots.isBotName`), ops and online players (`Nodes.refresh`, once a second) are snapshots.
+  `Identity`: in `auto`/`mojang` nothing is verified when `online-mode=false` (use `proxy` behind Velocity).
+  Refusal 403 `policy` with `node` and `allowed`; `status` gives `rights` (with `for`: that request's). `command`/`function` need owner until step 6 runs them as the requester.
+  In-process calls (`Caller.INTERNAL`: GameTest, the server) are not gated. Preset `private` with `gm` at ceiling
+  owner is today's behaviour; unlisted agents default to ceiling admin. `/almighty whoami` (anyone) shows UUID,
+  verification and role.
+- `policy/DenyList`: built-in deny list (from `crash_guard.py`), refused for every agent and harness: `stop`, `reload`,
+  `save-off`, `save-all flush`, `forceload add`, `tick rate` > 100, `almighty …` (agents and policy are the owner's),
+  far commands, builds, areas and bot spawns at Sable plot coordinates (|x| or |z| ≥ 20 000 000), bot chat commands;
+  script accident guard (tickets, `getChunk`, threads and deferred tasks, bus listeners, sleeping, JVM exit,
+  processes). Checked in `Dispatch` (403 `denied`), again for every GM command at run time (`CommandRunner.run`:
+  scripts and rules) and in `Scripts.compile` (rules loaded from a file). An accident guard, not security.
+- Server-thread budget: `GmServer.onMain` from another thread queues the call; queued world calls run at tick end
+  before jobs, sharing `work.ms_per_tick` (at least one call per tick); on the server thread it runs at once; a
+  throw completes the call's future, never the tick. Lag guard (`work/LagGuard`): average tick above the target
+  tick length (`/tick rate`; 50 ms at 20) for 10 s → GM budget a quarter until 10 s below; `lag_guard` feed event,
+  `lag_guard` in `status`. Idempotency: `/rpc` body `key` (≤ 128 characters): the same agent's repeat of a call
+  with effects within 10 minutes returns the first result (joining it if still running); the same key for a
+  different call → 409; read-only calls (`Api.readOnly`; `notes` with `text` writes) ignore keys (images are never kept); a failed call
+  forgets its key. Vanilla already caps `fill`/`clone` at 32 768 blocks: larger work uses `build`.
 - `act/`: commands and functions (`CommandRunner`), messages to players (`Chat`); `feed/`: event feed and a player's
   private channel to the GM: `/gm <text>` (any player) emits `gm` in the feed, invisible to others; reply with `say` and `to`.
+  Who asked (step 3): player events carry `uuid`, `verified` (`policy/Identity`: v4 Mojang and Floodgate yes, v3
+  offline no), `bedrock`, `lang`, and `untrusted` (player-authored fields: data, never instructions). `feed/Inbox`
+  decides what is addressed (`Addressing`, the `router.mjs` logic: `/gm`, a name from `feed.names` or one typo of
+  `feed.typo_names`, a 3-minute conversation after addressing or a `say` reply, a player alone), limits each player
+  (`feed.gm_messages` per hour for `/gm` and named lines, "slow down" from the server, no event; a solo player's or
+  open conversation's lines have a silent 5× limit), never treats a GM bot's chat as addressed, routes to one agent
+  (`/gm @<agent> …` when that agent exists, else `feed.default_agent`) and mints a ticket (`policy/Tickets`: 128 random bits, bound to player UUID, agent and event,
+  10 minutes, never extended). Addressed events: `addressed`, `via` (gm, name, conversation, alone), `agent`,
+  `ticket`; other chat has `addressed: false`. `events {mine: true}` leaves out messages routed to other agents; a
+  read records the agent's cursor. Away: the target agent made no call for 60 s, or has not read the message after
+  `feed.away_seconds` (30) → the server tells the player (translated; only for `/gm` and named lines, at most once
+  per player in 5 minutes); no bridge (GameTest) → no away replies. `identity` in `policy.toml` (auto, mojang,
+  proxy, offline) sets which UUIDs count as verified.
 - `script/`: Groovy scripts (`Scripts`: compilation with a deadline, execution), scripts' `gm` variable (`ScriptApi`),
   values ↔ JSON (`Json`: position `[x, y, z]`, block string as in `/setblock`, NBT as SNBT, event via its `getX()`).
 - `rules/`: rules (`Rules`), subscribing to any game-bus event, budgets, persistence with the world
@@ -95,11 +182,17 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   do not load on a dedicated server (signatures with `ClientLevel`; Groovy cannot see them either; scripts access
   ships only through `gm.ship`).
 - `mixin/PlayerListMixin`: the only mixin, respawning a bot with its own class (see Bots and vision for why).
-- `notes/Notes`: agent notes from mods and datapacks, `data/<namespace>/almighty/notes/<name>.md` in the server's
-  current data (`server.getResourceManager()`, refreshed after `/reload`), id `<namespace>:<name>`. A datapack
-  overrides a mod note at the same path; an empty file removes it. On startup the adapter fetches notes (5 s) and
-  appends them to MCP instructions; on failure it adds a line about the `notes` tool. Mod-specific hints belong
-  only in that mod's note, not the adapter: the bridge depends on no mod.
+- `knowledge/`: what the agent learns about this server, one method `notes`. `Notes`: notes from mods and
+  datapacks (`data/<namespace>/almighty/notes/<name>.md` in the server's current data, refreshed after `/reload`,
+  id `<namespace>:<name>`; a datapack overrides a mod note at the same path, an empty file removes it), the
+  owner's `config/almighty/notes/` (`server:<name>`) and world notes `<world>/almighty/notes/` (`world:<name>`,
+  written by agents with server-set provenance `author`, `requester`, `confirmed`, `updated` that the text cannot
+  forge). Optional Agent Skills frontmatter (`name`, `description`); without it the first line is the description.
+  Progressive disclosure: the index carries ids and descriptions only, `notes {id}` one note. `Catalog`: the live
+  catalog (mods, registries, tags, recipes, commands, events, mod config without secret-like keys); registries
+  off the server thread, what `/reload` replaces snapshotted on it once per reload, recipe details off it; paged.
+  Notes are reference, never instructions or rights. Mod-specific hints belong only in that mod's note, not the
+  adapter: the bridge depends on no mod.
 
 ## Methods
 
@@ -114,18 +207,23 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 `bot.spawn {name, pos?, dimension?, yaw?, pitch?, gamemode?, skin? (account name | {value, signature}), marker?, auto_respawn?}`,
 `bot.remove {name}`, `bot.act {name, actions, replace?, wait?}`,
 `see {name | uuid | at+yaw+pitch, image? (yes), width?, height?, fov?, distance?, radius?, sounds_ticks?}`,
-`ships {name?, center+radius?}` (Sable ships; 503 without Sable), `notes` → `[{id, source, text}]`.
+`ships {name?, center+radius?}` (Sable ships; 503 without Sable),
+`notes {id? | query?+kind?+offset?+limit? | id: "world:<name>"+text}` → index `{notes: [{id, source, description}], catalog}`,
+one note, or `{entries, total, next_offset?, notes}`.
 
 All accept `dimension` (Overworld by default); long operations accept `wait` (default 30 s, up to 50): if the job
 has not finished, return its description and continue with `job`. A snapshot image is returned once (`png_base64`);
-the job then releases it. The 14 MCP tools in `mcp/almighty.py` follow Artem's principle, "few levers, each reaching
+the job then releases it. The 14 MCP tools (`assets/almighty/mcp/tools.json`, routed by `mcp/Tools`) follow Artem's principle, "few levers, each reaching
 all the way down": `status` (+ player), `entities`, `command` (commands or function lines), `say`, `script`, `rule`
 (add/remove/list/types), `events`, `view` (map/look/blocks/eye), `build` (+ undo), `area`, `job` (+ cancel), `bot`
 (spawn/remove/list/state/act), `notes`, `call` (any method). Before adding something, consider a script or rule;
 add a separate tool only if it really prevents errors. `from`/`to` are `start`/`end` there.
 
-Alongside it, `mcp/gm/` (README): the GM as one Claude Code session, with the `almighty-chat/` chat channel (Node
-plugin), `crash_guard.py` crash-prevention hook (PreToolUse), and `recipes.py` recipe runner. Tests:
+Plugin `plugin/almighty/` (README; marketplaces `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`):
+GM skills in Claude and Agent Plugins formats, generated from the jar's notes `data/almighty/almighty/notes/`
+(`scripts/export_skills.py`, CI `--check`); edit the notes, not `skills/`. Alongside it, `mcp/gm/` (README): the GM as one Claude Code session, with the `almighty-chat/` chat channel (Node
+plugin), `crash_guard.py` crash-prevention hook (PreToolUse; the bridge now enforces the same list for every harness,
+`policy/DenyList`; keep both in step until the hook retires), and `recipes.py` recipe runner. Tests:
 `python3 -m unittest discover -s mcp/gm/tests` and `node --test` in `mcp/gm/almighty-chat/`.
 
 Scripts and rules run Groovy on the server thread. Variables: `server`, `gm` (`command`, `commandAs(entity, …)`
@@ -182,7 +280,15 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
   a file or `/reload`. JSON macro parameters: integers as `IntTag`/`LongTag` (`NbtOps` would turn a number into `5.0`).
 - PNG uses our own writer (`Png`, Deflater): a server image may lack AWT and fonts. Encode on the bridge thread,
   not the server thread.
-- MCP SDK: 1.x (`mcp>=1.2,<2`); 2.x renames `FastMCP`, and the adapter targets 1.x.
+- MCP (`mcp/`): `POST /mcp` on the bridge port, hand-written on the bridge's `HttpServer` (the Java SDK's modern
+  server rejects legacy `initialize` and needs a servlet container). Both eras on one endpoint without sessions:
+  legacy `initialize` (Codex CLI 0.172: 2025-06-18; Claude Code channels need it) and modern 2026-07-28 (Claude
+  Code 2.1.332 probes `server/discover` first and stays modern). Modern headers must match the body (400, -32020);
+  unknown versions 400, -32022. `McpProtocolTest` replays requests recorded from both clients
+  (`src/test/resources/mcp/`); re-record with a new client release. Tool argument checks live in `Tools.route`
+  (the bridge would ignore unknown parameters); tool errors are `isError` results, not protocol errors.
+  Instructions: the core rule in the first 512 characters (Codex and ChatGPT read only those), notes one line each,
+  under 3,000 characters (Claude Code cuts at 4,096). `?profile=compact` (6 tools) and `?images=false` per URL.
 - Groovy 4 ships as a nested jar (`jarJar`; dedicated NeoForge servers load it into the game layer, exposing game
   and mod classes). Gradle runs use `additionalRuntimeClasspath` (nested jars are not read there). Each script has
   its own `GroovyClassLoader` over the mod's loader; call `Compiled.close` after the last run, or classes never unload.
@@ -196,7 +302,7 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
 - Script calls must finish within the script. Never give script closures or objects to the game (tickets,
   comparators, bus listeners, deferred tasks): later game calls run without a deadline (an infinite loop trips the
   tick watchdog), errors crash the tick, and the script loader never unloads. This cannot be reliably prohibited
-  (a closure coerces to any Java interface), so it is a rule in `mcp/almighty.py` hints; use rules (`rule.add`) for
+  (a closure coerces to any Java interface), so it is a rule in the `script` tool description and the `scripts_and_rules` note; use rules (`rule.add`) for
   reactions. Scripts must not load chunks (custom `TicketType`, `level.getChunk`); prepare distant locations with
   `area.prepare` (mods loading their own areas do not need this).
 - The first script run links Groovy calls: 5–80 ms (GameTest). Rules therefore omit the first run from timing and
@@ -222,8 +328,22 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 ## Checks
 
-- Unit tests (`src/test`): loopback HTTP bridge, token, feed, PNG (read by a standard decoder), build plan, macro
-  parameters, event list, script deadline (`ScriptsTest`: closure and object after execution, interrupting a run,
+- Gate: `PolicyTest` (template = today's behaviour, floors, UUID owners, named mistakes, bad file keeps the last
+  good one), `GateTest` (every method has a node, private allows all, no ticket never exceeds the floor, tickets
+  narrow to the requester and the ceiling, parameter-dependent nodes); GameTest `GmGateGameTests` (live method
+  table, friends floor, owner and offline tickets from real `/gm` messages, `status` rights).
+- Audit and pause: `AuditTest` (effects and refusals recorded, reads not, JSON lines, pruning, bounds);
+  GameTest `GmAuditGameTests` (a paused agent reads but cannot act, its build freezes and finishes after resume,
+  another agent goes on, the build is audited with its job).
+- Who asked: `AddressingTest` (router fixtures), `TicketsTest`, `IdentityTest`, `FeedTest.agentSeesOnlyItsOwnMessages`;
+  GameTest `GmInboxGameTests` (identity and ticket on `/gm`, routing, chat addressing and conversation, flood limit).
+- Deny list: `DenyListTest` (one case per entry and near misses), `DispatchTest` (checks first, idempotency),
+  `LagGuardTest`; GameTest `GmSafetyGameTests` (choke point, a script's run-time `gm.command`, compile guard, queued
+  world calls). `GmGameTests.call` goes through `Dispatch`; `direct` bypasses it for tests of the layers below.
+- Unit tests (`src/test`): loopback HTTP bridge (per-agent callers, origin rule, lockout, long polls do not starve
+  calls, full pool → 503), agents (add, revoke, remove, reload), failed-auth backoff, token, feed, PNG (read by a
+  standard decoder), build plan, macro parameters, event list, notes (`NotesTest`: real packs, datapack override,
+  provenance; `CatalogTest`: secret keys), script deadline (`ScriptsTest`: closure and object after execution, interrupting a run,
   nested execution), bot movement packets (`MovePacketsTest`).
 - Bot and vision GameTest: `GmBotGameTests`: sprinting, mining and building, chest, chat and whisper (14 messages
   without a spam kick), death and respawn (same class), Nether, vehicles (horse gallops and jumps; boat reaches

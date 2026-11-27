@@ -161,6 +161,20 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   polls `pending {id, wait?}`; every state change is a `confirmation` feed event. 5 policy refusals of one player's
   requests in 10 minutes cool
   their `/gm` down for 10 minutes (`Inbox.refused`).
+- Presets, zones, roles, quotas, claims (step 9): a fresh install writes `policy.toml` with `preset = "friends"`
+  (decision D1); an existing install (its token predates the start) and GameTest get `private`, so Open Skies keeps
+  today's behaviour. `[zones.<name>] dim, from, to, deny, agent_may` (`Policy.Zone`): below owner, a zone meeting a
+  call's box and denying its node refuses it (`Gate.zone`, called by `build` with the plan's bounds, `area.prepare`,
+  `bot.spawn`, and commands at their source position); unasked above the floor, `build`/`area.prepare`/`bot.spawn`
+  pass the gate only with an internal marker (`Gate.ZONE_ONLY`, dropped from incoming parameters) and must lie
+  wholly inside a zone whose `agent_may` lists the node. `[quotas] build_blocks, give_items` per player per hour
+  below owner (`policy/Quotas`; 429). Role ladder without a plugin: `/almighty role <player> <role|clear>
+  [duration]` (admins and the console, only below their own role; never owner; `config/almighty/roles.json`,
+  `policy/Roles`); `/almighty owner add|remove <player>` (level 4) edits `owners` in place, validated
+  (`policy/PolicyFile`). `Nodes.handler` stands in for a permission handler in GameTest (the LuckPerms path).
+  Claims (`world/Claims`, `compat/opac/OpacClaims`, `compat/ftbchunks/FtbChunksClaims`, compile only, loaded only
+  when installed): below owner a build runs only on chunks the requester may build in (unasked: unclaimed only),
+  checked on the server thread through each mod's own read-only API.
 - Content limits (step 7, `policy/ContentLimits`): below owner (the call's effective role), `build` takes block
   states only (any NBT → 403) and never a block in `#almighty:never_build` (command, structure, jigsaw blocks,
   spawners, barrier, light, bedrock, portals, end portal frame, reinforced deepslate); `give {item, count ≤ 64,
@@ -382,6 +396,10 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 ## Checks
 
+- Ladder: `LadderTest` (roles below one's own, durations, expiry, owner never granted; zones and quotas parse with
+  named mistakes; hourly quota; the fresh-install template is friends); GameTest `GmLadderGameTests` (a zone denies
+  building; an arena lets a guest-floor agent build inside only; the marker cannot be forged; a granted role, the
+  block quota, a permission handler and a claim source decide a guest's request).
 - Journal: GameTest `GmJournalGameTests` (a command's fill recorded with before/after on disk; revert leaves a
   position changed since; a script's write recorded and reverted; mid-build the change is on disk and a journal
   reopened on the directory lists it as interrupted and reads it; redstone wire beside a redstone block reverts with

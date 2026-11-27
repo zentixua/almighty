@@ -77,9 +77,6 @@ public final class Api {
             "status", "players", "player", "entities", "blocks", "map", "look", "see", "jobs", "job", "areas",
             "bots", "bot", "ships", "rules", "event.types", "events", "audit", "pending", "changes");
 
-    /** Items one player's requests may receive per hour below owner ({@code give}); configurable from step 9. */
-    static final long GIVE_PER_HOUR = 128;
-
     private Api() {}
 
     public static Map<String, Method> methods(GmServer gm) {
@@ -103,6 +100,7 @@ public final class Api {
             ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
             return gm.onMain(() -> {
                 CommandRunner.As as = gm.commandAs(r);
+                gm.commandZone(a, as);
                 gm.askAdmin(a.caller(), r, "command", a.raw(), as);
                 return CommandRunner.commands(server, a, as);
             });
@@ -111,6 +109,7 @@ public final class Api {
             ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
             return gm.onMain(() -> {
                 CommandRunner.As as = gm.commandAs(r);
+                gm.commandZone(a, as);
                 gm.askAdmin(a.caller(), r, "function", a.raw(), as);
                 return CommandRunner.function(server, a, as);
             });
@@ -138,7 +137,7 @@ public final class Api {
                     throw new RpcException(403, "policy", item + ": spawn eggs are given only by the owner");
                 }
                 int n = Math.min(count, holder.value().getDefaultMaxStackSize());
-                if (!owner && to != null) gm.quotas().charge(to, "give.items", n, GIVE_PER_HOUR);
+                if (!owner && to != null) gm.quotas().charge(to, "give.items", n, gm.policies().current().limits().giveItems());
                 ServerPlayer p = to == null ? null : server.getPlayerList().getPlayer(to);
                 if (p == null) throw RpcException.conflict("The player who asked is offline");
                 net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(holder, n);
@@ -203,6 +202,9 @@ public final class Api {
             int[] from = a.ints("from", 2), to = a.ints("to", 2);
             int ttl = a.integer("ttl_seconds", 300, 1, 3600);
             int wait = a.integer("wait", 0, 0, MAX_WAIT);
+            gm.gate().zone(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.AREA, Dims.id(Dims.level(server, a)),
+                    new int[]{Math.min(from[0], to[0]), Integer.MIN_VALUE / 2, Math.min(from[1], to[1])},
+                    new int[]{Math.max(from[0], to[0]), Integer.MAX_VALUE / 2, Math.max(from[1], to[1])});
             return gm.onMain(() -> {
                 Areas.Lease lease = gm.areas().acquire(Dims.level(server, a), "area", from[0], from[1], to[0], to[1], ttl * 20L);
                 lease.owner("area #" + lease.id());
@@ -229,7 +231,17 @@ public final class Api {
             long after = a.longValue("after", 0, 0, Long.MAX_VALUE);
             return gm.onMain(() -> gm.bots().get(name).describe(after));
         });
-        m.put("bot.spawn", a -> gm.bots().spawn(Bots.Spec.parse(a)).thenApply(o -> o));
+        m.put("bot.spawn", a -> {
+            Bots.Spec spec = Bots.Spec.parse(a);
+            if (spec.pos() != null) {
+                int[] at = {(int) Math.floor(spec.pos()[0]), (int) Math.floor(spec.pos()[1]), (int) Math.floor(spec.pos()[2])};
+                String dim = spec.dimension() == null ? "minecraft:overworld" : spec.dimension().contains(":") ? spec.dimension() : "minecraft:" + spec.dimension();
+                gm.gate().zone(a.caller(), a.raw(), gm.gate().nodeOf("bot.spawn", a.raw()), dim, at, at);
+            } else if (a.raw().has(ua.zentix.almighty.policy.Gate.ZONE_ONLY)) {
+                throw new RpcException(403, "policy", "A bot spawned on the agent's own initiative needs pos inside its zone");
+            }
+            return gm.bots().spawn(spec).thenApply(o -> o);
+        });
         m.put("bot.remove", a -> {
             String name = a.string("name");
             return gm.onMain(() -> {
@@ -453,6 +465,21 @@ public final class Api {
                 throw RpcException.badRequest("block \"" + s + "\": " + e.getMessage());
             }
         }, level.getMinBuildHeight(), level.getMaxBuildHeight() - 1, GmConfig.BUILD_MAX_BLOCKS.get());
-        return gm.submit(() -> BuildJob.build(level, gm.areas(), plan, CHUNK_WAIT_TICKS), waitSeconds(a));
+        int[] b = plan.bounds();
+        gm.gate().zone(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.BUILD, Dims.id(level),
+                new int[]{b[0], b[1], b[2]}, new int[]{b[3], b[4], b[5]});
+        // A player's request below owner is charged to that player's hourly block quota.
+        if (limited && a.caller().requester() != null) {
+            gm.quotas().charge(a.caller().requester(), "build.blocks", plan.size(), gm.policies().current().limits().buildBlocks());
+        }
+        java.util.UUID requester = a.caller().requester();
+        return gm.submit(() -> {
+            // Claims (plan 4.7): below owner, as the requester (or a stranger, unasked), on the server thread.
+            if (limited) {
+                String claimed = gm.claims().refusal(requester, level, b[0], b[2], b[3], b[5]);
+                if (claimed != null) throw new RpcException(403, "policy", "Not built: " + claimed);
+            }
+            return BuildJob.build(level, gm.areas(), plan, CHUNK_WAIT_TICKS);
+        }, waitSeconds(a));
     }
 }

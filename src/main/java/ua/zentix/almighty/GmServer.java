@@ -74,6 +74,8 @@ public final class GmServer {
     private final Inbox inbox;
     private final Pause pause = new Pause();
     private final ua.zentix.almighty.policy.Quotas quotas = new ua.zentix.almighty.policy.Quotas(System::currentTimeMillis);
+    private final ua.zentix.almighty.policy.Roles roles;
+    private final ua.zentix.almighty.world.Claims claims = ua.zentix.almighty.compat.Compat.claims();
     private final Journal journal;
     private final Policies policies;
     private final Gate gate;
@@ -107,6 +109,9 @@ public final class GmServer {
         jobs.paused(pause::paused);
         rules.paused(pause::all);
         this.inbox = new Inbox(server, feed, tickets, () -> bridge == null ? null : bridge.agents());
+        this.roles = new ua.zentix.almighty.policy.Roles(GmServer.configDir == null ? null : GmServer.configDir.resolve("roles.json"),
+                System::currentTimeMillis);
+        Nodes.granted(roles::of);
         this.policies = new Policies(GmServer.configDir == null ? null : GmServer.configDir.resolve("policy.toml"));
         // Bot names from a thread-safe set the bots keep (the gate runs on bridge threads).
         this.gate = new Gate(policies, tickets, Nodes::holds, bots::isBotName);
@@ -192,11 +197,13 @@ public final class GmServer {
 
     static GmServer start(MinecraftServer server, Path configDir) {
         // An existing install (its token predates this start) keeps the behaviour it had: preset private.
-        boolean existing = java.nio.file.Files.exists(configDir.resolve("token"));
+        // GameTest sets its own policies per test and starts from today's behaviour.
+        boolean existing = java.nio.file.Files.exists(configDir.resolve("token")) || server instanceof net.minecraft.gametest.framework.GameTestServer;
         GmServer.configDir = configDir;
         GmServer gm = new GmServer(server);
         current = gm;
-        gm.policies.load(existing ? Policy.Preset.PRIVATE : Policy.Preset.PRIVATE);
+        // Decision D1: a fresh install starts as a friends' server; an existing one keeps today's behaviour (private).
+        gm.policies.load(existing ? Policy.Preset.PRIVATE : Policy.Preset.FRIENDS);
         Nodes.start(server, gm.policies::current);
         Nodes.refresh(server);
         ua.zentix.almighty.policy.Identity.onlineMode(server.usesAuthentication());
@@ -366,6 +373,14 @@ public final class GmServer {
         return bots;
     }
 
+    public ua.zentix.almighty.world.Claims claims() {
+        return claims;
+    }
+
+    public ua.zentix.almighty.policy.Roles roles() {
+        return roles;
+    }
+
     public ua.zentix.almighty.policy.Quotas quotas() {
         return quotas;
     }
@@ -394,6 +409,21 @@ public final class GmServer {
         if (p == null) throw RpcException.conflict(r.ticket().name() + " is offline: a request runs as its player, who must be online");
         int level = Math.max(server.getProfilePermissions(p.getGameProfile()), Nodes.role(p.getUUID()).commandLevel());
         return new ua.zentix.almighty.act.CommandRunner.As(Math.min(level, r.ceiling().commandLevel()), p);
+    }
+
+    /** Zones for commands (plan 4.7): checked at the command's source position (the requester, {@code pos}, or spawn). */
+    public void commandZone(ua.zentix.almighty.bridge.Args a, ua.zentix.almighty.act.CommandRunner.As as) throws RpcException {
+        net.minecraft.server.level.ServerLevel level;
+        net.minecraft.core.BlockPos at;
+        if (as.player() != null) {
+            level = as.player().serverLevel();
+            at = as.player().blockPosition();
+        } else {
+            level = ua.zentix.almighty.world.Dims.level(server, a);
+            at = a.has("pos") ? new net.minecraft.core.BlockPos(a.ints("pos", 3)[0], a.ints("pos", 3)[1], a.ints("pos", 3)[2]) : level.getSharedSpawnPos();
+        }
+        int[] p = {at.getX(), at.getY(), at.getZ()};
+        gate.zone(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.COMMAND, ua.zentix.almighty.world.Dims.id(level), p, p);
     }
 
     /**

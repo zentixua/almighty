@@ -31,6 +31,11 @@ repositories {
         forRepository { maven { url = 'https://api.modrinth.com/maven' } }
         filter { includeGroup 'maven.modrinth' }
     }
+    // FTB Chunks and its libraries: claims (compat/ftbchunks), compile only.
+    exclusiveContent {
+        forRepository { maven { url = 'https://maven.ftb.dev/releases' } }
+        filter { includeGroupAndSubgroups 'dev.ftb.mods' }
+    }
     // Sable companion (MIT), Sable's public library: ships (compat/sable) and GameTest.
     exclusiveContent {
         forRepository { maven { url = 'https://maven.ryanhcode.dev/releases' } }
@@ -90,6 +95,11 @@ dependencies {
 
     // Immersive Aircraft 1.7.0 (Modrinth version xO17G766): bot aircraft control is called only when the mod is installed.
     compileOnly 'maven.modrinth:immersive-aircraft:xO17G766'
+    // Claim mods, queried read-only (plan 4.7): Open Parties and Claims 0.33.0 (Modrinth yWmXD7GW) and FTB Chunks.
+    compileOnly 'maven.modrinth:open-parties-and-claims:yWmXD7GW'
+    compileOnly('dev.ftb.mods:ftb-chunks-neoforge:2101.1.24') { transitive = false }
+    compileOnly('dev.ftb.mods:ftb-library-neoforge:2101.1.39') { transitive = false }
+    compileOnly('dev.ftb.mods:ftb-teams-neoforge:2101.1.9') { transitive = false }
     devtestRuntimeOnly 'maven.modrinth:immersive-aircraft:xO17G766'
     // Sable 2.0.6 (Modrinth version fg9dTRz9; Create Aeronautics ships): ships (compat/sable) use its public
     // sable-companion library (MIT, shipped by Sable itself, absent from our jar and mods.toml); Sable is GameTest-only.

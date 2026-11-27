@@ -229,7 +229,7 @@ public final class Dispatch {
         if (key != null && (key.isEmpty() || key.length() > MAX_KEY_LENGTH)) {
             throw RpcException.badRequest("key: 1 to " + MAX_KEY_LENGTH + " characters");
         }
-        if (key == null || readOnly.test(name, p)) return method.call(new Args(params, caller));
+        if (key == null || readOnly.test(name, p)) return method.call(new Args(p, caller));
         String slot = caller.name() + "\u0000" + key;
         String call = name + "\u0000" + p;
         CompletableFuture<JsonElement> mine = new CompletableFuture<>();
@@ -245,7 +245,7 @@ public final class Dispatch {
             keys.put(slot, new Remembered(call, mine, now + KEY_TTL_MS));
         }
         try {
-            method.call(new Args(params, caller)).whenComplete((v, e) -> {
+            method.call(new Args(p, caller)).whenComplete((v, e) -> {
                 if (e != null) {
                     synchronized (keys) {
                         keys.remove(slot);

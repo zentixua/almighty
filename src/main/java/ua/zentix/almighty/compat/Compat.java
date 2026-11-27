@@ -23,6 +23,14 @@ public final class Compat {
         return drivers;
     }
 
+    /** Claim mods installed, each queried through its own API (plan 4.7). */
+    public static ua.zentix.almighty.world.Claims claims() {
+        List<ua.zentix.almighty.world.Claims.Source> s = new ArrayList<>(2);
+        if (ModList.get().isLoaded(ua.zentix.almighty.compat.opac.OpacClaims.MOD_ID)) s.add(new ua.zentix.almighty.compat.opac.OpacClaims());
+        if (ModList.get().isLoaded(ua.zentix.almighty.compat.ftbchunks.FtbChunksClaims.MOD_ID)) s.add(new ua.zentix.almighty.compat.ftbchunks.FtbChunksClaims());
+        return new ua.zentix.almighty.world.Claims(s);
+    }
+
     /** Physics-mod ships: Sable (Create Aeronautics); null without the mod. */
     public static Ships.Source ships() {
         return ModList.get().isLoaded(SableShips.MOD_ID) ? new SableShips() : null;

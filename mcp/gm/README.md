@@ -1,14 +1,19 @@
 # Game master on Claude Code
 
-This kit runs the game master of a server as one Claude Code session with all its tools. The world is reached
-through the mod's own MCP endpoint (`http://127.0.0.1:25650/mcp`); this directory adds the rest. Whatever belongs to one
-server (its CLAUDE.md, skills, recipes, session settings) lives in that session's working directory.
+Optional extras for running the game master as one Claude Code session. Nothing here is needed to connect an agent:
+any app connects to the mod's own MCP endpoint (`http://127.0.0.1:25650/mcp`) and signs in with a code
+([guide](../../docs/guide/getting-started.md)), and the game master skills come from the
+[Almighty plugin](../../plugin/almighty/README.md). Whatever belongs to one server (its CLAUDE.md, skills, recipes,
+session settings) lives in that session's working directory.
 
-| Part | File | How it is connected |
+| Part | File | Status |
 |---|---|---|
-| Chat channel | `almighty-chat/`, a Claude Code plugin in the `almighty` marketplace (repository root) | `--channels plugin:almighty-chat@almighty` |
-| Crash guard hook | `crash_guard.py` | PreToolUse on `mcp__almighty__.*` in the session's `.claude/settings.json` |
-| Recipes | `recipes.py`: format and runner | a command from the server's skill |
+| Chat channel | `almighty-chat/`, a Claude Code plugin in the `almighty` marketplace (repository root) | Optional, Claude Code only: wakes the session the moment a player writes (`--channels plugin:almighty-chat@almighty`). Other apps poll `events {wait}` ([Game master mode](../../docs/guide/game-master.md)). |
+| Crash guard hook | `crash_guard.py` | Retired for new setups: the server refuses the same calls for every app (`policy/DenyList`). Kept, and kept in step with the server's list, so existing sessions whose settings point at it keep working; its owner prompt for `op`, `ban` and `kick` stays until the server's own confirmations replace it. |
+| Recipes | `recipes.py`: format and runner | Retired for new setups: write what worked into a world note (`notes {id: "world:<name>", text}`) or a skill. Kept for existing recipe directories. |
+
+`GM_OWNERS` (below) is a setting of the chat channel only: whom its permission requests go to. Nothing else needs
+it.
 
 ## Chat channel
 

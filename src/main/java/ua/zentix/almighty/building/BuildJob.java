@@ -45,6 +45,8 @@ public final class BuildJob extends Job {
         private long[] pos = new long[256];
         private int[] state = new int[256];
         private final Int2ObjectOpenHashMap<CompoundTag> nbt = new Int2ObjectOpenHashMap<>();
+        /** For a journal revert: the state each position must still hold to be reverted (conflict-aware undo). */
+        private int[] expect;
         private int size;
 
         void add(BlockPos p, BlockState s, CompoundTag tag) {
@@ -72,7 +74,9 @@ public final class BuildJob extends Job {
     private Areas.Lease lease;
     private Snapshot snapshot = new Snapshot();
     private boolean undone;
-    private long waited, placed, unchanged, kept, done;
+    private long waited, placed, unchanged, kept, done, conflicts;
+    /** The journal change this job reverts (0: none). */
+    private long revertOf;
     private int restoreAt;
 
     private BuildJob(String kind, ServerLevel level, Areas areas, int[] bounds, long timeoutTicks,
@@ -92,6 +96,33 @@ public final class BuildJob extends Job {
     /** Build from a plan; acquire chunks immediately (no lease capacity is a call error). */
     public static BuildJob build(ServerLevel level, Areas areas, BuildPlan<BlockInput> plan, long timeoutTicks) throws RpcException {
         BuildJob job = new BuildJob("build", level, areas, plan.bounds(), timeoutTicks, plan, null, 0);
+        job.lease(areas);
+        return job;
+    }
+
+    /**
+     * Revert a journal change in {@code level} (plan 4.9): positions in reverse write order; each goes back to its
+     * earlier state only if it still holds what the change put there, otherwise it is counted as a conflict and left.
+     */
+    public static BuildJob revert(ServerLevel level, Areas areas, long change, long[] pos, BlockState[] before, BlockState[] after,
+                                  CompoundTag[] tags, int n, long timeoutTicks) throws RpcException {
+        Snapshot s = new Snapshot();
+        s.expect = new int[Math.max(n, 1)];
+        int[] b = {Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE};
+        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
+        for (int i = 0; i < n; i++) {
+            p.set(pos[i]);
+            if (s.size == s.expect.length) s.expect = Arrays.copyOf(s.expect, s.size * 2);
+            s.expect[s.size] = Block.getId(after[i]);
+            s.add(p, before[i], tags[i]);
+            int[] c = {p.getX(), p.getY(), p.getZ()};
+            for (int a = 0; a < 3; a++) {
+                b[a] = Math.min(b[a], c[a]);
+                b[a + 3] = Math.max(b[a + 3], c[a]);
+            }
+        }
+        BuildJob job = new BuildJob("revert", level, areas, b, timeoutTicks, null, s, 0);
+        job.revertOf = change;
         job.lease(areas);
         return job;
     }
@@ -185,6 +216,12 @@ public final class BuildJob extends Job {
             kept++;
             return false;
         }
+        // Conflict-aware (journal revert): a position someone changed since is reported and left, before anything
+        // about it (its container) is touched.
+        if (plan == null && restore.expect != null && Block.getId(old) != restore.expect[restoreAt]) {
+            conflicts++;
+            return false;
+        }
         // Initialize the fresh chunk's pending block entity so its data does not survive under the new block.
         BlockEntity be = level.getBlockEntity(pos);
         CompoundTag oldTag = be != null ? be.saveWithFullMetadata(level.registryAccess()) : null;
@@ -248,6 +285,8 @@ public final class BuildJob extends Job {
         if (unchanged > 0) out.addProperty("unchanged", unchanged);
         if (kept > 0) out.addProperty("kept", kept);
         if (undoOf != 0) out.addProperty("undo_of", undoOf);
+        if (revertOf != 0) out.addProperty("revert_of_change", revertOf);
+        if (conflicts > 0) out.addProperty("conflicts", conflicts);
         if (state() == State.WAITING && lease != null && !lease.released()) {
             out.addProperty("chunks_ready", lease.ready());
             out.addProperty("chunks", lease.chunks());

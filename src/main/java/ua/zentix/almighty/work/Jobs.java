@@ -41,6 +41,8 @@ public final class Jobs {
     public <J extends Job> J submit(J job) {
         ua.zentix.almighty.bridge.Caller by = ua.zentix.almighty.bridge.Dispatch.current();
         job.assign(nextId++, by.name(), by.requester());
+        ua.zentix.almighty.audit.Journal.Change c = ua.zentix.almighty.audit.Journal.current();
+        if (c != null && job.effects()) job.change = c.retain();
         active.add(job);
         return job;
     }
@@ -54,7 +56,10 @@ public final class Jobs {
             // A paused agent's builds and undos are frozen in place (resume continues them, cancel ends them); views
             // and area preparation go on, so the paused agent can still look.
             if (job.effects() && paused.test(job.agent())) continue;
-            if (first || budget.left()) job.run(budget);
+            if (first || budget.left()) ua.zentix.almighty.audit.Journal.with(job.change, () -> {
+                job.run(budget);
+                return null;
+            });
             first = false;
         }
         active.removeIf(job -> {
@@ -62,6 +67,14 @@ public final class Jobs {
             ended(job);
             return true;
         });
+    }
+
+    /** A job left the queue: its share of the change ends. */
+    private static void releaseChange(Job job) {
+        if (job.change != null) {
+            job.change.release();
+            job.change = null;
+        }
     }
 
     public Job get(long id) {
@@ -101,6 +114,7 @@ public final class Jobs {
     }
 
     private void ended(Job job) {
+        releaseChange(job);
         history.addLast(job);
         while (history.size() > HISTORY) history.removeFirst().dropRetained();
         long retained = 0;

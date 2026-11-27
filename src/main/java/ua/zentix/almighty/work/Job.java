@@ -39,6 +39,8 @@ public abstract class Job {
     private String error;
 
     private String agent = "internal";
+    /** The change its writes belong to (the call's), or null. */
+    ua.zentix.almighty.audit.Journal.Change change;
     private java.util.UUID requester;
 
     protected Job(String kind) {
@@ -155,6 +157,7 @@ public abstract class Job {
         out.addProperty("id", id);
         out.addProperty("kind", kind);
         out.addProperty("agent", agent);
+        if (change != null) out.addProperty("change", change.id);
         out.addProperty("state", state.id());
         if (error != null) out.addProperty("error", error);
         details(out);

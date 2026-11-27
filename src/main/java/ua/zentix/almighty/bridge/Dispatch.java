@@ -26,8 +26,29 @@ public final class Dispatch {
     /** Told about every call once it ends (audit): result or error, and how long it took. */
     @FunctionalInterface
     public interface Listener {
-        /** {@code paramsText}: the parameters as JSON, clipped to {@value #MAX_PARAMS_TEXT} characters (made on the calling thread). */
-        void ended(Caller caller, String method, JsonObject params, String paramsText, JsonElement result, Throwable error, long nanos);
+        /**
+         * {@code paramsText}: the parameters as JSON, clipped to {@value #MAX_PARAMS_TEXT} characters (made on the
+         * calling thread); {@code change}: the change journal's id for this call's writes (0: none).
+         */
+        void ended(Caller caller, String method, JsonObject params, String paramsText, JsonElement result, Throwable error,
+                   long nanos, long change);
+    }
+
+    /** Wraps every call with effects (the change journal): open before it runs, run inside, close when it ends. */
+    public interface Around {
+        Object begin(Caller caller, String method, JsonObject params);
+
+        <T, E extends Exception> T within(Object token, ThrowingSupplier<T, E> work) throws E;
+
+        void end(Object token);
+
+        long id(Object token);
+    }
+
+    private volatile Around around;
+
+    public void around(Around a) {
+        this.around = a;
     }
 
     /** The caller whose call is running on this thread: set while a method parses here, carried to the server thread
@@ -169,22 +190,29 @@ public final class Dispatch {
                 ? agentCaller.withRequester(requester.of(agentCaller, p)) : agentCaller;
         // Made here (a bridge thread): the call may end on the server thread, which should not serialize a big plan.
         String text = listeners.isEmpty() ? "" : clipped(p, MAX_PARAMS_TEXT);
+        Around a = around;
+        Object token = a != null && !readOnly.test(name, p) ? a.begin(caller, name, p) : null;
+        long change = token == null ? 0 : a.id(token);
         CompletableFuture<JsonElement> out;
         try {
-            out = as(caller, () -> run(caller, name, params, key));
+            out = as(caller, () -> token == null ? run(caller, name, params, key) : a.within(token, () -> run(caller, name, params, key)));
         } catch (RpcException | RuntimeException e) {
-            tell(caller, name, p, text, null, e, start);
+            if (token != null) a.end(token);
+            tell(caller, name, p, text, null, e, start, change);
             throw e;
         }
-        out.whenComplete((v, e) -> tell(caller, name, p, text, v, e, start));
+        out.whenComplete((v, e) -> {
+            if (token != null) a.end(token);
+            tell(caller, name, p, text, v, e, start, change);
+        });
         return out;
     }
 
-    private void tell(Caller caller, String name, JsonObject p, String text, JsonElement result, Throwable error, long start) {
+    private void tell(Caller caller, String name, JsonObject p, String text, JsonElement result, Throwable error, long start, long change) {
         Throwable cause = error instanceof java.util.concurrent.CompletionException c && c.getCause() != null ? c.getCause() : error;
         for (Listener l : listeners) {
             try {
-                l.ended(caller, name, p, text, result, cause, System.nanoTime() - start);
+                l.ended(caller, name, p, text, result, cause, System.nanoTime() - start, change);
             } catch (RuntimeException ignored) {
                 // A listener never breaks a call.
             }

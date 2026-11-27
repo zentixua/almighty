@@ -215,7 +215,19 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   (MIT, shipped by Sable itself; `compileOnly` here). Do not touch Sable internals: no API guarantees, and some classes
   do not load on a dedicated server (signatures with `ClientLevel`; Groovy cannot see them either; scripts access
   ships only through `gm.ship`).
-- `mixin/PlayerListMixin`: the only mixin, respawning a bot with its own class (see Bots and vision for why).
+- `mixin/PlayerListMixin`: respawning a bot with its own class (see Bots and vision for why). `mixin/LevelChunkMixin`:
+  the change journal's hook on `LevelChunk.setBlockState` (no event reports every block write); records only
+  while GM work runs on that thread (`Journal.current`), otherwise one volatile read.
+- `audit/Journal` (step 8): every call with effects opens a change (`Dispatch.Around`); its writes on the server
+  thread (world calls via `GmServer.onMain`, and its jobs, which retain the change) are appended to
+  `<world>/almighty/changes/<id>.bin` (header, block-state palette, position, state before and after, block entity
+  data before), flushed every tick, so a crash mid-build leaves an undoable change (`index.json`, rebuilt from file
+  headers after a crash: `interrupted`). Kept up to 4 million positions, oldest dropped. `undo {change}` /
+  `/almighty undo <change>` revert in reverse write order, conflict-aware: a position goes back only if it still
+  holds what the change put there; the rest are `conflicts` in the job (`BuildJob.revert`). Another agent's or
+  requester's change needs `undo.any`; reverting an undo (a redo) needs the owner. `changes {limit?}` lists them;
+  receipts and audit lines carry the change id. Block-entity-only edits (container contents), entities and
+  inventories are not recorded.
 - `knowledge/`: what the agent learns about this server, one method `notes`. `Notes`: notes from mods and
   datapacks (`data/<namespace>/almighty/notes/<name>.md` in the server's current data, refreshed after `/reload`,
   id `<namespace>:<name>`; a datapack overrides a mod note at the same path, an empty file removes it), the
@@ -244,7 +256,7 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 `ships {name?, center+radius?}` (Sable ships; 503 without Sable),
 `notes {id? | query?+kind?+offset?+limit? | id: "world:<name>"+text}` → index `{notes: [{id, source, description}], catalog}`,
 one note, or `{entries, total, next_offset?, notes}`; `audit {limit?, agent?, method?}`, `pending {id, wait?}`,
-`give {item, count?, for}`. Any call may carry `for` (the ticket of the player's message it answers) and, on `/rpc`,
+`give {item, count?, for}`, `changes {limit?}`, `undo {change}`. Any call may carry `for` (the ticket of the player's message it answers) and, on `/rpc`,
 a top-level idempotency `key`.
 
 All accept `dimension` (Overworld by default); long operations accept `wait` (default 30 s, up to 50): if the job
@@ -364,6 +376,9 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 ## Checks
 
+- Journal: GameTest `GmJournalGameTests` (a command's fill recorded with before/after on disk; revert leaves a
+  position changed since; a script's write recorded and reverted; mid-build the change is on disk and a journal
+  reopened on the directory lists it as interrupted and reads it).
 - Content limits: GameTest `GmLimitsGameTests` (command block, jigsaw and a sign with data refused below owner, a
   plain sign built, the owner builds a command block; bread given to the requester, `never_give`, components and
   no requester refused; a creative bot at the member floor refused).

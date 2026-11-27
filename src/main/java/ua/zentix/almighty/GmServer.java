@@ -13,6 +13,7 @@ import ua.zentix.almighty.bridge.Bridge;
 import ua.zentix.almighty.bridge.Dispatch;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.audit.Audit;
+import ua.zentix.almighty.audit.Journal;
 import ua.zentix.almighty.audit.Pause;
 import ua.zentix.almighty.feed.Feed;
 import ua.zentix.almighty.feed.Inbox;
@@ -34,6 +35,7 @@ import ua.zentix.almighty.world.Areas;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import com.google.gson.JsonArray;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -71,6 +73,7 @@ public final class GmServer {
     private final Inbox inbox;
     private final Pause pause = new Pause();
     private final ua.zentix.almighty.policy.Quotas quotas = new ua.zentix.almighty.policy.Quotas(System::currentTimeMillis);
+    private final Journal journal;
     private final Policies policies;
     private final Gate gate;
     private final Decisions decisions;
@@ -95,6 +98,7 @@ public final class GmServer {
         this.rules = new Rules(server, NeoForge.EVENT_BUS, feed, state,
                 server.getWorldPath(LevelResource.ROOT).resolve("almighty").resolve("rules.json"));
         this.bots = new Bots(this);
+        this.journal = new Journal(server.getWorldPath(LevelResource.ROOT).resolve("almighty").resolve("changes"));
         // GameTest keeps the audit in memory: no files in the test run directory.
         this.audit = new Audit(server instanceof net.minecraft.gametest.framework.GameTestServer ? null
                 : server.getServerDirectory().resolve("logs").resolve("almighty"),
@@ -126,10 +130,35 @@ public final class GmServer {
                 return null;
             }
         });
-        dispatch.listen((caller, method, params, text, result, error, nanos) ->
-                audit.ended(caller, method, params, text, result, error, nanos, Api.readOnly(method, params)));
+        dispatch.listen((caller, method, params, text, result, error, nanos, change) ->
+                audit.ended(caller, method, params, text, result, error, nanos, Api.readOnly(method, params), change));
+        // The change journal: every call with effects records its block writes, and its jobs continue the change.
+        dispatch.around(new Dispatch.Around() {
+            @Override
+            public Object begin(ua.zentix.almighty.bridge.Caller caller, String method, JsonObject params) {
+                return journal.begin(caller.name(), method, caller.requester());
+            }
+
+            @Override
+            public <T, E extends Exception> T within(Object token, Dispatch.ThrowingSupplier<T, E> work) throws E {
+                return Journal.with((Journal.Change) token, work);
+            }
+
+            @Override
+            public void end(Object token) {
+                Journal.Change c = (Journal.Change) token;
+                // Released on the server thread: the change's file is written there.
+                if (server.isSameThread()) c.release();
+                else server.execute(c::release);
+            }
+
+            @Override
+            public long id(Object token) {
+                return ((Journal.Change) token).id;
+            }
+        });
         // Receipts: a player whose request changed something hears it at once, with undo for builds (plan 4.2).
-        dispatch.listen((caller, method, params, text, result, error, nanos) -> {
+        dispatch.listen((caller, method, params, text, result, error, nanos, change) -> {
             if (caller.requester() == null) return;
             if (error instanceof RpcException r && r.status() == 403 && r.code().equals("policy")) {
                 server.execute(() -> inbox.refused(caller.requester()));
@@ -144,9 +173,10 @@ public final class GmServer {
                     && id.isNumber() && o.get("kind").getAsString().equals("build") ? id.getAsLong() : null;
             String what = method.equals("command") || method.equals("function") ? Confirmations.render(method, params)
                     : job != null ? "build #" + job : method;
+            Long undoable = change > 0 ? change : null;
             server.execute(() -> {
                 net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(caller.requester());
-                if (p != null) p.sendSystemMessage(ua.zentix.almighty.policy.Prompts.receipt(what, job));
+                if (p != null) p.sendSystemMessage(ua.zentix.almighty.policy.Prompts.receipt(what, undoable));
             });
         });
     }
@@ -249,6 +279,7 @@ public final class GmServer {
         // Jobs count too: calls answered between ticks get only what this tick left.
         usedThisTick += System.nanoTime() - jobsStart;
         areas.tick(server.getTickCount());
+        journal.flush();
         inbox.tick(server.getTickCount());
         decisions.tick(server.getTickCount());
         if (server.getTickCount() % 20 == 0) Nodes.refresh(server);
@@ -298,6 +329,7 @@ public final class GmServer {
         bots.stop();
         rules.stop();
         jobs.cancelAll();
+        journal.stop();
         audit.stop();
         areas.releaseAll();
     }
@@ -402,6 +434,83 @@ public final class GmServer {
         return gate;
     }
 
+    /**
+     * Revert journal change {@code id} (conflict-aware): one job per dimension it touched. {@code caller} null is the
+     * owner (console); otherwise another agent's or requester's change needs {@code undo.any}, and reverting a revert
+     * (a redo) needs the owner. Called on the bridge thread (reads the change file), jobs submitted on the server thread.
+     */
+    public CompletableFuture<JsonElement> revert(long id, ua.zentix.almighty.bridge.Caller caller, JsonObject params, int waitSeconds)
+            throws RpcException {
+        JsonObject meta = journal.describe(id);
+        if (meta == null) throw RpcException.notFound("No change " + id + " (old changes are dropped beyond 4 million positions)");
+        if (meta.has("undone_by")) throw RpcException.conflict("Change " + id + " was already undone by change " + meta.get("undone_by").getAsLong());
+        if (caller != null && caller.agent() != null) {
+            String agent = meta.get("agent").getAsString();
+            String requester = meta.has("requester") ? meta.get("requester").getAsString() : null;
+            String mine = caller.requester() == null ? null : caller.requester().toString();
+            if (!agent.equals(caller.name()) || !java.util.Objects.equals(requester, mine)) {
+                gate.require(caller, params, ua.zentix.almighty.policy.Node.UNDO_ANY, "change " + id + " was made for someone else");
+            }
+            if (meta.get("method").getAsString().equals("undo") && gate.rights(caller, params).effective() != ua.zentix.almighty.policy.Role.OWNER) {
+                throw new RpcException(403, "policy", "Reverting an undo (a redo) needs the owner");
+            }
+        }
+        Journal.Records r;
+        try {
+            var blocks = server.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.BLOCK);
+            r = journal.read(id, tag -> net.minecraft.nbt.NbtUtils.readBlockState(blocks, tag));
+        } catch (java.io.IOException e) {
+            throw RpcException.notFound("Change " + id + " cannot be read: " + e.getMessage());
+        }
+        if (r.size() == 0) throw RpcException.conflict("Change " + id + " changed no blocks");
+        Journal.Records rec = r;
+        return onMain(() -> {
+            JsonArray jobs = new JsonArray();
+            for (int d = 0; d < rec.dims().size(); d++) {
+                int n = 0;
+                for (int i = 0; i < rec.size(); i++) if (rec.dim()[i] == d) n++;
+                long[] pos = new long[n];
+                net.minecraft.world.level.block.state.BlockState[] before = new net.minecraft.world.level.block.state.BlockState[n], after =
+                        new net.minecraft.world.level.block.state.BlockState[n];
+                net.minecraft.nbt.CompoundTag[] tags = new net.minecraft.nbt.CompoundTag[n];
+                int k = 0;
+                for (int i = 0; i < rec.size(); i++) {
+                    if (rec.dim()[i] != d) continue;
+                    pos[k] = rec.pos()[i];
+                    before[k] = rec.before()[i];
+                    after[k] = rec.after()[i];
+                    tags[k] = rec.tag()[i];
+                    k++;
+                }
+                var key = net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION,
+                        net.minecraft.resources.ResourceLocation.parse(rec.dims().get(d)));
+                net.minecraft.server.level.ServerLevel level = server.getLevel(key);
+                if (level == null) continue;
+                Job job = jobs().submit(ua.zentix.almighty.building.BuildJob.revert(level, areas, id, pos, before, after, tags, n, 2400));
+                jobs.add(job.id());
+            }
+            Journal.Change now = Journal.current();
+            journal.undone(id, now == null ? 0 : now.id);
+            JsonObject out = new JsonObject();
+            out.addProperty("change", id);
+            out.add("jobs", jobs);
+            out.addProperty("positions", rec.size());
+            out.addProperty("note", "positions changed since are left and counted as conflicts in each job; entities and inventories are not undone");
+            return out;
+        }).thenCompose(o -> {
+            JsonArray jobs = o.getAsJsonArray("jobs");
+            if (jobs.isEmpty() || waitSeconds == 0) return CompletableFuture.completedFuture((JsonElement) o);
+            return onMain(() -> jobs().get(jobs.get(0).getAsLong())).thenCompose(j -> await(j, waitSeconds)).thenApply(d -> {
+                o.add("job", d);
+                return (JsonElement) o;
+            });
+        });
+    }
+
+    public Journal journal() {
+        return journal;
+    }
+
     public Audit audit() {
         return audit;
     }
@@ -461,6 +570,8 @@ public final class GmServer {
         CompletableFuture<T> out = new CompletableFuture<>();
         // The caller travels with the call: jobs and bots started on the server thread know which agent acts.
         ua.zentix.almighty.bridge.Caller caller = Dispatch.current();
+        // The change journal travels too: writes this call makes on the server thread belong to its change.
+        Journal.Change change = Journal.current();
         Runnable run = () -> {
             if (stopped) {
                 out.completeExceptionally(RpcException.unavailable("The server is stopping"));
@@ -469,7 +580,7 @@ public final class GmServer {
             try {
                 // Completed inside the caller's scope: continuations that run here (thenCompose on the server thread)
                 // still act as this caller, so a job they submit is tagged with the right agent.
-                Dispatch.as(caller, () -> out.complete(call.run()));
+                Dispatch.as(caller, () -> Journal.with(change, () -> out.complete(call.run())));
             } catch (VirtualMachineError e) {
                 if (!(e instanceof StackOverflowError)) throw e;
                 out.completeExceptionally(e);

@@ -63,6 +63,15 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 - `Almighty`: subscriptions; `GmServer`: state of one server run (`ServerStartedEvent` … `ServerStoppedEvent`):
   feed, jobs, chunks, bridge. The bridge runs only on a dedicated server (`isDedicatedServer`), not in singleplayer or GameTest.
 - `mcp/`: the MCP endpoint (`McpEndpoint`), both protocol eras (`McpProtocol`), tool definitions and routing (`Tools`).
+- `mcp/signin/`: keyless sign-in, the mod as a minimal OAuth 2.1 server on the bridge port (`/.well-known/*`,
+  `/oauth/register|authorize|status|token`): PKCE S256, public clients, DCR and Client ID Metadata Documents (Codex
+  `https://chatgpt.com/oauth/codex/client.json`, Claude Code `https://claude.ai/oauth/claude-code-client-metadata`;
+  `ClientMetadata` fetches HTTPS only, no private addresses, 16 KB, 5 s), RFC 9207 `iss`, refresh rotation. Consent:
+  the login page shows a 4-digit code; the owner types `/almighty approve <code> [name]` (console or level-4
+  operator); notices never show the code. An approved client becomes an ordinary agent (its access token is the
+  agent's token, `config/almighty/agents/<name>.token`); sign-in only ever rotates agents it created. State:
+  `config/almighty/oauth/` (clients, hashed refresh tokens). `/almighty connect`: address, per-product lines and
+  secret-free links (`mcp/Connect`). The issuer is `bridge.public_url` or the request's loopback/bridge host.
 - `bridge/`: Java's own HTTP (`com.sun.net.httpserver`): `POST /rpc` `{"method", "params"}` → `{"ok": true, "result"}`
   or `{"ok": false, "error": {code, message}}`. Threads: a 4-thread accept pool checks the request and hands it to a
   bounded call pool (8 threads) or long-poll pool (16 threads, methods in `Api.LONG`); a full queue (64) → 503.
@@ -83,7 +92,42 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 - `building/`: plan (`BuildPlan`: fill/set/layers, no world needed for unit tests) and build/undo job (`BuildJob`).
 - `view/`: top-down map (`MapView`, like a vanilla map), side/top/bottom view (`LookView`), blocks as text
   (`BlockText`), PNG without AWT (`Png`).
-- `command/AlmightyCommand`: owner command `/almighty` (permission level 4).
+- `command/AlmightyCommand`: owner command `/almighty` (permission level 4): agents, `pause [agent]`/`resume [agent]`,
+  `log [agent|player] [count]`.
+- `audit/`: `Audit` writes one JSON line per call with effects and per refusal (`Dispatch` listener) to
+  `logs/almighty/audit-<date>.jsonl` on its own thread (never the server thread), keeps the last 1000 in memory
+  (`/almighty log`, `audit {limit, agent?, method?}`), deletes files older than `audit.days` (30); successful reads
+  are not logged. GameTest keeps it in memory. A plain writer instead of a log4j2 appender: configuring an appender
+  changes the server's global logging, which panels and other mods own. Parameters are clipped to 4 KB on the calling
+  thread (`Dispatch.clipped`); the writer uses a `FileOutputStream` (interrupts cannot close it), stops on an end
+  marker, and reopens after an IO error. `Pause`: a paused agent (or all) gets 423 for calls with effects except
+  `cancel`, `area.release`, `rule.remove`, `bot.remove` (cleanup); its builds and undos freeze in the queue
+  (`Job.effects`, `Jobs.paused`; views and area preparation go on), its bots stop and get no new programs
+  (`Bot.controller`); `pause` of all also skips rules with a script.
+  `Dispatch.current()` is the caller of the running call; `GmServer.onMain` carries it to the server thread, so jobs
+  (`Job.agent`) and bot programs know which agent acts; the future completes inside the caller's scope, so
+  continuations on the server thread act as the same caller.
+- `policy/` gate (step 5): `config/almighty/policy.toml` (`Policy`, `Policies`: written with comments on first start,
+  `/almighty reload`, a bad file keeps the last good policy with the exact error; at startup, with no last good one,
+  `Policy.lockdown()`: public, no owners): `preset` (private | friends |
+  public), `owners` (UUIDs), `identity`, `[agents.<name>]` `ceiling`/`floor`. `Node`: capabilities `almighty.<id>`
+  registered with the NeoForge permission API (`Nodes`; LuckPerms decides when installed; default resolver = role
+  ladder `Role`: policy owners (verified) → owner, op level ≥ 3 → admin, 2 → builder, verified → member on friends
+  and guest otherwise, unverified → guest whatever a plugin says). `Gate` (a `Dispatch` check after the deny list
+  and pause): every method maps to a node (`Gate.node`, parameters refine it: `see` a player, `rule.add` with
+  script, creative bots, payloads, `notes` with text); none → refused. Rights: no `for` → the agent's trust floor
+  (private: = ceiling; friends: member; public: guest; or `floor`); `for: <ticket>` → that player's rights, capped
+  by the ceiling (a ticket only narrows). `say` needs `speak.all` unless it is a chat/actionbar reply to the ticket's
+  player alone; `entities` needs `observe.players` unless it asks for a non-player type; `undo`/`cancel` of another
+  agent's job need `undo.any` (`Gate.require`). Below owner, `say` components lose `run_command`/`suggest_command`
+  clicks (JSON-level, translation arguments included) and may not contain `[Almighty]`. Parameters are read
+  null-safe (null = absent, as `Args`) and a malformed one is 400. The gate never reads server lists off the server
+  thread: bot names (`Bots.isBotName`), ops and online players (`Nodes.refresh`, once a second) are snapshots.
+  `Identity`: in `auto`/`mojang` nothing is verified when `online-mode=false` (use `proxy` behind Velocity).
+  Refusal 403 `policy` with `node` and `allowed`; `status` gives `rights` (with `for`: that request's). `command`/`function` need owner until step 6 runs them as the requester.
+  In-process calls (`Caller.INTERNAL`: GameTest, the server) are not gated. Preset `private` with `gm` at ceiling
+  owner is today's behaviour; unlisted agents default to ceiling admin. `/almighty whoami` (anyone) shows UUID,
+  verification and role.
 - `policy/DenyList`: built-in deny list (from `crash_guard.py`), refused for every agent and harness: `stop`, `reload`,
   `save-off`, `save-all flush`, `forceload add`, `tick rate` > 100, `almighty …` (agents and policy are the owner's),
   far commands, builds, areas and bot spawns at Sable plot coordinates (|x| or |z| ≥ 20 000 000), bot chat commands;
@@ -111,8 +155,8 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   `ticket`; other chat has `addressed: false`. `events {mine: true}` leaves out messages routed to other agents; a
   read records the agent's cursor. Away: the target agent made no call for 60 s, or has not read the message after
   `feed.away_seconds` (30) → the server tells the player (translated; only for `/gm` and named lines, at most once
-  per player in 5 minutes); no bridge (GameTest) → no away replies. `feed.identity` (auto, mojang, proxy, offline)
-  sets which UUIDs count as verified.
+  per player in 5 minutes); no bridge (GameTest) → no away replies. `identity` in `policy.toml` (auto, mojang,
+  proxy, offline) sets which UUIDs count as verified.
 - `script/`: Groovy scripts (`Scripts`: compilation with a deadline, execution), scripts' `gm` variable (`ScriptApi`),
   values ↔ JSON (`Json`: position `[x, y, z]`, block string as in `/setblock`, NBT as SNBT, event via its `getX()`).
 - `rules/`: rules (`Rules`), subscribing to any game-bus event, budgets, persistence with the world
@@ -277,6 +321,13 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 ## Checks
 
+- Gate: `PolicyTest` (template = today's behaviour, floors, UUID owners, named mistakes, bad file keeps the last
+  good one), `GateTest` (every method has a node, private allows all, no ticket never exceeds the floor, tickets
+  narrow to the requester and the ceiling, parameter-dependent nodes); GameTest `GmGateGameTests` (live method
+  table, friends floor, owner and offline tickets from real `/gm` messages, `status` rights).
+- Audit and pause: `AuditTest` (effects and refusals recorded, reads not, JSON lines, pruning, bounds);
+  GameTest `GmAuditGameTests` (a paused agent reads but cannot act, its build freezes and finishes after resume,
+  another agent goes on, the build is audited with its job).
 - Who asked: `AddressingTest` (router fixtures), `TicketsTest`, `IdentityTest`, `FeedTest.agentSeesOnlyItsOwnMessages`;
   GameTest `GmInboxGameTests` (identity and ticket on `/gm`, routing, chat addressing and conversation, flood limit).
 - Deny list: `DenyListTest` (one case per entry and near misses), `DispatchTest` (checks first, idempotency),

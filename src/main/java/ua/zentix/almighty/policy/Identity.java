@@ -26,6 +26,12 @@ public final class Identity {
     }
 
     private static volatile Mode mode = Mode.AUTO;
+    /** Whether the server checks accounts with Mojang ({@code online-mode}); without it a client can claim any UUID. */
+    private static volatile boolean onlineMode = true;
+
+    public static void onlineMode(boolean on) {
+        onlineMode = on;
+    }
 
     private Identity() {}
 
@@ -42,8 +48,14 @@ public final class Identity {
         return id.getMostSignificantBits() == 0;
     }
 
+    /**
+     * Verified as the server runs: in {@code auto} and {@code mojang} only when the server itself authenticates
+     * ({@code online-mode=true}); behind a proxy the owner says {@code proxy} (modern forwarding signs the UUIDs).
+     */
     public static boolean verified(UUID id) {
-        return verified(id, mode);
+        Mode m = mode;
+        if (!onlineMode && (m == Mode.AUTO || m == Mode.MOJANG)) return false;
+        return verified(id, m);
     }
 
     public static boolean verified(UUID id, Mode mode) {

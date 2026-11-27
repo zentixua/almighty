@@ -152,6 +152,15 @@ access to the bridge like shell access to the server machine.
   its port to the internet.
 - Keep the tokens secret. Anyone who has one controls the server. To replace a token, run `/almighty revoke <agent>`
   in the console: the old token stops working at once and the new one is in the same file.
+- Who may make the game master do what is set in `config/almighty/policy.toml` (written with comments on first
+  start; `/almighty reload` after editing). `preset = "private"` (the default for existing and new servers in this
+  version) keeps everything as before. `friends` and `public` make the game master act, unasked, as a member or a
+  guest would; a player's request then runs with that player's rights. Owners are listed by UUID (`/almighty whoami`
+  shows yours). Each capability is a permission node `almighty.<capability>`, so LuckPerms can grant them.
+- Every game master call that changes something, and every refused call, is written to
+  `logs/almighty/audit-<date>.jsonl` (kept 30 days, `audit.days`). `/almighty log [agent|player] [count]` shows the
+  latest in game or in the console. `/almighty pause [agent]` is the red button: that agent (or every agent) can
+  only look until `/almighty resume`, its builds wait and its bots stop.
 - Some commands and calls are refused for every agent because they crash, freeze or stop the server: `stop`,
   `reload`, `save-off`, `save-all flush`, `forceload add`, `tick rate` above 100, `/almighty` (agents and tokens are
   the owner's), and building, loading or teleporting at Sable ship plot coordinates. Scripts that take chunk tickets,

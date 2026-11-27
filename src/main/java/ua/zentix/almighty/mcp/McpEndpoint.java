@@ -173,7 +173,7 @@ public final class McpEndpoint implements HttpHandler {
         return new McpProtocol.Settings(Profile.parse(query.get("profile")), images.equals("true"), "almighty", version);
     }
 
-    static Map<String, String> query(String raw) {
+    public static Map<String, String> query(String raw) {
         Map<String, String> out = new HashMap<>();
         if (raw == null || raw.isEmpty()) return out;
         for (String pair : raw.split("&")) {

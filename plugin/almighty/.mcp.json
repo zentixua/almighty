@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "almighty": {
+      "type": "http",
+      "url": "${ALMIGHTY_URL:-http://127.0.0.1:25650}/mcp"
+    }
+  }
+}

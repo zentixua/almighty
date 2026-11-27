@@ -13,16 +13,17 @@ public final class GmConfig {
     public static final ModConfigSpec.ConfigValue<String> BRIDGE_HOST;
     public static final ModConfigSpec.IntValue BRIDGE_PORT;
     public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> BRIDGE_ALLOWED_ORIGINS;
+    public static final ModConfigSpec.ConfigValue<String> BRIDGE_PUBLIC_URL;
     public static final ModConfigSpec.DoubleValue WORK_MS_PER_TICK;
     public static final ModConfigSpec.IntValue BUILD_MAX_BLOCKS;
     public static final ModConfigSpec.IntValue MAX_CHUNKS;
     public static final ModConfigSpec.IntValue LAG_MS;
+    public static final ModConfigSpec.IntValue AUDIT_DAYS;
     public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> FEED_NAMES;
     public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> FEED_TYPO_NAMES;
     public static final ModConfigSpec.IntValue FEED_GM_MESSAGES;
     public static final ModConfigSpec.ConfigValue<String> FEED_DEFAULT_AGENT;
     public static final ModConfigSpec.IntValue FEED_AWAY_SECONDS;
-    public static final ModConfigSpec.ConfigValue<String> FEED_IDENTITY;
     public static final ModConfigSpec.BooleanValue SCRIPTS_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> NAME;
     public static final ModConfigSpec.IntValue BOTS_MAX;
@@ -41,6 +42,10 @@ public final class GmConfig {
         BRIDGE_ALLOWED_ORIGINS = b.comment("Browser origins allowed to call the bridge (for example \"https://example.org\"). Requests from a browser",
                         "page carry an Origin header and are refused unless it is listed here; agents and command-line clients send none.")
                 .defineListAllowEmpty("allowed_origins", java.util.List.of(), () -> "", o -> o instanceof String);
+        BRIDGE_PUBLIC_URL = b.comment("The bridge's public address when a reverse proxy or tunnel puts it on the internet, for example",
+                        "\"https://mc.example.org\" (cloud agents such as claude.ai need public HTTPS). Sign-in links and the address the",
+                        "agent is given use it. Empty: the bridge's own address.")
+                .define("public_url", "");
         b.pop();
         b.push("work");
         WORK_MS_PER_TICK = b.comment("Time per server tick for builds, undos and image views, in ms.")
@@ -68,9 +73,10 @@ public final class GmConfig {
         FEED_AWAY_SECONDS = b.comment("If the agent has not read a message this many seconds after it arrived, the server tells the player",
                         "the game master is away (the message is kept).")
                 .defineInRange("away_seconds", 30, 5, 3600);
-        FEED_IDENTITY = b.comment("Which player identities count as verified: auto (Mojang and Floodgate accounts), mojang (Mojang only),",
-                        "proxy (behind Velocity modern forwarding; like auto), offline (every name: only for a LAN of people you know).")
-                .define("identity", "auto", o -> o instanceof String t && java.util.Set.of("auto", "mojang", "proxy", "offline").contains(t));
+        b.pop();
+        b.push("audit");
+        AUDIT_DAYS = b.comment("Days of audit log kept in logs/almighty/audit-<date>.jsonl (every GM call with effects and every refusal).")
+                .defineInRange("days", 30, 1, 3650);
         b.pop();
         b.push("scripts");
         SCRIPTS_ENABLED = b.comment("Game master scripts (Groovy): the script method and rules with a script. Turn off if a rule disrupts the",

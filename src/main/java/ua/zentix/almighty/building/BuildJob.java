@@ -33,6 +33,11 @@ import java.util.Arrays;
  * is removed becomes an item), or entities.
  */
 public final class BuildJob extends Job {
+    @Override
+    public boolean effects() {
+        return true;
+    }
+
     static final int UNIT = 32;
 
     /** Changed positions: previous states and block entity data in change order. */

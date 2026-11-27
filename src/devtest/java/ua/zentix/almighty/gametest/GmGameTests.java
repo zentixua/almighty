@@ -462,6 +462,19 @@ public final class GmGameTests {
                 .thenSucceed();
     }
 
+    /** Like GameTestHelper.makeMockServerPlayerInLevel (marked for removal in vanilla): a joined player with an embedded channel. */
+    static ServerPlayer player(GameTestHelper h, String name, UUID id) {
+        GameProfile profile = new GameProfile(id, name);
+        CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
+        ServerPlayer player = new ServerPlayer(h.getLevel().getServer(), h.getLevel(), profile, cookie.clientInformation());
+        Connection connection = new Connection(PacketFlow.SERVERBOUND);
+        new EmbeddedChannel(connection);
+        // Client with all server mods: mods send their packets on login (Immersive Aircraft).
+        NetworkRegistry.configureMockConnection(connection);
+        h.getLevel().getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
+        return player;
+    }
+
     /**
      * Feed: join, player command (not a GM command as the player), private GM message ({@code /gm}), death with
      * cause, and player leave.
@@ -471,15 +484,7 @@ public final class GmGameTests {
         GmServer gm = gm(h);
         // The whole ring: last event number.
         long after = gm.feed().read(0, 4096, 0).get("next").getAsLong();
-        // Like GameTestHelper.makeMockServerPlayerInLevel (marked for removal in vanilla): a player with an embedded channel.
-        GameProfile profile = new GameProfile(UUID.randomUUID(), "gm-feed-player");
-        CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
-        ServerPlayer player = new ServerPlayer(h.getLevel().getServer(), h.getLevel(), profile, cookie.clientInformation());
-        Connection connection = new Connection(PacketFlow.SERVERBOUND);
-        new EmbeddedChannel(connection);
-        // Client with all server mods: mods send their packets on login (Immersive Aircraft).
-        NetworkRegistry.configureMockConnection(connection);
-        h.getLevel().getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
+        ServerPlayer player = player(h, "gm-feed-player", UUID.randomUUID());
         // A GM command as the player is not theirs and stays out of the feed; one typed by the player enters it.
         new ScriptApi(h.getLevel().getServer(), true, data -> {}).commandAs(player, "list");
         h.getLevel().getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack(), "list");

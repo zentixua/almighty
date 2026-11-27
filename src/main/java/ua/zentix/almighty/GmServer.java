@@ -98,10 +98,8 @@ public final class GmServer {
         rules.paused(pause::all);
         this.inbox = new Inbox(server, feed, tickets, () -> bridge == null ? null : bridge.agents());
         this.policies = new Policies(GmServer.configDir == null ? null : GmServer.configDir.resolve("policy.toml"));
-        this.gate = new Gate(policies, tickets, Nodes::holds, name -> {
-            net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayerByName(name);
-            return p != null && bots.of(p) != null;
-        });
+        // Bot names from a thread-safe set the bots keep (the gate runs on bridge threads).
+        this.gate = new Gate(policies, tickets, Nodes::holds, bots::isBotName);
         this.dispatch = new Dispatch(Api.methods(this), List.of(
                 (caller, method, params) -> DenyList.check(method, params),
                 (caller, method, params) -> {
@@ -130,6 +128,8 @@ public final class GmServer {
         current = gm;
         gm.policies.load(existing ? Policy.Preset.PRIVATE : Policy.Preset.PRIVATE);
         Nodes.start(server, gm.policies::current);
+        Nodes.refresh(server);
+        ua.zentix.almighty.policy.Identity.onlineMode(server.usesAuthentication());
         gm.rules.load();
         if (server.isDedicatedServer() && GmConfig.BRIDGE_ENABLED.get()) {
             try {
@@ -186,6 +186,7 @@ public final class GmServer {
         usedThisTick += System.nanoTime() - jobsStart;
         areas.tick(server.getTickCount());
         inbox.tick(server.getTickCount());
+        if (server.getTickCount() % 20 == 0) Nodes.refresh(server);
     }
 
     /** The GM budget per tick; a quarter of it while the lag guard holds, so builds and views slow down but go on. */

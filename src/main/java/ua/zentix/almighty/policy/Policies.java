@@ -60,7 +60,12 @@ public final class Policies {
             LOG.error("Almighty: cannot write {}: {}", file, e.toString());
         }
         String why = reload();
-        if (why != null) LOG.error("Almighty: {} refused, using the built-in policy (private): {}", file, why);
+        if (why != null) {
+            // No last good policy yet: never fall back to something wider than the owner may have chosen.
+            set(Policy.lockdown());
+            LOG.error("Almighty: {} refused; until it is fixed (/almighty reload) agents act as on a public server with no "
+                    + "owners: {}", file, why);
+        }
     }
 
     /** Read the file again; null on success, else the reason (the previous policy stays). */

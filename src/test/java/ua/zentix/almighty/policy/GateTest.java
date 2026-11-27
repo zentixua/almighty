@@ -44,7 +44,7 @@ class GateTest {
     }
 
     @Test
-    void everyMethodDeclaresANode() {
+    void everyMethodDeclaresANode() throws Exception {
         for (String m : METHODS) assertNotNull(Gate.node(m, new JsonObject(), n -> false), m);
         assertNull(Gate.node("delete.world", new JsonObject(), n -> false), "unknown methods have none: refused");
     }
@@ -68,8 +68,17 @@ class GateTest {
         assertThrows(RpcException.class, () -> g.check(gm, "player", json("{\"name\":\"Bob\"}")));
         Gate pub = gate("preset = \"public\"");
         assertThrows(RpcException.class, () -> pub.check(gm, "build", new JsonObject()), "public floor is guest");
-        pub.check(gm, "say", json("{\"text\":\"hi\",\"to\":[\"Bob\"]}"));
         assertThrows(RpcException.class, () -> pub.check(gm, "say", json("{\"text\":\"hi\"}")), "everyone needs speak.all");
+        assertThrows(RpcException.class, () -> pub.check(gm, "say", json("{\"text\":\"hi\",\"to\":[\"Bob\"]}")),
+                "unasked, even a whisper is speak.all: speak.reply is a reply to the requester alone");
+        String t = Tickets.newId();
+        tickets.mint(t, guest, "Guest", "gm", 1, true);
+        pub.check(gm, "say", json("{\"text\":\"hi\",\"to\":[\"guest\"],\"for\":\"" + t + "\"}"));
+        pub.check(gm, "say", json("{\"text\":\"hi\",\"to\":\"Guest\",\"style\":\"actionbar\",\"for\":\"" + t + "\"}"));
+        for (String bad : new String[]{"\"to\":null", "\"to\":[\"Guest\",\"Bob\"]", "\"to\":[\"Guest\"],\"style\":\"TITLE\""}) {
+            assertThrows(RpcException.class, () -> pub.check(gm, "say", json("{\"text\":\"hi\"," + bad + ",\"for\":\"" + t + "\"}")),
+                    bad + ": not a private reply to the requester");
+        }
     }
 
     @Test
@@ -91,7 +100,7 @@ class GateTest {
     }
 
     @Test
-    void nodesFollowParameters() {
+    void nodesFollowParameters() throws Exception {
         assertEquals(Node.OBSERVE_WORLD, Gate.node("see", json("{\"name\":\"Robo\"}"), n -> n.equals("Robo")), "a bot's eyes");
         assertEquals(Node.OBSERVE_PLAYERS, Gate.node("see", json("{\"name\":\"Bob\"}"), n -> false), "a player's eyes");
         assertEquals(Node.ENGINE, Gate.node("rule.add", json("{\"script\":\"x\"}"), n -> false));
@@ -102,6 +111,17 @@ class GateTest {
         assertEquals(Node.BOTS_ADMIN, Gate.node("bot.act", json("{\"actions\":[{\"payload\":\"x:y\"}]}"), n -> false));
         assertEquals(Node.NOTES_WRITE, Gate.node("notes", json("{\"id\":\"world:a\",\"text\":\"t\"}"), n -> false));
         assertEquals(Node.SPEAK_ALL, Gate.node("say", json("{\"to\":[\"a\"],\"style\":\"title\"}"), n -> false));
+        assertEquals(Node.OBSERVE_PLAYERS, Gate.node("entities", json("{\"center\":[0,0,0]}"), n -> false), "players are entities");
+        assertEquals(Node.OBSERVE_WORLD, Gate.node("entities", json("{\"type\":\"zombie\"}"), n -> false));
         assertEquals(Set.of(), Set.of());
+    }
+
+    @Test
+    void malformedParametersAre400() {
+        for (String[] c : new String[][]{{"see", "{\"name\":{}}"}, {"entities", "{\"type\":[]}"}, {"bot.spawn", "{\"gamemode\":{}}"}}) {
+            RpcException e = assertThrows(RpcException.class, () -> Gate.node(c[0], json(c[1]), n -> false));
+            assertEquals(400, e.status(), c[0] + " " + c[1]);
+        }
+        assertDoesNotThrow(() -> Gate.node("bot.spawn", json("{\"marker\":null}"), n -> false));
     }
 }

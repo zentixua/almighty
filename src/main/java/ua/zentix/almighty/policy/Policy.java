@@ -63,6 +63,14 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
         };
     }
 
+    /**
+     * The policy when the file exists but cannot be used at startup (no last good policy): public, every agent at
+     * guest. A typo must never open the server wider than the owner chose.
+     */
+    public static Policy lockdown() {
+        return new Policy(Preset.PUBLIC, Set.of(), Identity.Mode.AUTO, Map.of());
+    }
+
     /** The policy when the file has nothing to say: private, no owners, every agent at its default ceiling. */
     public static Policy defaults() {
         return new Policy(Preset.PRIVATE, Set.of(), Identity.Mode.AUTO, Map.of());

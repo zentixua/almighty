@@ -66,5 +66,11 @@ class PolicyTest {
         java.nio.file.Files.writeString(file, "preset = \"chaos\"");
         assertTrue(p.reload().contains("preset"));
         assertEquals(Policy.Preset.FRIENDS, p.current().preset(), "the previous policy stays");
+        // At startup there is no previous policy: a broken file locks down instead of opening up.
+        Policies fresh = new Policies(file);
+        fresh.load(Policy.Preset.PRIVATE);
+        assertEquals(Policy.Preset.PUBLIC, fresh.current().preset());
+        assertEquals(Role.GUEST, fresh.current().floor("gm"));
+        assertTrue(fresh.current().owners().isEmpty());
     }
 }

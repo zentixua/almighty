@@ -1,9 +1,7 @@
 package ua.zentix.almighty.policy;
 
-import com.mojang.authlib.GameProfile;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.players.ServerOpListEntry;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.server.permission.PermissionAPI;
 import net.neoforged.neoforge.server.permission.events.PermissionGatherEvent;
@@ -29,6 +27,25 @@ public final class Nodes {
     /** The running server and its policy; null between servers (the resolver then answers false). */
     private static volatile MinecraftServer server;
     private static volatile Supplier<Policy> policy = Policy::defaults;
+    /** Op levels and online players, copied on the server thread once a second (bridge threads read only these). */
+    private static volatile Map<UUID, Integer> ops = Map.of();
+    private static volatile Map<UUID, ServerPlayer> online = Map.of();
+
+    /** Server thread: refresh the snapshots the gate reads from bridge threads. */
+    public static void refresh(MinecraftServer s) {
+        // Online players only: a ticket's requester sent a message minutes ago; one who left meanwhile counts
+        // without their op level (the safe direction).
+        Map<UUID, Integer> o = new java.util.HashMap<>();
+        Map<UUID, ServerPlayer> p = new java.util.HashMap<>();
+        for (ServerPlayer sp : s.getPlayerList().getPlayers()) {
+            p.put(sp.getUUID(), sp);
+            int level = s.getProfilePermissions(sp.getGameProfile());
+            if (level > 0) o.put(sp.getUUID(), level);
+        }
+        ops = Map.copyOf(o);
+        online = Map.copyOf(p);
+    }
+
     /** Extra roles (the ladder of step 9: {@code /almighty role}); none yet. */
     private static volatile java.util.function.Function<UUID, Role> granted = id -> null;
 
@@ -66,13 +83,10 @@ public final class Nodes {
         Role best = verified ? p.preset().playerRole() : Role.GUEST;
         Role extra = granted.apply(id);
         if (extra != null && verified && extra.compareTo(best) > 0) best = Role.min(extra, Role.ADMIN);
-        MinecraftServer s = server;
-        if (s != null && verified) {
-            ServerOpListEntry op = s.getPlayerList().getOps().get(new GameProfile(id, ""));
-            if (op != null) {
-                Role byOp = op.getLevel() >= 3 ? Role.ADMIN : op.getLevel() == 2 ? Role.BUILDER : Role.MEMBER;
-                if (byOp.compareTo(best) > 0) best = byOp;
-            }
+        Integer level = verified ? ops.get(id) : null;
+        if (level != null) {
+            Role byOp = level >= 3 ? Role.ADMIN : level == 2 ? Role.BUILDER : Role.MEMBER;
+            if (byOp.compareTo(best) > 0) best = byOp;
         }
         return best;
     }
@@ -85,10 +99,9 @@ public final class Nodes {
         if (ladder == Role.OWNER) return true;
         if (!Identity.verified(id)) return Role.GUEST.atLeast(node.defaultRole());
         PermissionNode<Boolean> pn = NODES.get(node);
-        MinecraftServer s = server;
         try {
-            ServerPlayer online = s == null ? null : s.getPlayerList().getPlayer(id);
-            Boolean v = online != null ? PermissionAPI.getPermission(online, pn) : PermissionAPI.getOfflinePermission(id, pn);
+            ServerPlayer player = server == null ? null : online.get(id);
+            Boolean v = player != null ? PermissionAPI.getPermission(player, pn) : PermissionAPI.getOfflinePermission(id, pn);
             return Boolean.TRUE.equals(v);
         } catch (UnregisteredPermissionException | IllegalStateException e) {
             // No handler yet (unit tests) or nodes not gathered: the ladder answers.

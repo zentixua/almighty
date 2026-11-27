@@ -99,7 +99,8 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   (`Job.agent`) and bot programs know which agent acts; the future completes inside the caller's scope, so
   continuations on the server thread act as the same caller.
 - `policy/` gate (step 5): `config/almighty/policy.toml` (`Policy`, `Policies`: written with comments on first start,
-  `/almighty reload`, a bad file keeps the last good policy with the exact error): `preset` (private | friends |
+  `/almighty reload`, a bad file keeps the last good policy with the exact error; at startup, with no last good one,
+  `Policy.lockdown()`: public, no owners): `preset` (private | friends |
   public), `owners` (UUIDs), `identity`, `[agents.<name>]` `ceiling`/`floor`. `Node`: capabilities `almighty.<id>`
   registered with the NeoForge permission API (`Nodes`; LuckPerms decides when installed; default resolver = role
   ladder `Role`: policy owners (verified) → owner, op level ≥ 3 → admin, 2 → builder, verified → member on friends
@@ -107,8 +108,14 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   and pause): every method maps to a node (`Gate.node`, parameters refine it: `see` a player, `rule.add` with
   script, creative bots, payloads, `notes` with text); none → refused. Rights: no `for` → the agent's trust floor
   (private: = ceiling; friends: member; public: guest; or `floor`); `for: <ticket>` → that player's rights, capped
-  by the ceiling (a ticket only narrows). Refusal 403 `policy` with `node` and `allowed`; `status` gives `rights`
-  (with `for`: that request's). `command`/`function` need owner until step 6 runs them as the requester.
+  by the ceiling (a ticket only narrows). `say` needs `speak.all` unless it is a chat/actionbar reply to the ticket's
+  player alone; `entities` needs `observe.players` unless it asks for a non-player type; `undo`/`cancel` of another
+  agent's job need `undo.any` (`Gate.require`). Below owner, `say` components lose `run_command`/`suggest_command`
+  clicks (JSON-level, translation arguments included) and may not contain `[Almighty]`. Parameters are read
+  null-safe (null = absent, as `Args`) and a malformed one is 400. The gate never reads server lists off the server
+  thread: bot names (`Bots.isBotName`), ops and online players (`Nodes.refresh`, once a second) are snapshots.
+  `Identity`: in `auto`/`mojang` nothing is verified when `online-mode=false` (use `proxy` behind Velocity).
+  Refusal 403 `policy` with `node` and `allowed`; `status` gives `rights` (with `for`: that request's). `command`/`function` need owner until step 6 runs them as the requester.
   In-process calls (`Caller.INTERNAL`: GameTest, the server) are not gated. Preset `private` with `gm` at ceiling
   owner is today's behaviour; unlisted agents default to ceiling admin. `/almighty whoami` (anyone) shows UUID,
   verification and role.

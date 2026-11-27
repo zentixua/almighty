@@ -22,6 +22,8 @@ import java.util.function.Predicate;
  * with the node and an {@code allowed} list. In-process calls ({@link Caller#INTERNAL}) are not gated.
  */
 public final class Gate implements Dispatch.Check {
+    // Every lookup the gate makes runs on bridge threads: bot names, ops and online players come from snapshots that
+    // the server thread refreshes ({@link Nodes#refresh}), never from the server's own unsynchronized lists.
     /** Whether a player (UUID; online or not) holds a node: the permission API, or the role ladder without a plugin. */
     @FunctionalInterface
     public interface Holder {
@@ -40,27 +42,54 @@ public final class Gate implements Dispatch.Check {
         this.isBot = isBot;
     }
 
-    /** The node a call needs; null for a method without one (refused: deny by default). */
-    public static Node node(String method, JsonObject p, Predicate<String> isBot) {
+    /** A parameter present and not JSON null (as {@code Args.has}). */
+    static boolean has(JsonObject p, String key) {
+        JsonElement e = p.get(key);
+        return e != null && !e.isJsonNull();
+    }
+
+    /** A string parameter, or null if absent; 400 if it is not a string (never a 500 from a malformed call). */
+    static String str(JsonObject p, String key) throws RpcException {
+        if (!has(p, key)) return null;
+        JsonElement e = p.get(key);
+        if (!e.isJsonPrimitive()) throw RpcException.badRequest(key + ": expected a string");
+        return e.getAsString();
+    }
+
+    /**
+     * The node a call needs; null for a method without one (refused: deny by default). {@code say} starts at
+     * {@code speak.all}: only a reply to the requester alone, checked with the rights ({@link #check}), needs less.
+     */
+    public static Node node(String method, JsonObject p, Predicate<String> isBot) throws RpcException {
         return switch (method) {
-            case "status", "map", "look", "blocks", "entities", "ships", "jobs", "job", "areas", "bots", "bot", "rules" -> Node.OBSERVE_WORLD;
+            case "status", "map", "look", "blocks", "ships", "jobs", "job", "areas", "bots", "bot", "rules", "pending" -> Node.OBSERVE_WORLD;
+            case "entities" -> {
+                // Players are among entities: listing them needs observe.players unless the call asks for another type.
+                String type = str(p, "type");
+                yield type == null || type.equals("player") || type.equals("minecraft:player") ? Node.OBSERVE_PLAYERS : Node.OBSERVE_WORLD;
+            }
             case "see" -> {
-                String name = p.has("name") ? p.get("name").getAsString() : null;
+                String name = str(p, "name");
                 // A bot's eyes are the agent's own; another player's view is theirs.
-                yield (name != null && !isBot.test(name)) || p.has("uuid") ? Node.OBSERVE_PLAYERS : Node.OBSERVE_WORLD;
+                yield (name != null && !isBot.test(name)) || has(p, "uuid") ? Node.OBSERVE_PLAYERS : Node.OBSERVE_WORLD;
             }
             case "players", "player" -> Node.OBSERVE_PLAYERS;
-            case "notes" -> p.has("text") ? Node.NOTES_WRITE : Node.KNOWLEDGE;
+            case "notes" -> has(p, "text") ? Node.NOTES_WRITE : Node.KNOWLEDGE;
             case "events", "event.types" -> Node.KNOWLEDGE;
-            case "say" -> p.has("to") && !style(p, "title", "subtitle") ? Node.SPEAK_REPLY : Node.SPEAK_ALL;
+            case "say" -> Node.SPEAK_ALL;
             case "build", "undo", "cancel" -> Node.BUILD;
             case "area.prepare", "area.release" -> Node.AREA;
             case "command", "function" -> Node.COMMAND;
             case "script" -> Node.ENGINE;
-            case "rule.add" -> p.has("script") ? Node.ENGINE : Node.RULES;
+            case "rule.add" -> has(p, "script") ? Node.ENGINE : Node.RULES;
             case "rule.remove" -> Node.RULES;
-            case "bot.spawn" -> p.has("skin") || p.has("marker") && !p.get("marker").getAsBoolean()
-                    || p.has("gamemode") && Set.of("creative", "spectator").contains(p.get("gamemode").getAsString()) ? Node.BOTS_ADMIN : Node.BOTS;
+            case "bot.spawn" -> {
+                String mode = str(p, "gamemode");
+                boolean unmarked = has(p, "marker") && !(p.get("marker").isJsonPrimitive() && p.get("marker").getAsJsonPrimitive().isBoolean()
+                        && p.get("marker").getAsBoolean());
+                yield has(p, "skin") || unmarked || mode != null && Set.of("creative", "spectator").contains(mode.toLowerCase(java.util.Locale.ROOT))
+                        ? Node.BOTS_ADMIN : Node.BOTS;
+            }
             case "bot.act" -> payload(p) ? Node.BOTS_ADMIN : Node.BOTS;
             case "bot.remove" -> Node.BOTS;
             case "audit" -> Node.AUDIT;
@@ -68,10 +97,16 @@ public final class Gate implements Dispatch.Check {
         };
     }
 
-    private static boolean style(JsonObject p, String... styles) {
-        if (!p.has("style")) return false;
-        String s = p.get("style").getAsString();
-        for (String x : styles) if (x.equals(s)) return true;
+    /** A private reply to the requester alone (chat or actionbar): the only {@code say} below {@code speak.all}. */
+    static boolean replyToRequester(JsonObject p, Tickets.Ticket t) throws RpcException {
+        if (t == null || !has(p, "to")) return false;
+        String style = str(p, "style");
+        if (style != null && !Set.of("chat", "actionbar").contains(style.toLowerCase(java.util.Locale.ROOT))) return false;
+        JsonElement to = p.get("to");
+        if (to.isJsonPrimitive()) return to.getAsString().equalsIgnoreCase(t.name());
+        if (to.isJsonArray() && to.getAsJsonArray().size() == 1 && to.getAsJsonArray().get(0).isJsonPrimitive()) {
+            return to.getAsJsonArray().get(0).getAsString().equalsIgnoreCase(t.name());
+        }
         return false;
     }
 
@@ -83,6 +118,11 @@ public final class Gate implements Dispatch.Check {
 
     /** The rights a call runs with. */
     public record Rights(String agent, Role ceiling, Role floor, Tickets.Ticket ticket) {
+        /** The role this call acts with on the ladder (requester capped by the ceiling, or the floor). */
+        public Role effective() {
+            return ticket == null ? floor : Role.min(Nodes.role(ticket.player()), ceiling);
+        }
+
         /** Whether these rights hold {@code node}; the requester's own grant is checked by {@code holder}. */
         boolean holds(Node node, Holder holder) {
             if (!ceiling.atLeast(node.defaultRole())) return false;
@@ -108,11 +148,23 @@ public final class Gate implements Dispatch.Check {
         Node node = node(method, params, isBot);
         if (node == null) throw new RpcException(403, "policy", "No permission node for " + method + ": refused by default");
         Rights r = rights(caller, params);
+        if (method.equals("say") && replyToRequester(params, r.ticket)) node = Node.SPEAK_REPLY;
         if (r.holds(node, holder)) return;
         String as = r.ticket == null ? "unasked, agent " + r.agent + " acts as " + r.floor.id() + " (trust floor)"
                 : "this request runs with " + r.ticket.name() + "'s rights";
         if (r.ticket != null && !r.ceiling.atLeast(node.defaultRole())) as = "agent " + r.agent + "'s ceiling is " + r.ceiling.id();
         RpcException e = new RpcException(403, "policy", "Not allowed: " + node.key() + " (" + node.description() + "); " + as);
+        e.detail("node", node.key());
+        e.detail("allowed", allowed(r));
+        throw e;
+    }
+
+    /** Refuse unless the call's rights hold {@code node} (checks made inside a method, e.g. another agent's job). */
+    public void require(ua.zentix.almighty.bridge.Caller caller, JsonObject params, Node node, String why) throws RpcException {
+        if (caller.agent() == null) return;
+        Rights r = rights(caller, params);
+        if (r.holds(node, holder)) return;
+        RpcException e = new RpcException(403, "policy", "Not allowed: " + node.key() + " (" + why + ")");
         e.detail("node", node.key());
         e.detail("allowed", allowed(r));
         throw e;

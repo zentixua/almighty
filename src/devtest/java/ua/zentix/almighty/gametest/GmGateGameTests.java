@@ -51,7 +51,7 @@ public final class GmGateGameTests {
     }
 
     @GameTest(template = "floor", batch = "gm_gate")
-    public static void everyLiveMethodHasANode(GameTestHelper h) {
+    public static void everyLiveMethodHasANode(GameTestHelper h) throws RpcException {
         for (String m : gm(h).dispatch().names()) check(Gate.node(m, new JsonObject(), n -> false) != null, "no node for " + m);
         h.succeed();
     }
@@ -67,7 +67,8 @@ public final class GmGateGameTests {
             // Private (the default): the agent does everything, as before the gate existed.
             gm.policies().set(Policy.parse("preset = \"private\""));
             gm.dispatch().invoke(GM, "script", params("{\"code\":\"1 + 1\"}"));
-            gm.policies().set(Policy.parse("preset = \"friends\"\nowners = [\"" + ownerId + "\"]"));
+            // GameTest runs offline: identity proxy lets the test's version-4 UUIDs count as verified.
+            gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\nowners = [\"" + ownerId + "\"]"));
             RpcException e = refused(gm, "script", params("{\"code\":\"1 + 1\"}"));
             check(e.status() == 403 && e.code().equals("policy") && e.details().has("allowed"), "unasked script on friends: " + e.getMessage());
             check(refused(gm, "command", params("{\"commands\":[\"op gate-offline\"]}")).status() == 403, "unasked command");
@@ -85,6 +86,33 @@ public final class GmGateGameTests {
             gm.policies().set(before);
             h.getLevel().getServer().getPlayerList().remove(owner);
             h.getLevel().getServer().getPlayerList().remove(offline);
+        }
+        h.succeed();
+    }
+
+    /** Undo or cancel of another agent's job needs undo.any (admin), even for an agent that may build. */
+    @GameTest(template = "floor", batch = "gm_gate", timeoutTicks = 100)
+    public static void othersJobsNeedUndoAny(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        Agents two = Agents.of(Map.of("gm", "g".repeat(32), "builder", "b".repeat(32)));
+        Caller builder = new Caller(two.get("builder"), "test"), gmAgent = new Caller(two.get("gm"), "test");
+        gm.policies().set(Policy.parse("preset = \"friends\""));
+        try {
+            var at = h.absolutePos(new net.minecraft.core.BlockPos(3, 2, 3));
+            gm.dispatch().invoke(builder, "build", params("{\"ops\":[{\"op\":\"set\",\"pos\":[%d,%d,%d],\"block\":\"minecraft:stone\"}],\"wait\":0}",
+                    at.getX(), at.getY(), at.getZ()));
+            long job = 0;
+            for (JsonElement j : gm.jobs().describe()) job = Math.max(job, j.getAsJsonObject().get("id").getAsLong());
+            try {
+                gm.dispatch().invoke(gmAgent, "cancel", params("{\"id\":%d}", job)).join();
+                throw new GameTestAssertException("cancelled another agent's job");
+            } catch (java.util.concurrent.CompletionException e) {
+                check(e.getCause() instanceof RpcException r && r.status() == 403, "refused: " + e.getCause());
+            }
+            gm.dispatch().invoke(builder, "cancel", params("{\"id\":%d}", job)).join();
+        } finally {
+            gm.policies().set(before);
         }
         h.succeed();
     }

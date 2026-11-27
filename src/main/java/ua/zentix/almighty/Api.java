@@ -108,6 +108,8 @@ public final class Api {
             return gm.submit(() -> {
                 Job of = gm.jobs().get(id);
                 if (!(of instanceof BuildJob build)) throw RpcException.notFound("No build #" + id + " (the history keeps the last 50 jobs)");
+                if (!of.agent().equals(a.caller().name())) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.UNDO_ANY,
+                        "build #" + id + " is agent " + of.agent() + "'s");
                 return BuildJob.undo(build, CHUNK_WAIT_TICKS);
             }, waitSeconds(a));
         });
@@ -127,6 +129,8 @@ public final class Api {
             return gm.onMain(() -> {
                 Job job = gm.jobs().get(id);
                 if (job == null) throw RpcException.notFound("No job #" + id);
+                if (!job.agent().equals(a.caller().name())) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.UNDO_ANY,
+                        "job #" + id + " is agent " + job.agent() + "'s");
                 if (!gm.jobs().cancel(id)) throw RpcException.conflict("Job #" + id + " has already finished: " + job.state().id());
                 return job.describe();
             });

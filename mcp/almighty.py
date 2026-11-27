@@ -59,10 +59,19 @@ def rpc(method, params=None, timeout=None):
         # The bridge waits up to 60 s for the server response; loopback needs no environment proxy.
         _client = httpx.Client(timeout=70, trust_env=False, headers={"Authorization": "Bearer " + _token()})
     body = {"method": method, "params": {k: v for k, v in (params or {}).items() if v is not None}}
-    try:
-        r = _client.post(URL, json=body, **({"timeout": timeout} if timeout else {}))
-    except httpx.HTTPError as e:
-        raise GmError(f"bridge {URL} unreachable: {e}") from e
+    for attempt in range(4):
+        try:
+            r = _client.post(URL, json=body, **({"timeout": timeout} if timeout else {}))
+        except httpx.HTTPError as e:
+            raise GmError(f"bridge {URL} unreachable: {e}") from e
+        if r.status_code == 503 and attempt < 3 and '"busy"' in r.text:
+            time.sleep(0.5 * 2 ** attempt)  # the call was not started: the bridge's queue was full
+            continue
+        if r.status_code == 401 and attempt == 0 and not os.environ.get("ALMIGHTY_TOKEN"):
+            # The owner rotated the token (/almighty revoke): read the file again once.
+            _client.headers["Authorization"] = "Bearer " + _token()
+            continue
+        break
     try:
         data = r.json()
     except ValueError:

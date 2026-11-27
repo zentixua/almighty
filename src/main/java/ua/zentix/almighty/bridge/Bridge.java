@@ -38,6 +38,9 @@ import java.util.function.LongSupplier;
  * {@value #POLL_THREADS} for the methods named long when built. A full queue answers 503 at once instead of piling up.
  * Bridge threads do not access the world; methods do so through the server thread.
  *
+ * <p>Five failed authentications in a minute lock an address out (429) for 5 s, doubling to 5 min; a valid token
+ * always passes, so the lockout cannot be used against agents sharing the address.
+ *
  * <p>Requests carrying an {@code Origin} header (browsers) are refused unless the origin is allowed: a web page cannot
  * drive the bridge through the owner's browser (DNS rebinding). Native clients send no {@code Origin}.
  */
@@ -104,8 +107,9 @@ public final class Bridge {
     public void stop() {
         http.stop(0);
         accept.shutdownNow();
-        calls.shutdownNow();
-        polls.shutdownNow();
+        // Queued requests never started: run them (they fail fast, the bridge is stopping) so their exchanges close.
+        for (Runnable r : calls.shutdownNow()) r.run();
+        for (Runnable r : polls.shutdownNow()) r.run();
     }
 
     public InetSocketAddress address() {
@@ -135,13 +139,15 @@ public final class Bridge {
             throw new RpcException(403, "forbidden_origin", "Origin " + origin + " is not allowed (bridge.allowed_origins)");
         }
         String address = exchange.getRemoteAddress().getAddress().getHostAddress();
-        long locked = guard.lockedFor(address);
-        if (locked > 0) {
-            throw new RpcException(429, "locked_out", "Too many failed authentications from this address; retry in "
-                    + (locked + 999) / 1000 + " s");
-        }
+        // A valid token always passes: a lockout only slows guessing, so one stale or hostile client sharing an
+        // address (all of loopback, a Docker NAT) cannot lock the live agents out.
         Agent agent = agents.authenticate(exchange.getRequestHeaders().getFirst("Authorization"));
         if (agent == null) {
+            long locked = guard.lockedFor(address);
+            if (locked > 0) {
+                throw new RpcException(429, "locked_out", "Too many failed authentications from this address; retry in "
+                        + (locked + 999) / 1000 + " s");
+            }
             long lock = guard.failure(address);
             if (lock > 0) {
                 LOG.warn("Almighty bridge: {} failed authentications from {}; locked out for {} s", AuthGuard.FREE_FAILURES, address, lock / 1000);

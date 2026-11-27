@@ -159,11 +159,14 @@ class BridgeTest {
     @Test
     void failedAuthenticationLocksTheAddressOut() throws Exception {
         for (int i = 0; i < AuthGuard.FREE_FAILURES; i++) assertEquals(401, post("guess-" + i, "{\"method\":\"echo\"}").statusCode());
-        HttpResponse<String> locked = post("secret-abc", "{\"method\":\"echo\"}");
-        assertEquals(429, locked.statusCode(), "even the right token waits out the lockout");
+        HttpResponse<String> locked = post("secret-right-guess", "{\"method\":\"echo\"}");
+        assertEquals(429, locked.statusCode(), "guessing waits out the lockout");
         assertEquals("locked_out", json(locked).getAsJsonObject("error").get("code").getAsString());
+        assertEquals(200, post("secret-abc", "{\"method\":\"echo\"}").statusCode(),
+                "a valid token still passes: a stale client on the same address cannot lock the live agents out");
+        for (int i = 0; i < AuthGuard.FREE_FAILURES; i++) post("guess-" + i, "{\"method\":\"echo\"}");
         clock.addAndGet(AuthGuard.FIRST_LOCK_MS);
-        assertEquals(200, post("secret-abc", "{\"method\":\"echo\"}").statusCode());
+        assertEquals(401, post("guess-again", "{\"method\":\"echo\"}").statusCode(), "lockout over");
     }
 
     @Test

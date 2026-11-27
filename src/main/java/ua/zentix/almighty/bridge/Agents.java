@@ -57,19 +57,38 @@ public final class Agents {
         Map<String, Agent> m = new LinkedHashMap<>();
         m.put(DEFAULT, keep(DEFAULT, Token.load(defaultFile), defaultFile));
         if (Files.isDirectory(dir)) {
+            List<Path> sorted = new ArrayList<>();
             try (DirectoryStream<Path> files = Files.newDirectoryStream(dir, "*.token")) {
-                for (Path file : files) {
+                files.forEach(sorted::add);
+            }
+            sorted.sort(null);
+            {
+                for (Path file : sorted) {
                     String name = file.getFileName().toString().replaceFirst("\\.token$", "");
                     if (!NAME.matcher(name).matches() || name.equals(DEFAULT)) {
                         LOG.warn("Almighty: ignoring agent token file {} (name must match {} and not be {})", file, NAME, DEFAULT);
                         continue;
                     }
-                    String text = Files.readString(file).strip();
+                    String text;
+                    try {
+                        text = Files.readString(file).strip();
+                    } catch (IOException e) {
+                        // One unreadable file must not stop the bridge (or leave the table stale after a change).
+                        LOG.warn("Almighty: ignoring agent token file {}: {}", file, e.toString());
+                        continue;
+                    }
                     if (text.length() < 32) {
                         LOG.warn("Almighty: ignoring agent token file {}: the token must be at least 32 characters", file);
                         continue;
                     }
-                    m.put(name, keep(name, Token.of(text), file));
+                    Token token = Token.of(text);
+                    String twin = m.entrySet().stream().filter(x -> x.getValue().token().equals(token)).map(Map.Entry::getKey)
+                            .findFirst().orElse(null);
+                    if (twin != null) {
+                        LOG.warn("Almighty: ignoring agent token file {}: same token as agent {}", file, twin);
+                        continue;
+                    }
+                    m.put(name, keep(name, token, file));
                 }
             }
         }

@@ -69,8 +69,12 @@ class AgentsTest {
         Files.writeString(dir.resolve("agents").resolve("film.token"), "f".repeat(40));
         Files.writeString(dir.resolve("agents").resolve("short.token"), "abc");
         Files.writeString(dir.resolve("agents").resolve("Upper.token"), "u".repeat(40));
+        Files.createDirectory(dir.resolve("agents").resolve("dir.token"));
+        Files.write(dir.resolve("agents").resolve("binary.token"), new byte[]{(byte) 0xff, (byte) 0xfe, 0, 1});
+        Files.writeString(dir.resolve("agents").resolve("twin.token"), "f".repeat(40));
         agents.reload();
-        assertEquals(java.util.List.of("gm", "film"), agents.names());
+        assertEquals(java.util.Set.of("gm", "film"), java.util.Set.copyOf(agents.names()),
+                "unreadable, misnamed, short and duplicate token files are skipped, not fatal");
         Agent film = agents.authenticate("Bearer " + "f".repeat(40));
         agents.reload();
         assertSame(film, agents.get("film"), "unchanged token keeps the agent (and its presence)");

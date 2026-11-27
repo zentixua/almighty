@@ -26,6 +26,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.platform.Platform;
 
 import java.lang.reflect.Array;
@@ -73,13 +74,13 @@ public final class Json {
         if (v instanceof Optional<?> o) return from(o.orElse(null), depth);
         if (v instanceof Component c) return text(c.getString());
         if (v instanceof ResourceLocation r) return text(r.toString());
-        if (v instanceof ResourceKey<?> k) return text(k.location().toString());
-        if (v instanceof Holder<?> h) return h.unwrapKey().<JsonElement>map(k -> text(k.location().toString())).orElseGet(() -> from(h.value(), depth));
-        if (v instanceof Level l) return text(l.dimension().location().toString());
+        if (v instanceof ResourceKey<?> k) return text(Mc.id(k).toString());
+        if (v instanceof Holder<?> h) return h.unwrapKey().<JsonElement>map(k -> text(Mc.id(k).toString())).orElseGet(() -> from(h.value(), depth));
+        if (v instanceof Level l) return text(Mc.id(l.dimension()).toString());
         if (v instanceof Entity e) return entity(e);
         if (v instanceof Vec3i p) return numbers(p.getX(), p.getY(), p.getZ());
         if (v instanceof Vec3 p) return numbers(round(p.x), round(p.y), round(p.z));
-        if (v instanceof ChunkPos p) return numbers(p.x, p.z);
+        if (v instanceof ChunkPos p) return numbers(Mc.chunkX(p), Mc.chunkZ(p));
         if (v instanceof BlockState s) return text(BlockStateParser.serialize(s));
         if (v instanceof Block b) return text(BuiltInRegistries.BLOCK.getKey(b).toString());
         if (v instanceof Item i) return text(BuiltInRegistries.ITEM.getKey(i).toString());
@@ -205,7 +206,7 @@ public final class Json {
         out.addProperty("type", EntityType.getKey(e.getType()).toString());
         if (e.hasCustomName() || e instanceof net.minecraft.world.entity.player.Player) out.addProperty("name", e.getName().getString());
         out.addProperty("uuid", e.getUUID().toString());
-        out.addProperty("dimension", e.level().dimension().location().toString());
+        out.addProperty("dimension", Mc.id(e.level().dimension()).toString());
         out.add("pos", numbers(round(e.getX()), round(e.getY()), round(e.getZ())));
         if (e instanceof LivingEntity living) out.addProperty("health", Math.round(living.getHealth() * 10) / 10.0);
         if (e.isRemoved()) out.addProperty("removed", true);

@@ -18,7 +18,7 @@ stonecutter {
         mapBuilds { branch, node ->
             ("build." + node.project.substring(node.project.lastIndexOf("-") + 1) + ".gradle") as String
         }
-        versions(['1.21.1-neoforge': '1.21.1'])
+        versions(['1.21.1-neoforge': '1.21.1', '26.1.2-neoforge': '26.1.2'])
         vcsVersion = '1.21.1-neoforge'
     }
 }

@@ -8,6 +8,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.material.MapColor;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.work.Budget;
 import ua.zentix.almighty.world.Dims;
 
@@ -80,7 +81,7 @@ public final class LookView extends View {
         if (width > MAX_FACE || height > MAX_FACE) throw RpcException.badRequest("Box face: at most " + MAX_FACE + "×" + MAX_FACE + " blocks");
         if (depth > MAX_DEPTH) throw RpcException.badRequest("Box depth: at most " + MAX_DEPTH + " blocks");
         if ((long) width * height * depth > MAX_VOLUME) throw RpcException.badRequest("Box: at most " + MAX_VOLUME + " blocks");
-        int minY = level.getMinBuildHeight(), maxY = level.getMaxBuildHeight() - 1;
+        int minY = Mc.minBuildHeight(level), maxY = Mc.maxBuildHeight(level) - 1;
         if (min[1] > maxY || min[1] + size[1] - 1 < minY) throw RpcException.badRequest("Box is outside the world height range " + minY + ".." + maxY);
         this.png = new Png(width, height);
     }
@@ -94,7 +95,7 @@ public final class LookView extends View {
     protected void step(Budget budget) {
         running();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        int minY = level.getMinBuildHeight(), maxY = level.getMaxBuildHeight() - 1;
+        int minY = Mc.minBuildHeight(level), maxY = Mc.maxBuildHeight(level) - 1;
         do {
             int i = next % width, j = next / width;
             png.set(i, j, ray(i, j, pos, minY, maxY));

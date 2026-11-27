@@ -37,6 +37,11 @@ public final class AlmightyNeoForge {
         NeoForgePlatform platform = new NeoForgePlatform();
         Platform.set(platform);
         container.registerConfig(ModConfig.Type.COMMON, NeoForgeConfig.build());
+        //? if >=26.1 {
+        /*// 26.x ticket types are registry entries: the GM's chunk ticket (world/Areas).
+        modBus.addListener((net.neoforged.neoforge.registries.RegisterEvent e) -> e.register(
+                net.minecraft.core.registries.Registries.TICKET_TYPE, ua.zentix.almighty.world.Areas.TICKET_ID, () -> ua.zentix.almighty.world.Areas.TICKET));
+        *///?}
         IEventBus bus = NeoForge.EVENT_BUS;
         // Feed: observe only, last (the bus does not deliver events canceled by another mod here).
         bus.addListener(EventPriority.LOWEST, (ServerChatEvent e) -> FeedListeners.onChat(e.getPlayer(), e.getRawText()));

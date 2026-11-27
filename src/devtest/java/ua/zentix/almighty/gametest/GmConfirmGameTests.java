@@ -7,7 +7,6 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.players.ServerOpListEntry;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import ua.zentix.almighty.Almighty;
@@ -15,6 +14,7 @@ import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.Agents;
 import ua.zentix.almighty.bridge.Caller;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.policy.Confirmations;
 import ua.zentix.almighty.policy.Nodes;
 import ua.zentix.almighty.policy.Policy;
@@ -47,7 +47,7 @@ public final class GmConfirmGameTests {
         h.getLevel().getServer().getCommands().performPrefixedCommand(p.createCommandSourceStack(), "gm " + text);
         for (JsonElement e : gm.feed().read(after, 100, 0).getAsJsonArray("events")) {
             JsonObject o = e.getAsJsonObject();
-            if (o.get("type").getAsString().equals("gm") && o.get("player").getAsString().equals(p.getGameProfile().getName())) {
+            if (o.get("type").getAsString().equals("gm") && o.get("player").getAsString().equals(Mc.name(p.getGameProfile()))) {
                 return o.get("ticket").getAsString();
             }
         }
@@ -55,12 +55,12 @@ public final class GmConfirmGameTests {
     }
 
     private static void op(GameTestHelper h, ServerPlayer p, int level) {
-        h.getLevel().getServer().getPlayerList().getOps().add(new ServerOpListEntry(p.getGameProfile(), level, false));
+        Gt.op(h.getLevel().getServer(), p.getGameProfile(), level);
         Nodes.refresh(h.getLevel().getServer());
     }
 
     private static void deop(GameTestHelper h, ServerPlayer p) {
-        h.getLevel().getServer().getPlayerList().getOps().remove(p.getGameProfile());
+        Gt.deop(h.getLevel().getServer(), p.getGameProfile());
     }
 
     @GameTest(template = "floor", batch = "gm_confirm")
@@ -193,8 +193,8 @@ public final class GmConfirmGameTests {
             h.succeedWhen(() -> {
                 String state = p.describe().get("state").getAsString();
                 check(state.equals("done"), "ran with the admin's rights: " + p.describe());
-                check(p2.describe().get("state").getAsString().equals("done") && h.getLevel().getDayTime() % 24000 == 1234,
-                        "time set with the admin's level: " + p2.describe() + " day time " + h.getLevel().getDayTime());
+                check(p2.describe().get("state").getAsString().equals("done") && Mc.dayTime(h.getLevel()) % 24000 == 1234,
+                        "time set with the admin's level: " + p2.describe() + " day time " + Mc.dayTime(h.getLevel()));
                 gm.areas().releaseAll();
             });
         } finally {

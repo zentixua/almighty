@@ -12,6 +12,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import ua.zentix.almighty.GmServer;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.policy.Identity;
 
 import java.util.Locale;
@@ -32,7 +33,7 @@ public final class FeedListeners {
         JsonObject d = player(player);
         d.addProperty("text", raw);
         d.add("untrusted", Inbox.untrusted("text"));
-        GmServer gm = GmServer.of(player.server);
+        GmServer gm = GmServer.of(Mc.server(player));
         if (gm != null) gm.inbox().chat(player, d, raw);
     }
 
@@ -42,7 +43,7 @@ public final class FeedListeners {
 
     public static void onLogout(ServerPlayer p) {
         add(p, "leave", where(p));
-        GmServer gm = GmServer.of(p.server);
+        GmServer gm = GmServer.of(Mc.server(p));
         if (gm != null) gm.inbox().left(p);
     }
 
@@ -66,15 +67,15 @@ public final class FeedListeners {
 
     public static void onDimension(ServerPlayer p, ResourceKey<Level> from, ResourceKey<Level> to) {
         JsonObject d = player(p);
-        d.addProperty("from", from.location().toString());
-        d.addProperty("to", to.location().toString());
+        d.addProperty("from", Mc.id(from).toString());
+        d.addProperty("to", Mc.id(to).toString());
         add(p, "dimension", d);
     }
 
     /** A command about to run (the loader's command event, before execution). */
     public static void onCommand(ParseResults<CommandSourceStack> parse) {
         // Only commands typed by the player: a GM command as the player (commandAs) is not their command.
-        if (!(parse.getContext().getSource().source instanceof ServerPlayer p)) return;
+        if (!(Mc.typedBy(parse.getContext().getSource()) instanceof ServerPlayer p)) return;
         String command = parse.getReader().getString();
         String root = command.strip().split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
         if (root.startsWith("/")) root = root.substring(1);
@@ -91,19 +92,19 @@ public final class FeedListeners {
      */
     static JsonObject player(Player p) {
         JsonObject d = new JsonObject();
-        d.addProperty("player", p.getGameProfile().getName());
+        d.addProperty("player", Mc.name(p.getGameProfile()));
         d.addProperty("uuid", p.getUUID().toString());
         d.addProperty("verified", Identity.verified(p.getUUID()));
         if (Identity.bedrock(p.getUUID())) d.addProperty("bedrock", true);
         if (p instanceof ServerPlayer sp) d.addProperty("lang", sp.clientInformation().language());
         // A GM bot is a player to everyone, but the GM needs to distinguish its actions from human actions.
-        if (p instanceof ServerPlayer sp && GmServer.of(sp.server) instanceof GmServer gm && gm.bots().of(sp) != null) d.addProperty("bot", true);
+        if (p instanceof ServerPlayer sp && GmServer.of(Mc.server(sp)) instanceof GmServer gm && gm.bots().of(sp) != null) d.addProperty("bot", true);
         return d;
     }
 
     static JsonObject where(ServerPlayer p) {
         JsonObject d = player(p);
-        d.addProperty("dimension", p.level().dimension().location().toString());
+        d.addProperty("dimension", Mc.id(p.level().dimension()).toString());
         d.addProperty("x", p.getBlockX());
         d.addProperty("y", p.getBlockY());
         d.addProperty("z", p.getBlockZ());
@@ -111,7 +112,7 @@ public final class FeedListeners {
     }
 
     private static void add(ServerPlayer p, String type, JsonObject data) {
-        GmServer gm = GmServer.of(p.server);
+        GmServer gm = GmServer.of(Mc.server(p));
         if (gm != null) gm.feed().add(type, data);
     }
 }

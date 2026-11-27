@@ -27,6 +27,7 @@ import ua.zentix.almighty.building.BuildJob;
 import ua.zentix.almighty.building.BuildPlan;
 import ua.zentix.almighty.knowledge.Knowledge;
 import ua.zentix.almighty.knowledge.Notes;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.rules.Rules;
 import ua.zentix.almighty.script.Json;
 import ua.zentix.almighty.script.ScriptApi;
@@ -144,7 +145,7 @@ public final class Api {
                 net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(holder, n);
                 if (!p.getInventory().add(stack)) p.drop(stack, false);
                 JsonObject out = new JsonObject();
-                out.addProperty("player", p.getGameProfile().getName());
+                out.addProperty("player", Mc.name(p.getGameProfile()));
                 out.addProperty("item", id.toString());
                 out.addProperty("count", n);
                 return out;
@@ -207,8 +208,8 @@ public final class Api {
             // The chunks it loads, full height: an agent_may zone must hold them, a deny zone must not meet them.
             net.minecraft.server.level.ServerLevel al = Dims.level(server, a);
             gm.gate().zone(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.AREA, Dims.id(al),
-                    new int[]{Math.min(from[0], to[0]) & ~15, al.getMinBuildHeight(), Math.min(from[1], to[1]) & ~15},
-                    new int[]{(Math.max(from[0], to[0]) & ~15) + 15, al.getMaxBuildHeight() - 1, (Math.max(from[1], to[1]) & ~15) + 15});
+                    new int[]{Math.min(from[0], to[0]) & ~15, Mc.minBuildHeight(al), Math.min(from[1], to[1]) & ~15},
+                    new int[]{(Math.max(from[0], to[0]) & ~15) + 15, Mc.maxBuildHeight(al) - 1, (Math.max(from[1], to[1]) & ~15) + 15});
             return gm.onMain(() -> {
                 Areas.Lease lease = gm.areas().acquire(Dims.level(server, a), "area", from[0], from[1], to[0], to[1], ttl * 20L);
                 lease.owner("area #" + lease.id());
@@ -247,7 +248,7 @@ public final class Api {
             } else {
                 // Without pos the bot logs in at the world spawn: zones are checked there.
                 net.minecraft.server.level.ServerLevel l = spec.dimension() != null ? Dims.level(server, spec.dimension()) : server.overworld();
-                net.minecraft.core.BlockPos sp = l.getSharedSpawnPos();
+                net.minecraft.core.BlockPos sp = Mc.spawnPos(l);
                 at = new int[]{sp.getX(), sp.getY(), sp.getZ()};
                 dim = Dims.id(l);
             }
@@ -541,7 +542,7 @@ public final class Api {
             } catch (CommandSyntaxException e) {
                 throw RpcException.badRequest("block \"" + s + "\": " + e.getMessage());
             }
-        }, level.getMinBuildHeight(), level.getMaxBuildHeight() - 1, GmConfig.BUILD_MAX_BLOCKS.get());
+        }, Mc.minBuildHeight(level), Mc.maxBuildHeight(level) - 1, GmConfig.BUILD_MAX_BLOCKS.get());
         int[] b = plan.bounds();
         gm.gate().zone(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.BUILD, Dims.id(level),
                 new int[]{b[0], b[1], b[2]}, new int[]{b[3], b[4], b[5]});

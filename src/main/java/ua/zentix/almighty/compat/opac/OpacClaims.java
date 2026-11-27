@@ -1,6 +1,7 @@
 package ua.zentix.almighty.compat.opac;
 
 import net.minecraft.server.level.ServerLevel;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.world.Claims;
 import xaero.pac.common.server.api.OpenPACServerAPI;
 
@@ -20,6 +21,6 @@ public final class OpacClaims implements Claims.Source {
     @Override
     public boolean mayBuild(UUID player, ServerLevel level, int chunkX, int chunkZ) {
         return OpenPACServerAPI.get(level.getServer()).getChunkProtection()
-                .hasChunkAccess(player == null ? STRANGER : player, level.dimension().location(), chunkX, chunkZ);
+                .hasChunkAccess(player == null ? STRANGER : player, Mc.id(level.dimension()), chunkX, chunkZ);
     }
 }

@@ -10,9 +10,9 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
@@ -20,6 +20,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.properties.Property;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.platform.GameEvents;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.platform.Platform;
 
 import java.util.ArrayList;
@@ -100,7 +101,7 @@ public final class Catalog {
         kinds.put("config", config());
         // The level map is the server thread's: a mod may add a dimension at runtime.
         List<Entry> dimensions = new ArrayList<>();
-        for (ResourceKey<?> level : server.levelKeys()) dimensions.add(new Entry("dimensions", level.location().toString(), "", JsonObject::new));
+        for (ResourceKey<?> level : server.levelKeys()) dimensions.add(new Entry("dimensions", Mc.id(level).toString(), "", JsonObject::new));
         kinds.put("dimensions", List.copyOf(dimensions));
         reloadable = new Snapshot(key, kinds, server.getRecipeManager(), server.registryAccess());
     }
@@ -161,12 +162,12 @@ public final class Catalog {
                 d.addProperty("category", effect.getCategory().name().toLowerCase(Locale.ROOT));
                 return d;
             });
-            case "enchantments" -> registry(kind, access.registryOrThrow(Registries.ENCHANTMENT), e -> {
+            case "enchantments" -> registry(kind, Mc.registry(access, Registries.ENCHANTMENT), e -> {
                 JsonObject d = new JsonObject();
                 d.addProperty("max_level", e.getMaxLevel());
                 return d;
             });
-            case "biomes" -> registry(kind, access.registryOrThrow(Registries.BIOME), b -> new JsonObject());
+            case "biomes" -> registry(kind, Mc.registry(access, Registries.BIOME), b -> new JsonObject());
             case "events" -> {
                 List<Entry> out = new ArrayList<>();
                 Platform.get().events().all().forEach((className, mod) -> {
@@ -204,7 +205,7 @@ public final class Catalog {
         List<Entry> out = new ArrayList<>();
         for (Map.Entry<ResourceKey<T>, T> e : registry.entrySet()) {
             T value = e.getValue();
-            out.add(new Entry(kind, e.getKey().location().toString(), "", () -> detail.apply(value)));
+            out.add(new Entry(kind, Mc.id(e.getKey()).toString(), "", () -> detail.apply(value)));
         }
         out.sort((a, b) -> a.id().compareTo(b.id()));
         return List.copyOf(out);
@@ -231,17 +232,17 @@ public final class Catalog {
         List<Entry> out = new ArrayList<>();
         for (ResourceKey<? extends Registry<?>> key : List.of(Registries.BLOCK, Registries.ITEM, Registries.ENTITY_TYPE,
                 Registries.FLUID, Registries.BIOME, Registries.ENCHANTMENT)) {
-            access.registry(key).ifPresent(r -> r.getTags().forEach(pair -> {
-                int size = pair.getSecond().size();
-                String registry = key.location().getPath();
-                String id = "#" + pair.getFirst().location();
+            for (Map.Entry<ResourceLocation, Integer> tag : Mc.tagSizes(access, key)) {
+                int size = tag.getValue();
+                String registry = Mc.id(key).getPath();
+                String id = "#" + tag.getKey();
                 out.add(new Entry("tags", id, registry, () -> {
                     JsonObject d = new JsonObject();
                     d.addProperty("registry", registry);
                     d.addProperty("size", size);
                     return d;
                 }));
-            }));
+            }
         }
         out.sort((a, b) -> a.id().compareTo(b.id()));
         return List.copyOf(out);
@@ -276,21 +277,20 @@ public final class Catalog {
             String type = String.valueOf(BuiltInRegistries.RECIPE_TYPE.getKey(recipe.getType()));
             String result;
             try {
-                ItemStack stack = recipe.getResultItem(access);
+                ItemStack stack = Mc.recipeResult(recipe, access);
                 result = stack.isEmpty() ? "" : BuiltInRegistries.ITEM.getKey(stack.getItem()) + (stack.getCount() > 1 ? " x" + stack.getCount() : "");
             } catch (RuntimeException e) {
                 result = "";
             }
             String shownResult = result;
-            out.add(new Entry("recipes", holder.id().toString(), type + " " + result, () -> {
+            out.add(new Entry("recipes", Mc.recipeId(holder).toString(), type + " " + result, () -> {
                 JsonObject d = new JsonObject();
                 d.addProperty("type", type);
                 if (!shownResult.isEmpty()) d.addProperty("result", shownResult);
                 JsonArray ingredients = new JsonArray();
-                for (Ingredient ingredient : recipe.getIngredients()) {
-                    if (ingredient.isEmpty()) continue;
+                for (List<net.minecraft.world.item.Item> ingredient : Mc.ingredients(recipe)) {
                     Set<String> items = new LinkedHashSet<>();
-                    for (ItemStack s : ingredient.getItems()) items.add(BuiltInRegistries.ITEM.getKey(s.getItem()).toString());
+                    for (net.minecraft.world.item.Item item : ingredient) items.add(BuiltInRegistries.ITEM.getKey(item).toString());
                     List<String> first = items.stream().limit(4).toList();
                     ingredients.add(String.join("|", first) + (items.size() > 4 ? "|…(" + items.size() + ")" : ""));
                 }

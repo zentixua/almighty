@@ -13,6 +13,7 @@ import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.world.level.block.state.BlockState;
 import org.slf4j.Logger;
+import ua.zentix.almighty.platform.Mc;
 
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -298,8 +299,8 @@ public final class Journal {
                             CompoundTag t = NbtIo.read(in, NbtAccounter.unlimitedHeap());
                             BlockState st = states.apply(t);
                             // A block whose mod is gone reads back as air: refuse rather than write air over the world.
-                            if (st.isAir() && !t.getString("Name").endsWith("air")) {
-                                throw new IOException("change " + id + " has a block that no longer exists: " + t.getString("Name"));
+                            if (st.isAir() && !Mc.string(t, "Name").endsWith("air")) {
+                                throw new IOException("change " + id + " has a block that no longer exists: " + Mc.string(t, "Name"));
                             }
                             palette.add(st);
                         }

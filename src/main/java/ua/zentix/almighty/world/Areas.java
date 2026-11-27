@@ -4,20 +4,26 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import net.minecraft.server.level.DistanceManager;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.Ticket;
 import net.minecraft.server.level.TicketType;
-import net.minecraft.util.SortedArraySet;
-import net.minecraft.world.level.ChunkPos;
 import org.slf4j.Logger;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
+//? if >=26.1 {
+/*import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.TicketStorage;
+import ua.zentix.almighty.Almighty;
+*///?} else {
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import net.minecraft.server.level.DistanceManager;
+import net.minecraft.util.SortedArraySet;
 
 import java.lang.reflect.Field;
+//?}
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -49,14 +55,28 @@ import java.util.Map;
  * single tick (Incoming salvo shutdown: a 6.8 s tick). Server shutdown removes everything immediately
  * ({@link #releaseAll}) in {@code ServerStoppingEvent}, before Incoming's {@code StopDrain}; otherwise it would
  * wait for generation under GM tickets. Server thread only.
+ *
+ * <p>26.x: the same ticket is a registered ticket type ({@code TICKET}, registered by the loader as
+ * {@code TICKET_ID}) that only loads: no {@code FLAG_SIMULATION} (the chunk does not tick), no {@code FLAG_PERSIST}
+ * (it is not saved with the level's {@code TicketStorage}), no timeout; radius 0 is level 33 as before
+ * ({@code ServerChunkCache.addTicketWithRadius}). Acceptance is read from the level's {@code TicketStorage}
+ * ({@code getTickets}, public).
  */
 public final class Areas {
+    //? if >=26.1 {
+    /*// The loading-only ticket type; the loader registers it under TICKET_ID before the game freezes registries.
+    public static final TicketType TICKET = new TicketType(TicketType.NO_TIMEOUT, TicketType.FLAG_LOADING);
+    public static final ResourceLocation TICKET_ID = ResourceLocation.fromNamespaceAndPath(Almighty.ID, "area");
+    *///?} else {
     private static final TicketType<Long> TICKET = TicketType.create("almighty", Long::compare);
+    //?}
     /** Region ticket radius: 0 means level 33, a full chunk without ticking. */
     private static final int RADIUS = 0;
     private static final Logger LOG = LogUtils.getLogger();
+    //? if <26.1 {
     /** Vanilla ticket queue; if the field is unavailable, every ticket is considered accepted (refusals are not checked). */
     private static final Field TICKETS = ticketsField();
+    //?}
     static final int RELEASE_PER_TICK = 64;
     /** Neighbor ring around the lease rectangle, in chunks. */
     static final int MARGIN = 1;
@@ -123,7 +143,7 @@ public final class Areas {
             int n = 0;
             for (int x = minX; x <= maxX; x++) {
                 for (int z = minZ; z <= maxZ; z++) {
-                    if (set.contains(ChunkPos.asLong(x, z)) && !(unready && level.getChunkSource().getChunkNow(x, z) != null)) n++;
+                    if (set.contains(Mc.chunkKey(x, z)) && !(unready && level.getChunkSource().getChunkNow(x, z) != null)) n++;
                 }
             }
             return n;
@@ -146,7 +166,7 @@ public final class Areas {
             JsonObject out = new JsonObject();
             out.addProperty("id", id);
             out.addProperty("owner", owner);
-            out.addProperty("dimension", level.dimension().location().toString());
+            out.addProperty("dimension", Mc.id(level.dimension()).toString());
             JsonArray from = new JsonArray();
             from.add(minX + MARGIN);
             from.add(minZ + MARGIN);
@@ -192,7 +212,7 @@ public final class Areas {
         long fresh = 0;
         if (area <= maxChunks) {
             for (int x = minX; x <= maxX; x++) {
-                for (int z = minZ; z <= maxZ; z++) if (!counts.containsKey(ChunkPos.asLong(x, z))) fresh++;
+                for (int z = minZ; z <= maxZ; z++) if (!counts.containsKey(Mc.chunkKey(x, z))) fresh++;
             }
         }
         if (area > maxChunks || held() + fresh > maxChunks) {
@@ -202,15 +222,23 @@ public final class Areas {
         LongLinkedOpenHashSet queue = releasing.computeIfAbsent(level, l -> new LongLinkedOpenHashSet());
         LongOpenHashSet no = refused.computeIfAbsent(level, l -> new LongOpenHashSet());
         ServerChunkCache chunks = level.getChunkSource();
+        //? if >=26.1 {
+        /*TicketStorage tickets = chunks.getDataStorage().get(TicketStorage.TYPE);
+        *///?} else {
         Long2ObjectMap<SortedArraySet<Ticket<?>>> tickets = TICKETS == null ? null : tickets(chunks);
+        //?}
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
-                long chunk = ChunkPos.asLong(x, z);
+                long chunk = Mc.chunkKey(x, z);
                 int before = counts.addTo(chunk, 1);
                 // The ticket still exists if the chunk was waiting for release.
                 if (before == 0 && !queue.remove(chunk)) {
-                    chunks.addRegionTicket(TICKET, new ChunkPos(chunk), RADIUS, chunk);
+                    add(chunks, chunk);
+                    //? if >=26.1 {
+                    /*if (tickets != null && !has(tickets.getTickets(chunk))) no.add(chunk);
+                    *///?} else {
                     if (tickets != null && !has(tickets.get(chunk))) no.add(chunk);
+                    //?}
                 }
             }
         }
@@ -224,6 +252,28 @@ public final class Areas {
         return leases.get(id);
     }
 
+    private static void add(ServerChunkCache chunks, long chunk) {
+        //? if >=26.1 {
+        /*chunks.addTicketWithRadius(TICKET, Mc.chunkPos(chunk), RADIUS);
+        *///?} else {
+        chunks.addRegionTicket(TICKET, Mc.chunkPos(chunk), RADIUS, chunk);
+        //?}
+    }
+
+    private static void remove(ServerChunkCache chunks, long chunk) {
+        //? if >=26.1 {
+        /*chunks.removeTicketWithRadius(TICKET, Mc.chunkPos(chunk), RADIUS);
+        *///?} else {
+        chunks.removeRegionTicket(TICKET, Mc.chunkPos(chunk), RADIUS, chunk);
+        //?}
+    }
+
+    //? if >=26.1 {
+    /*private static boolean has(java.util.List<Ticket> set) {
+        for (Ticket t : set) if (t.getType() == TICKET) return true;
+        return false;
+    }
+    *///?} else {
     private static Field ticketsField() {
         try {
             return ua.zentix.almighty.platform.Reflect.field(DistanceManager.class, "tickets");
@@ -249,6 +299,7 @@ public final class Areas {
         }
         return false;
     }
+    //?}
 
     private void release(Lease lease) {
         if (lease.released) return;
@@ -259,7 +310,7 @@ public final class Areas {
         LongOpenHashSet no = refused.get(lease.level);
         for (int x = lease.minX; x <= lease.maxX; x++) {
             for (int z = lease.minZ; z <= lease.maxZ; z++) {
-                long chunk = ChunkPos.asLong(x, z);
+                long chunk = Mc.chunkKey(x, z);
                 if (counts.addTo(chunk, -1) == 1) {
                     counts.remove(chunk);
                     if (!no.remove(chunk)) queue.add(chunk);
@@ -280,7 +331,7 @@ public final class Areas {
             for (Iterator<Long> it = e.getValue().iterator(); it.hasNext() && budget > 0; budget--) {
                 long chunk = it.next();
                 it.remove();
-                chunks.removeRegionTicket(TICKET, new ChunkPos(chunk), RADIUS, chunk);
+                remove(chunks, chunk);
             }
         }
     }
@@ -293,12 +344,12 @@ public final class Areas {
             ServerChunkCache chunks = e.getKey().getChunkSource();
             LongOpenHashSet no = refused.get(e.getKey());
             for (long chunk : e.getValue().keySet()) {
-                if (no == null || !no.contains(chunk)) chunks.removeRegionTicket(TICKET, new ChunkPos(chunk), RADIUS, chunk);
+                if (no == null || !no.contains(chunk)) remove(chunks, chunk);
             }
         }
         for (Map.Entry<ServerLevel, LongLinkedOpenHashSet> e : releasing.entrySet()) {
             ServerChunkCache chunks = e.getKey().getChunkSource();
-            for (long chunk : e.getValue()) chunks.removeRegionTicket(TICKET, new ChunkPos(chunk), RADIUS, chunk);
+            for (long chunk : e.getValue()) remove(chunks, chunk);
         }
         refs.clear();
         releasing.clear();

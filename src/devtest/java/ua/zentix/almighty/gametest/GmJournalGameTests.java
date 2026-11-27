@@ -100,8 +100,9 @@ public final class GmJournalGameTests {
     public static void spreadOutChangesRevert(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);
         BlockPos near = h.absolutePos(new BlockPos(7, 2, 7)), far = near.offset(400, 0, 0);
-        // GameTest loads the far place itself (background loading cannot keep up with test ticks).
-        h.getLevel().getChunk(far);
+        // GameTest loads the far place and its neighbour ring itself (background loading cannot keep up with test ticks;
+        // the revert's lease waits for the ring).
+        for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) h.getLevel().getChunk((far.getX() >> 4) + i, (far.getZ() >> 4) + j);
         gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"setblock %d %d %d minecraft:stone\",\"setblock %d %d %d minecraft:stone\"]}",
                 near.getX(), near.getY(), near.getZ(), far.getX(), far.getY(), far.getZ())).join();
         long id = newest(gm);

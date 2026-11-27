@@ -9,7 +9,11 @@ import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+//? if >=26.1 {
+/*import net.minecraft.world.entity.animal.pig.Pig;
+*///?} else {
 import net.minecraft.world.entity.animal.Pig;
+//?}
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.neoforge.gametest.GameTestHolder;
@@ -19,6 +23,7 @@ import ua.zentix.almighty.Api;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.rules.Rules;
 
 import java.io.IOException;
@@ -194,7 +199,7 @@ public final class GmScriptGameTests {
                     "if (event.entity.type == EntityType.PIG && " + near + ") gm.commandAs(event.entity, 'tag @s add gm_seen')");
             h.spawn(EntityType.ZOMBIE, 4, 2, 4);
             Pig pig = h.spawn(EntityType.PIG, 6, 2, 6);
-            check(pig.getTags().contains("gm_seen"), "pig is missing tag: " + pig.getTags());
+            check(Mc.tags(pig).contains("gm_seen"), "pig is missing tag: " + Mc.tags(pig));
             h.assertEntityNotPresent(EntityType.ZOMBIE);
             JsonObject blocked = find(gm, after, "emit", e -> of(e, guard));
             check(blocked != null && blocked.getAsJsonObject("data").getAsJsonObject("blocked").get("type").getAsString().equals("minecraft:zombie"),
@@ -206,18 +211,18 @@ public final class GmScriptGameTests {
                     .filter(e -> e.getAsJsonObject().has("name") && e.getAsJsonObject().get("name").getAsString().equals("gm-test-tag")).count();
             check(named == 1 && described(gm, "gm-test-tag").get("rule").getAsLong() == replaced.get("rule").getAsLong(), "replacement by name: " + gm.rules().describe());
             Pig second = h.spawn(EntityType.PIG, 8, 2, 8);
-            check(second.getTags().contains("gm_second") && !second.getTags().contains("gm_seen"), "replaced rule: " + second.getTags());
+            check(Mc.tags(second).contains("gm_second") && !Mc.tags(second).contains("gm_seen"), "replaced rule: " + Mc.tags(second));
             drop(h, "gm-test-tag");
             Pig third = h.spawn(EntityType.PIG, 10, 2, 10);
-            check(third.getTags().isEmpty(), "removed rule fired: " + third.getTags());
+            check(Mc.tags(third).isEmpty(), "removed rule fired: " + Mc.tags(third));
 
             JsonObject query = new JsonObject();
-            query.addProperty("query", "BlockEvent.BreakEvent");
+            query.addProperty("query", Gt.BREAK_EVENT);
             JsonArray types = now(call(h, "event.types", query)).getAsJsonArray();
             boolean found = false;
             for (JsonElement e : types) {
                 JsonObject t = e.getAsJsonObject();
-                found |= t.get("event").getAsString().equals("BlockEvent.BreakEvent") && t.get("cancellable").getAsBoolean()
+                found |= t.get("event").getAsString().equals(Gt.BREAK_EVENT) && t.get("cancellable").getAsBoolean()
                         && t.get("mod").getAsString().equals("neoforge");
             }
             check(found, "event.types: " + types);
@@ -235,22 +240,22 @@ public final class GmScriptGameTests {
             // and the same event they trigger does not run the rule again.
             BlockPos gold = h.absolutePos(new BlockPos(2, 2, 12)), spot = h.absolutePos(new BlockPos(3, 2, 12));
             rule(h, "EntityJoinLevelEvent", "gm-test-nested", String.format(Locale.ROOT, """
-                    if (!event.entity.tags.contains('gm_nested') || (state.gmNested ?: 0) >= 3) return
+                    if (!event.entity.%7$s.contains('gm_nested') || (state.gmNested ?: 0) >= 3) return
                     state.gmNested = (state.gmNested ?: 0) + 1
                     gm.command('setblock %1$d %2$d %3$d gold_block', 'summon marker %4$d %5$d %6$d {Tags:["gm_nested"]}')
                     state.gmGold = event.level.getBlockState(new BlockPos(%1$d, %2$d, %3$d)).is(Blocks.GOLD_BLOCK)
-                    """, gold.getX(), gold.getY(), gold.getZ(), spot.getX(), spot.getY(), spot.getZ()));
+                    """, gold.getX(), gold.getY(), gold.getZ(), spot.getX(), spot.getY(), spot.getZ(), Gt.SCRIPT_TAGS));
             JsonObject summon = new JsonObject();
             JsonArray commands = new JsonArray();
             commands.add(String.format(Locale.ROOT, "summon marker %d %d %d {Tags:[\"gm_nested\"]}", spot.getX(), spot.getY(), spot.getZ()));
             summon.add("commands", commands);
             now(call(h, "command", summon));
-            int markers = h.getLevel().getEntities(EntityType.MARKER, e -> e.getTags().contains("gm_nested")).size();
+            int markers = h.getLevel().getEntities(EntityType.MARKER, e -> Mc.tags(e).contains("gm_nested")).size();
             check(Integer.valueOf(1).equals(gm.state().get("gmNested")) && Boolean.TRUE.equals(gm.state().get("gmGold")) && markers == 2,
                     "rule inside command: runs " + gm.state().get("gmNested") + ", gold " + gm.state().get("gmGold") + ", tags " + markers);
         } finally {
             drop(h, "gm-test-guard", "gm-test-tag", "gm-test-nested", "gm-test-full");
-            h.getLevel().getEntities(EntityType.MARKER, e -> e.getTags().contains("gm_nested")).forEach(Entity::discard);
+            h.getLevel().getEntities(EntityType.MARKER, e -> Mc.tags(e).contains("gm_nested")).forEach(Entity::discard);
         }
         h.succeed();
     }

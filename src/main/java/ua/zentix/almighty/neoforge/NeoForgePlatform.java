@@ -141,6 +141,16 @@ public final class NeoForgePlatform implements Platform {
     }
 
     @Override
+    public void playerLoaded(ServerPlayer player) {
+        //? if >=26.1 {
+        /*net.neoforged.neoforge.event.EventHooks.firePlayerLoadingEvent(player, player.level().getServer().getPlayerList(), player.getStringUUID());
+        *///?} else {
+        net.neoforged.neoforge.event.EventHooks.firePlayerLoadingEvent(player,
+                player.server.getWorldPath(net.minecraft.world.level.storage.LevelResource.PLAYER_DATA_DIR).toFile(), player.getStringUUID());
+        //?}
+    }
+
+    @Override
     public RegistryFriendlyByteBuf registryBuffer(ByteBuf buf, RegistryAccess access) {
         return new RegistryFriendlyByteBuf(buf, access, ConnectionType.NEOFORGE);
     }

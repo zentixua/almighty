@@ -12,6 +12,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.MapColor;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.work.Budget;
 import ua.zentix.almighty.world.Dims;
 
@@ -85,7 +86,7 @@ public final class MapView extends View {
             north[px] = Double.NaN;
             return ((px / 4 + py / 4) & 1) == 0 ? 0x303030 : 0x484848;
         }
-        int min = level.getMinBuildHeight();
+        int min = Mc.minBuildHeight(level);
         int y = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x & 15, z & 15) + 1;
         if (below != null) y = Math.min(y, below + 1);
         BlockState state;
@@ -142,7 +143,7 @@ public final class MapView extends View {
         JsonArray markers = new JsonArray();
         int n = 0;
         for (ServerPlayer p : level.players()) {
-            if (marker(p.getGameProfile().getName(), "player", p.getBlockX(), p.getBlockZ(), MARKERS[n % MARKERS.length], markers)) n++;
+            if (marker(Mc.name(p.getGameProfile()), "player", p.getBlockX(), p.getBlockZ(), MARKERS[n % MARKERS.length], markers)) n++;
         }
         for (Mark m : marks) {
             if (marker(m.label(), "mark", m.x(), m.z(), MARKERS[n % MARKERS.length], markers)) n++;

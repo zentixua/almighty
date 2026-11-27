@@ -115,7 +115,16 @@ public final class ImmersiveAircraftDriver implements VehicleDriver {
         float collision = (float) (error - (v.verticalCollision ? Math.abs(v.getGravity()) : 0.0)) - 0.05F;
         if (collision <= 0.0F) return;
         float repeat = 1.0F - (v.getHurtTime() + 1) / 10.0F;
-        if (repeat > 1.0E-4F) new CollisionMessage(collision * repeat * repeat).receiveServer(pilot);
+        if (repeat > 1.0E-4F) receive(new CollisionMessage(collision * repeat * repeat), pilot);
+    }
+
+    /** A client message handled as the server would on receiving it from the pilot. */
+    private static void receive(immersive_aircraft.cobalt.network.Message message, ServerPlayer pilot) {
+        //? if >=26.1 {
+        /*message.receive(pilot);
+        *///?} else {
+        message.receiveServer(pilot);
+        //?}
     }
 
     @Override
@@ -134,13 +143,13 @@ public final class ImmersiveAircraftDriver implements VehicleDriver {
                 warnedAt = v.tickCount;
                 return "in the air: press again within a second to dismount";
             }
-            new CommandMessage(CommandMessage.Key.DISMOUNT, v.getDeltaMovement()).receiveServer(pilot);
+            receive(new CommandMessage(CommandMessage.Key.DISMOUNT, v.getDeltaMovement()), pilot);
             pilot.setJumping(false);
             return "dismounted";
         }
         if (key.equals(BOOST)) {
             if (!v.canBoost()) return "boost unavailable: no rocket in the slot, or the boost is already running";
-            new CommandMessage(CommandMessage.Key.BOOST, v.getDeltaMovement()).receiveServer(pilot);
+            receive(new CommandMessage(CommandMessage.Key.BOOST, v.getDeltaMovement()), pilot);
             return "boost started";
         }
         return null;

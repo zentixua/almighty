@@ -12,6 +12,7 @@ import ua.zentix.almighty.bridge.Agents;
 import ua.zentix.almighty.bridge.Bridge;
 import ua.zentix.almighty.mcp.signin.SignIn;
 import ua.zentix.almighty.mcp.signin.SignInEndpoints;
+import ua.zentix.almighty.platform.Mc;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -101,7 +102,7 @@ public final class Mcp {
         if (now - last < 30_000 || !lastNotice.compareAndSet(last, now)) return;
         server.execute(() -> {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-                if (server.getProfilePermissions(player.getGameProfile()) >= 4) {
+                if (Mc.opLevel(server, player.getGameProfile()) >= 4) {
                     player.sendSystemMessage(Component.literal("[Almighty] " + text).withStyle(ChatFormatting.GOLD));
                 }
             }

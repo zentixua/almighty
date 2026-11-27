@@ -24,16 +24,22 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
-import net.minecraft.server.players.UserWhiteListEntry;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+//? if >=26.1 {
+/*import net.minecraft.world.entity.animal.equine.Horse;
+import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.animal.pig.Pig;
+import net.minecraft.world.entity.vehicle.boat.Boat;
+*///?} else {
 import net.minecraft.world.entity.animal.horse.Horse;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.animal.Pig;
 import net.minecraft.world.entity.vehicle.Boat;
+//?}
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -54,6 +60,7 @@ import ua.zentix.almighty.bot.BotPlayer;
 import ua.zentix.almighty.bot.Bots;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.script.ScriptApi;
 
 import javax.imageio.ImageIO;
@@ -172,7 +179,7 @@ public final class GmBotGameTests {
                             "sprinting east for 20 ticks: " + start + " → " + end + ", on ground " + q.onGround() + ", mode " + q.gameMode.getGameModeForPlayer()
                                     + ", underfoot at start " + q.level().getBlockState(BlockPos.containing(start).below()) + ", at end " + q.level().getBlockState(BlockPos.containing(end))
                                     + ", sprint " + q.isSprinting() + ", program " + walk.join());
-                    check(bot.player().getFoodData().getExhaustionLevel() > 0, "sprinting does not consume food");
+                    check(Gt.exhaustion(bot.player()) > 0, "sprinting does not consume food");
                     leave(h, "GmTestWalker");
                     check(h.getLevel().getServer().getPlayerList().getPlayerByName("GmTestWalker") == null, "bot remains in the player list");
                     check(hasEvent(h, after, "join", "player", "GmTestWalker") && hasEvent(h, after, "leave", "player", "GmTestWalker"), "join and leave in the feed");
@@ -285,7 +292,7 @@ public final class GmBotGameTests {
     public static void botUsesChest(GameTestHelper h) {
         BlockPos chest = new BlockPos(12, GROUND, 10);
         h.setBlock(chest, Blocks.CHEST);
-        ChestBlockEntity be = h.getBlockEntity(chest);
+        ChestBlockEntity be = Gt.blockEntity(h, chest, ChestBlockEntity.class);
         be.setItem(0, new ItemStack(Items.DIAMOND, 3));
         Bot bot = spawn(h, "GmTestLooter", 10.5, 10.5, ",\"gamemode\":\"survival\"");
         CompletableFuture<JsonElement> open = act(h, "GmTestLooter", "[{\"click\":\"use\",\"at\":" + block(h, 12, GROUND, 10) + "}]");
@@ -347,7 +354,7 @@ public final class GmBotGameTests {
     public static void botDiesAndRespawns(GameTestHelper h) {
         Bot bot = spawn(h, "GmTestPhoenix", 10.5, 10.5, ",\"gamemode\":\"survival\"");
         ServerPlayer first = bot.player();
-        first.hurt(first.damageSources().genericKill(), Float.MAX_VALUE);
+        Gt.hurt(first, first.damageSources().genericKill(), Float.MAX_VALUE);
         AtomicReference<CompletableFuture<JsonElement>> walk = new AtomicReference<>();
         AtomicReference<Vec3> start = new AtomicReference<>();
         h.startSequence()
@@ -356,6 +363,11 @@ public final class GmBotGameTests {
                     check(bot.online(), "bot left after death");
                     // The bot's class controls vehicles; respawn (a new entity) must retain that class.
                     check(first instanceof BotPlayer && bot.player() instanceof BotPlayer, "bot class after respawn: " + bot.player().getClass().getName());
+                    // 26.x keeps no spawn chunks loaded: load the respawn point now, as GameTest does elsewhere (the bot waits for it).
+                    //? if >=26.1 {
+                    /*int rx = bot.player().getBlockX() >> 4, rz = bot.player().getBlockZ() >> 4;
+                    for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) bot.player().level().getChunk(rx + i, rz + j);
+                    *///?}
                     start.set(bot.player().position());
                     walk.set(act(h, "GmTestPhoenix", "[{\"hold\":\"forward\"},{\"wait\":10},{\"release\":\"forward\"}]"));
                 })
@@ -398,11 +410,15 @@ public final class GmBotGameTests {
         Bot bot = spawn(h, "GmTestRider", 10.5, 10.5, ",\"gamemode\":\"survival\"");
         Horse horse = h.spawn(EntityType.HORSE, new Vec3(10.5, GROUND, 10.5));
         horse.setTamed(true);
-        horse.equipSaddle(new ItemStack(Items.SADDLE), null);
+        Gt.saddle(horse);
         horse.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.3);
         horse.getAttribute(Attributes.JUMP_STRENGTH).setBaseValue(0.7);
         horse.setYRot(-90);
-        check(bot.player().startRiding(horse, true), "did not mount the horse");
+        // 26.x: mounting turns the rider to the horse's view (AbstractHorse.addPassenger): its head as of last tick,
+        // which a horse spawned this tick has not turned yet.
+        //? if >=26.1
+        /*horse.yHeadRotO = horse.yHeadRot = horse.getYRot();*/
+        check(Gt.ride(bot.player(), horse), "did not mount the horse");
         Vec3 start = horse.position();
         CompletableFuture<JsonElement> ride = act(h, "GmTestRider", "[{\"hold\":\"forward\"},{\"wait\":20},{\"release\":\"all\"}]");
         AtomicReference<CompletableFuture<JsonElement>> jump = new AtomicReference<>();
@@ -443,9 +459,9 @@ public final class GmBotGameTests {
             }
         }
         Bot bot = spawn(h, "GmTestRower", 8.5, 10.5, ",\"gamemode\":\"survival\"");
-        Boat boat = h.spawn(EntityType.BOAT, new Vec3(8.5, GROUND + 0.5, 10.5));
+        Boat boat = h.spawn(Gt.BOAT, new Vec3(8.5, GROUND + 0.5, 10.5));
         boat.setYRot(-90);
-        check(bot.player().startRiding(boat, true), "did not board the boat");
+        check(Gt.ride(bot.player(), boat), "did not board the boat");
         CompletableFuture<JsonElement> row = act(h, "GmTestRower", "[{\"hold\":\"forward\"},{\"wait\":60}]");
         AtomicReference<Vec3> at = new AtomicReference<>();
         AtomicReference<Float> yaw = new AtomicReference<>();
@@ -471,6 +487,34 @@ public final class GmBotGameTests {
     }
 
     /**
+     * A bot that leaves while riding comes back in its vehicle (saved with its player data), as a player does: the
+     * vehicle leaves with the bot and returns with it; it is never lost.
+     */
+    @GameTest(template = "floor", batch = "gm_bot_return", timeoutTicks = 200, skyAccess = true)
+    public static void botReturnsInItsBoat(GameTestHelper h) {
+        Bot bot = spawn(h, "GmTestReturner", 8.5, 10.5, ",\"gamemode\":\"survival\"");
+        Boat boat = h.spawn(Gt.BOAT, new Vec3(8.5, GROUND + 0.5, 10.5));
+        check(Gt.ride(bot.player(), boat), "did not board the boat");
+        java.util.UUID first = boat.getUUID();
+        h.startSequence()
+                .thenExecuteAfter(2, () -> {
+                    leave(h, "GmTestReturner");
+                    check(boat.isRemoved(), "the boat stayed when its rider left");
+                    // Without a position: the bot comes back where it was saved (a teleport would dismount it).
+                    JsonObject r = now(call(h, "bot.spawn", params("{\"name\":\"GmTestReturner\",\"gamemode\":\"survival\"}"))).getAsJsonObject();
+                    check(r.get("bot").getAsBoolean(), "bot.spawn: " + r);
+                })
+                .thenWaitUntil(() -> {
+                    Bot back = gm(h).bots().find("GmTestReturner");
+                    check(back != null && back.online(), "bot did not come back");
+                    check(back.player().getVehicle() instanceof Boat b && b.getUUID().equals(first),
+                            "came back without its boat: " + back.player().getVehicle());
+                })
+                .thenExecute(() -> leave(h, "GmTestReturner"))
+                .thenSucceed();
+    }
+
+    /**
      * Immersive Aircraft plane: a creative bot (no fuel needed) raises throttle with jump, and the plane rolls
      * east; sneak lowers throttle and brakes; the IA dismount key dismounts on the ground.
      */
@@ -481,7 +525,7 @@ public final class GmBotGameTests {
         Bot bot = spawn(h, "GmTestPilot", 8.5, 10.5, ",\"gamemode\":\"creative\"");
         Entity plane = h.spawn(type, new Vec3(8.5, GROUND, 10.5));
         plane.setYRot(-90);
-        check(bot.player().startRiding(plane, true) && plane.getControllingPassenger() == bot.player(), "did not board the plane as pilot");
+        check(Gt.ride(bot.player(), plane) && plane.getControllingPassenger() == bot.player(), "did not board the plane as pilot");
         JsonObject vehicle = bot.describe(0).getAsJsonObject("vehicle");
         check(vehicle != null && vehicle.get("type").getAsString().equals("immersive_aircraft:biplane") && vehicle.get("driver").getAsBoolean()
                 && vehicle.getAsJsonArray("keys").toString().contains("key.immersive_aircraft.dismount"), "vehicle in bot state: " + vehicle);
@@ -520,7 +564,7 @@ public final class GmBotGameTests {
         check(type != null, "GameTest run is missing Immersive Aircraft");
         Bot bot = spawn(h, "GmTestJumper", 8.5, 10.5, ",\"gamemode\":\"creative\"");
         Entity first = h.spawn(type, new Vec3(8.5, GROUND + 8, 10.5));
-        check(bot.player().startRiding(first, true) && !first.onGround(), "did not board the airborne plane");
+        check(Gt.ride(bot.player(), first) && !first.onGround(), "did not board the airborne plane");
         CompletableFuture<JsonElement> twice = act(h, "GmTestJumper",
                 "[{\"press\":\"key.immersive_aircraft.dismount\"},{\"press\":\"key.immersive_aircraft.dismount\"}]");
         AtomicReference<Entity> second = new AtomicReference<>();
@@ -533,7 +577,7 @@ public final class GmBotGameTests {
                             && results.get(1).getAsJsonObject().get("result").getAsString().equals("dismounted") && !bot.player().isPassenger(),
                             "two airborne presses: " + results + ", in plane " + bot.player().isPassenger());
                     second.set(h.spawn(type, new Vec3(20.5, GROUND + 8, 10.5)));
-                    check(bot.player().startRiding(second.get(), true) && !second.get().onGround(), "did not board the second airborne plane");
+                    check(Gt.ride(bot.player(), second.get()) && !second.get().onGround(), "did not board the second airborne plane");
                     once.set(act(h, "GmTestJumper", "[{\"press\":\"key.immersive_aircraft.dismount\"}]"));
                 })
                 .thenWaitUntil(() -> finished(once.get()))
@@ -567,14 +611,15 @@ public final class GmBotGameTests {
         // needs two more ready chunks around it): background generation cannot keep up with GameTest ticks, so the world
         // would not tick the airship for a long time, and IA's engine spins up in the world tick. Platform x is 0..63, its chunks end at most at 79;
         // no platforms farther east yet (placed eastward and southward in order).
-        ChunkPos path = new ChunkPos(h.absolutePos(new BlockPos(80, GROUND, 10)));
-        for (int x = path.x; x <= path.x + 40; x++) for (int z = path.z - 4; z <= path.z + 4; z++) level.getChunk(x, z);
+        ChunkPos path = Gt.chunk(h.absolutePos(new BlockPos(80, GROUND, 10)));
+        int px = Mc.chunkX(path), pz = Mc.chunkZ(path);
+        for (int x = px; x <= px + 40; x++) for (int z = pz - 4; z <= pz + 4; z++) level.getChunk(x, z);
         // The airship is centered in a chunk: IA seats the pilot half a block to the side; if the bot were in a neighboring chunk,
         // it would never world-tick the airship (and the engine would not spin up); climb first, then fly straight west.
         BlockPos base = h.absolutePos(BlockPos.ZERO), at = h.absolutePos(new BlockPos(680, GROUND, 10));
         Entity ship = h.spawn(type, new Vec3((at.getX() & ~15) + 8.5 - base.getX(), GROUND + 14, (at.getZ() & ~15) + 8.5 - base.getZ()));
         ship.setYRot(90);
-        check(bot.player().startRiding(ship, true) && ship.getControllingPassenger() == bot.player(), "did not board the airship as pilot");
+        check(Gt.ride(bot.player(), ship) && ship.getControllingPassenger() == bot.player(), "did not board the airship as pilot");
         Vec3 start = ship.position();
         act(h, "GmTestCaptain", "[{\"hold\":\"jump\"},{\"hold\":\"forward\"},{\"wait\":300},{\"release\":\"jump\"},{\"wait\":6000}]");
         AtomicReference<String> broken = new AtomicReference<>();
@@ -584,7 +629,7 @@ public final class GmBotGameTests {
                 .thenIdle(1)
                 .thenWaitUntil(() -> {
                     if (broken.get() == null) broken.set(offSeat(bot.player(), ship));
-                    if (!level.getForcedChunks().contains(ship.chunkPosition().toLong())) {
+                    if (!Gt.forced(level, ship.chunkPosition())) {
                         outside[0]++;
                         if (ship.tickCount != lastTick[0]) ticked[0]++;
                     }
@@ -610,6 +655,20 @@ public final class GmBotGameTests {
         return null;
     }
 
+    //? if >=26.1 {
+    /*// IA 26.x messages are not payloads themselves: its NeoForge network handler wraps each one (createPayload), as its client does.
+    // (Object: test classes are also on the unit-test mod classpath, where Immersive Aircraft is absent.)
+    private static net.minecraft.network.protocol.common.custom.CustomPacketPayload iaPayload(Object message) {
+        try {
+            Object handler = ua.zentix.almighty.platform.Reflect.field(immersive_aircraft.cobalt.network.NetworkHandler.class, "INSTANCE").get(null);
+            return (net.minecraft.network.protocol.common.custom.CustomPacketPayload) ua.zentix.almighty.platform.Reflect
+                    .method(handler.getClass(), "createPayload", immersive_aircraft.cobalt.network.Message.class).invoke(handler, message);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Immersive Aircraft payload: " + e, e);
+        }
+    }
+
+    *///?}
     /**
      * Client mod packet: the bot sends Immersive Aircraft dismount bytes like the IA client; the mod dismounts it
      * through its own handler. Unknown packets and trailing bytes are step errors.
@@ -620,7 +679,11 @@ public final class GmBotGameTests {
         check(type != null, "GameTest run is missing Immersive Aircraft");
         // Bytes as written by the IA client: serverbound packet codec, id supplied separately.
         RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), h.getLevel().registryAccess(), ConnectionType.NEOFORGE);
+        //? if >=26.1 {
+        /*ServerboundCustomPayloadPacket.STREAM_CODEC.encode(buf, new ServerboundCustomPayloadPacket(iaPayload(new CommandMessage(CommandMessage.Key.DISMOUNT, Vec3.ZERO))));
+        *///?} else {
         ServerboundCustomPayloadPacket.STREAM_CODEC.encode(buf, new ServerboundCustomPayloadPacket(new CommandMessage(CommandMessage.Key.DISMOUNT, Vec3.ZERO)));
+        //?}
         String id = buf.readResourceLocation().toString();
         byte[] body = new byte[buf.readableBytes()];
         buf.readBytes(body);
@@ -629,7 +692,7 @@ public final class GmBotGameTests {
         byte[] longer = Arrays.copyOf(body, body.length + 1);
         Bot bot = spawn(h, "GmTestCourier", 8.5, 10.5, ",\"gamemode\":\"creative\"");
         Entity plane = h.spawn(type, new Vec3(8.5, GROUND, 10.5));
-        check(bot.player().startRiding(plane, true), "did not board the plane");
+        check(Gt.ride(bot.player(), plane), "did not board the plane");
         CompletableFuture<JsonElement> unknown = act(h, "GmTestCourier", "[{\"payload\":\"almighty:no_such_payload\",\"data\":\"\"}]");
         AtomicReference<CompletableFuture<JsonElement>> extra = new AtomicReference<>(), send = new AtomicReference<>();
         h.startSequence()
@@ -674,11 +737,17 @@ public final class GmBotGameTests {
         }
         check(zombieSeen, "zombie in front of wall is hidden: " + quick.get("entities"));
         check(pigHidden, "pig behind wall is visible: " + quick.get("entities"));
-        CompletableFuture<JsonElement> picture = call(h, "see", params("{\"name\":\"GmTestWatcher\",\"width\":64,\"height\":36}"));
+        // The picture is lit by the world's light: wait until the light engine has lit the air in front of the wall (26.x
+        // places tests in freshly generated chunks, where light can lag the structure by a few ticks).
+        BlockPos face = h.absolutePos(new BlockPos(15, GROUND + 2, 10));
+        AtomicReference<CompletableFuture<JsonElement>> shot = new AtomicReference<>();
         h.startSequence()
+                .thenWaitUntil(() -> check(h.getLevel().getBrightness(net.minecraft.world.level.LightLayer.SKY, face) == 15,
+                        "sky light in front of the wall: " + h.getLevel().getBrightness(net.minecraft.world.level.LightLayer.SKY, face)))
+                .thenExecute(() -> shot.set(call(h, "see", params("{\"name\":\"GmTestWatcher\",\"width\":64,\"height\":36}"))))
                 .thenWaitUntil(() -> eyeEnded(h))
                 .thenExecute(() -> {
-                    JsonObject r = settled(picture);
+                    JsonObject r = settled(shot.get());
                     check(r.get("state").getAsString().equals("done"), "snapshot: " + r);
                     BufferedImage img = decode(r.get("png_base64").getAsString());
                     int k = r.getAsJsonObject("legend").get("pixels_per_cell").getAsInt();
@@ -790,21 +859,21 @@ public final class GmBotGameTests {
     public static void disguiseNeedsOwnerSwitch(GameTestHelper h) {
         MinecraftServer server = h.getLevel().getServer();
         GameProfile friend = new GameProfile(UUID.randomUUID(), "GmTestFriend");
-        server.getPlayerList().getWhiteList().add(new UserWhiteListEntry(friend));
+        Gt.whitelist(server, friend, true);
         boolean disguise = GmConfig.BOTS_ALLOW_DISGUISE.get();
         ServerPlayer real = null;
         try {
             check(refused(h, "{\"name\":\"GmTestFriend\"}"), "bot took a whitelisted player name");
             check(refused(h, "{\"name\":\"GmTestGhost\",\"marker\":false}"), "bot logged in unmarked");
             // A server player skin's textures property (as Mojang services provide it): owner in profileName/profileId.
-            String skin = Base64.getEncoder().encodeToString(("{\"profileId\":\"" + UndashedUuid.toString(friend.getId())
+            String skin = Base64.getEncoder().encodeToString(("{\"profileId\":\"" + UndashedUuid.toString(Mc.id(friend))
                     + "\",\"profileName\":\"Someone\",\"textures\":{}}").getBytes(StandardCharsets.UTF_8));
             check(refused(h, "{\"name\":\"GmTestGhost\",\"skin\":{\"value\":\"" + skin + "\"}}"), "bot took a whitelisted player skin");
             check(refused(h, "{\"name\":\"GmTestGhost\",\"skin\":{\"value\":\"не base64\"}}"), "unreadable skin property accepted");
             GmConfig.BOTS_ALLOW_DISGUISE.set(true);
             Bot bot = spawn(h, "GmTestFriend", 10.5, 10.5, ",\"marker\":false");
             check(bot.player().getTabListDisplayName() == null, "disguised bot marker: " + bot.player().getTabListDisplayName());
-            check(!bot.player().getUUID().equals(friend.getId()), "bot took a player UUID");
+            check(!bot.player().getUUID().equals(Mc.id(friend)), "bot took a player UUID");
             // A real player with the same name logs in: the bot leaves.
             GameProfile profile = new GameProfile(UUID.randomUUID(), "GmTestFriend");
             CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
@@ -814,10 +883,13 @@ public final class GmBotGameTests {
             // Client with all server mods: mods send their packets on login (Immersive Aircraft).
             NetworkRegistry.configureMockConnection(connection);
             server.getPlayerList().placeNewPlayer(connection, real, cookie);
+            // 26.x: as the client's ServerboundPlayerLoadedPacket.
+            //? if >=26.1
+            /*real.connection.markClientLoaded();*/
             check(gm(h).bots().find("GmTestFriend") == null && !bot.online(), "bot did not yield the name to a player");
         } finally {
             GmConfig.BOTS_ALLOW_DISGUISE.set(disguise);
-            server.getPlayerList().getWhiteList().remove(friend);
+            Gt.whitelist(server, friend, false);
             if (real != null) server.getPlayerList().remove(real);
             leave(h, "GmTestFriend");
             leave(h, "GmTestGhost");

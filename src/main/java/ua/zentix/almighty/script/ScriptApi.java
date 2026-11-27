@@ -13,6 +13,7 @@ import net.minecraft.world.phys.Vec3;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.act.CommandRunner;
 import ua.zentix.almighty.bot.Bot;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.world.Ship;
 import ua.zentix.almighty.world.Ships;
 
@@ -42,7 +43,7 @@ public final class ScriptApi {
 
     public Object command(List<String> commands) {
         ServerLevel level = server.overworld();
-        return Json.toJava(CommandRunner.run(server, level, Vec3.atBottomCenterOf(level.getSharedSpawnPos()), null, commands, quiet));
+        return Json.toJava(CommandRunner.run(server, level, Vec3.atBottomCenterOf(Mc.spawnPos(level)), null, commands, quiet));
     }
 
     /** Commands as an entity: {@code @s}, position, rotation and dimension belong to it. */

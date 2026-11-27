@@ -13,7 +13,9 @@ import ua.zentix.almighty.bridge.Bridge;
 import ua.zentix.almighty.bridge.Dispatch;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.feed.Feed;
+import ua.zentix.almighty.feed.Inbox;
 import ua.zentix.almighty.mcp.Mcp;
+import ua.zentix.almighty.policy.Tickets;
 import ua.zentix.almighty.policy.DenyList;
 import ua.zentix.almighty.rules.Rules;
 import ua.zentix.almighty.work.Job;
@@ -55,6 +57,8 @@ public final class GmServer {
     private final Rules rules;
     private final Bots bots;
     private final Dispatch dispatch;
+    private final Tickets tickets = new Tickets(System::currentTimeMillis);
+    private final Inbox inbox;
     private Bridge bridge;
     private Mcp mcp;
     private long lastTick;
@@ -74,6 +78,7 @@ public final class GmServer {
         this.rules = new Rules(server, NeoForge.EVENT_BUS, feed, state,
                 server.getWorldPath(LevelResource.ROOT).resolve("almighty").resolve("rules.json"));
         this.bots = new Bots(this);
+        this.inbox = new Inbox(server, feed, tickets, () -> bridge == null ? null : bridge.agents());
         this.dispatch = new Dispatch(Api.methods(this), List.of((caller, method, params) -> DenyList.check(method, params)),
                 Api::readOnly);
     }
@@ -85,6 +90,7 @@ public final class GmServer {
     }
 
     static GmServer start(MinecraftServer server, Path configDir) {
+        ua.zentix.almighty.policy.Identity.mode(ua.zentix.almighty.policy.Identity.Mode.parse(GmConfig.FEED_IDENTITY.get()));
         GmServer gm = new GmServer(server);
         current = gm;
         gm.rules.load();
@@ -142,6 +148,7 @@ public final class GmServer {
         // Jobs count too: calls answered between ticks get only what this tick left.
         usedThisTick += System.nanoTime() - jobsStart;
         areas.tick(server.getTickCount());
+        inbox.tick(server.getTickCount());
     }
 
     /** The GM budget per tick; a quarter of it while the lag guard holds, so builds and views slow down but go on. */
@@ -216,6 +223,15 @@ public final class GmServer {
 
     public Bots bots() {
         return bots;
+    }
+
+    public Inbox inbox() {
+        return inbox;
+    }
+
+    /** Request tickets minted for addressed messages. */
+    public Tickets tickets() {
+        return tickets;
     }
 
     /** The method table behind every transport (the single choke point for checks). */

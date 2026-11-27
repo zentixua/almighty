@@ -13,6 +13,7 @@ import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.AdvancementEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import ua.zentix.almighty.GmServer;
+import ua.zentix.almighty.policy.Identity;
 
 import java.util.Locale;
 import java.util.Set;
@@ -41,7 +42,9 @@ public final class FeedListeners {
     private static void onChat(ServerChatEvent e) {
         JsonObject d = player(e.getPlayer());
         d.addProperty("text", e.getRawText());
-        add(e.getPlayer(), "chat", d);
+        d.add("untrusted", Inbox.untrusted("text"));
+        GmServer gm = GmServer.of(e.getPlayer().server);
+        if (gm != null) gm.inbox().chat(e.getPlayer(), d, e.getRawText());
     }
 
     private static void onLogin(PlayerEvent.PlayerLoggedInEvent e) {
@@ -49,13 +52,18 @@ public final class FeedListeners {
     }
 
     private static void onLogout(PlayerEvent.PlayerLoggedOutEvent e) {
-        if (e.getEntity() instanceof ServerPlayer p) add(p, "leave", where(p));
+        if (!(e.getEntity() instanceof ServerPlayer p)) return;
+        add(p, "leave", where(p));
+        GmServer gm = GmServer.of(p.server);
+        if (gm != null) gm.inbox().left(p);
     }
 
     private static void onDeath(LivingDeathEvent e) {
         if (!(e.getEntity() instanceof ServerPlayer p)) return;
         JsonObject d = where(p);
         d.addProperty("message", e.getSource().getLocalizedDeathMessage(p).getString());
+        // Death messages carry names, which players choose (an item or a named mob).
+        d.add("untrusted", Inbox.untrusted("message", "killer"));
         Entity killer = e.getSource().getEntity();
         if (killer != null && killer != p) d.addProperty("killer", killer.getName().getString());
         add(p, "death", d);
@@ -87,12 +95,21 @@ public final class FeedListeners {
         if (PRIVATE.contains(root)) return;
         JsonObject d = player(p);
         d.addProperty("command", command);
+        d.add("untrusted", Inbox.untrusted("command"));
         add(p, "command", d);
     }
 
-    private static JsonObject player(Player p) {
+    /**
+     * Who: name, UUID, whether the identity is verified ({@link Identity}), Bedrock through Floodgate, and the client
+     * language (so the GM answers in it).
+     */
+    static JsonObject player(Player p) {
         JsonObject d = new JsonObject();
         d.addProperty("player", p.getGameProfile().getName());
+        d.addProperty("uuid", p.getUUID().toString());
+        d.addProperty("verified", Identity.verified(p.getUUID()));
+        if (Identity.bedrock(p.getUUID())) d.addProperty("bedrock", true);
+        if (p instanceof ServerPlayer sp) d.addProperty("lang", sp.clientInformation().language());
         // A GM bot is a player to everyone, but the GM needs to distinguish its actions from human actions.
         if (p instanceof ServerPlayer sp && GmServer.of(sp.server) instanceof GmServer gm && gm.bots().of(sp) != null) d.addProperty("bot", true);
         return d;

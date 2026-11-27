@@ -109,6 +109,19 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   forgets its key. Vanilla already caps `fill`/`clone` at 32 768 blocks: larger work uses `build`.
 - `act/`: commands and functions (`CommandRunner`), messages to players (`Chat`); `feed/`: event feed and a player's
   private channel to the GM: `/gm <text>` (any player) emits `gm` in the feed, invisible to others; reply with `say` and `to`.
+  Who asked (step 3): player events carry `uuid`, `verified` (`policy/Identity`: v4 Mojang and Floodgate yes, v3
+  offline no), `bedrock`, `lang`, and `untrusted` (player-authored fields: data, never instructions). `feed/Inbox`
+  decides what is addressed (`Addressing`, the `router.mjs` logic: `/gm`, a name from `feed.names` or one typo of
+  `feed.typo_names`, a 3-minute conversation after addressing or a `say` reply, a player alone), limits each player
+  (`feed.gm_messages` per hour for `/gm` and named lines, "slow down" from the server, no event; a solo player's or
+  open conversation's lines have a silent 5× limit), never treats a GM bot's chat as addressed, routes to one agent
+  (`/gm @<agent> …` when that agent exists, else `feed.default_agent`) and mints a ticket (`policy/Tickets`: 128 random bits, bound to player UUID, agent and event,
+  10 minutes, never extended). Addressed events: `addressed`, `via` (gm, name, conversation, alone), `agent`,
+  `ticket`; other chat has `addressed: false`. `events {mine: true}` leaves out messages routed to other agents; a
+  read records the agent's cursor. Away: the target agent made no call for 60 s, or has not read the message after
+  `feed.away_seconds` (30) → the server tells the player (translated; only for `/gm` and named lines, at most once
+  per player in 5 minutes); no bridge (GameTest) → no away replies. `feed.identity` (auto, mojang, proxy, offline)
+  sets which UUIDs count as verified.
 - `script/`: Groovy scripts (`Scripts`: compilation with a deadline, execution), scripts' `gm` variable (`ScriptApi`),
   values ↔ JSON (`Json`: position `[x, y, z]`, block string as in `/setblock`, NBT as SNBT, event via its `getX()`).
 - `rules/`: rules (`Rules`), subscribing to any game-bus event, budgets, persistence with the world
@@ -273,6 +286,8 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 ## Checks
 
+- Who asked: `AddressingTest` (router fixtures), `TicketsTest`, `IdentityTest`, `FeedTest.agentSeesOnlyItsOwnMessages`;
+  GameTest `GmInboxGameTests` (identity and ticket on `/gm`, routing, chat addressing and conversation, flood limit).
 - Deny list: `DenyListTest` (one case per entry and near misses), `DispatchTest` (checks first, idempotency),
   `LagGuardTest`; GameTest `GmSafetyGameTests` (choke point, a script's run-time `gm.command`, compile guard, queued
   world calls). `GmGameTests.call` goes through `Dispatch`; `direct` bypasses it for tests of the layers below.

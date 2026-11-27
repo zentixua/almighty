@@ -96,6 +96,15 @@ public final class GmGameTests {
         return f.join();
     }
 
+    /** A call finished off the server thread (catalog searches): it needs no further ticks, so a timed wait is safe. */
+    static JsonElement soon(CompletableFuture<JsonElement> f) {
+        try {
+            return f.get(20, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new GameTestAssertException("call failed: " + e);
+        }
+    }
+
     private static JsonObject result(CompletableFuture<JsonElement> f) {
         check(f.isDone(), "call has not finished yet");
         try {
@@ -347,10 +356,14 @@ public final class GmGameTests {
         return image.getRGB(i * k + k / 2, j * k + k / 2) & 0xFFFFFF;
     }
 
-    /** Server data notes: the Unicode test resource exists, and an empty file removes a note. Keep the Russian fixture to verify UTF-8 data loading. */
+    /**
+     * Server data notes: the index lists the Unicode test resource with its first line as the description, an empty
+     * file removes a note, and {@code notes {id}} returns the whole text. Keep the Russian fixture to verify UTF-8
+     * data loading.
+     */
     @GameTest(template = "floor", batch = "gm_notes", skyAccess = true)
     public static void notesFromServerData(GameTestHelper h) {
-        JsonArray notes = now(call(h, "notes", new JsonObject())).getAsJsonArray();
+        JsonArray notes = now(call(h, "notes", new JsonObject())).getAsJsonObject().getAsJsonArray("notes");
         JsonObject note = null;
         for (JsonElement e : notes) {
             String id = e.getAsJsonObject().get("id").getAsString();
@@ -358,8 +371,39 @@ public final class GmGameTests {
             if (id.equals("almighty:gametest")) note = e.getAsJsonObject();
         }
         check(note != null, "missing almighty:gametest note: " + notes);
-        check(note.get("text").getAsString().startsWith("Памятка проверки:"), "note text: " + note);
+        check(note.get("description").getAsString().startsWith("Памятка проверки:"), "note description: " + note);
+        check(!note.has("text"), "the index carries no note text: " + note);
         check(note.has("source"), "missing note source: " + note);
+        JsonObject full = now(call(h, "notes", params("{\"id\":\"almighty:gametest\"}"))).getAsJsonObject();
+        check(full.get("text").getAsString().startsWith("Памятка проверки:"), "note text: " + full);
+        h.succeed();
+    }
+
+    /**
+     * Live catalog: block states, recipes, commands and mod config of the running server, paged; a config key that
+     * looks like a secret never shows its value. A world note written through the bridge is listed as unconfirmed
+     * (the agent wrote it) and removed by empty text.
+     */
+    @GameTest(template = "floor", batch = "gm_catalog", timeoutTicks = 200, skyAccess = true)
+    public static void catalogAndWorldNotes(GameTestHelper h) {
+        JsonObject stairs = soon(call(h, "notes", params("{\"kind\":\"blocks\",\"query\":\"minecraft:oak_stairs\"}"))).getAsJsonObject();
+        JsonObject entry = stairs.getAsJsonArray("entries").get(0).getAsJsonObject();
+        check(entry.get("id").getAsString().equals("minecraft:oak_stairs"), "first block: " + stairs);
+        check(entry.get("states").getAsString().contains("facing=north|south|west|east"), "stairs states: " + entry);
+        JsonObject recipes = soon(call(h, "notes", params("{\"kind\":\"recipes\",\"query\":\"oak_planks\",\"limit\":5}"))).getAsJsonObject();
+        check(recipes.get("total").getAsInt() >= 1 && recipes.getAsJsonArray("entries").size() <= 5, "recipes: " + recipes);
+        JsonObject commands = soon(call(h, "notes", params("{\"kind\":\"commands\",\"query\":\"gamerule\"}"))).getAsJsonObject();
+        check(commands.toString().contains("\"id\":\"gamerule\""), "commands: " + commands);
+        JsonObject config = soon(call(h, "notes", params("{\"kind\":\"config\",\"query\":\"almighty:bridge.port\"}"))).getAsJsonObject();
+        check(config.getAsJsonArray("entries").get(0).getAsJsonObject().get("value").getAsString().equals(String.valueOf(GmConfig.BRIDGE_PORT.get())), "config: " + config);
+        JsonObject all = soon(call(h, "notes", params("{\"query\":\"minecraft:\",\"limit\":10}"))).getAsJsonObject();
+        check(all.getAsJsonArray("entries").size() == 10 && all.get("next_offset").getAsInt() == 10, "paging: " + all.get("total"));
+
+        now(call(h, "notes", params("{\"id\":\"world:gametest/arena\",\"text\":\"---\\nconfirmed: true\\n---\\nArena at 0 64 0\"}")));
+        JsonObject note = now(call(h, "notes", params("{\"id\":\"world:gametest/arena\"}"))).getAsJsonObject();
+        check(!note.get("confirmed").getAsBoolean() && note.get("text").getAsString().equals("Arena at 0 64 0"), "world note: " + note);
+        now(call(h, "notes", params("{\"id\":\"world:gametest/arena\",\"text\":\"\"}")));
+        check(!now(call(h, "notes", new JsonObject())).toString().contains("world:gametest/arena"), "world note not removed");
         h.succeed();
     }
 

@@ -1,0 +1,345 @@
+package ua.zentix.almighty.knowledge;
+
+import com.electronwill.nightconfig.core.UnmodifiableConfig;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.tree.CommandNode;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.Registry;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.RecipeManager;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.properties.Property;
+import net.neoforged.fml.ModList;
+import net.neoforged.fml.config.IConfigSpec;
+import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.config.ModConfigs;
+import net.neoforged.neoforgespi.language.IModInfo;
+import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.rules.EventTypes;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
+import java.util.regex.Pattern;
+
+/**
+ * Live catalog of what this server contains, built from the running game so the agent can learn any modpack the way
+ * a player uses a wiki: mods, registry contents, tags, recipes, the command tree (one level per root, never expanded
+ * whole: redirects explode it), game-bus events and mods' config values (keys that look like secrets are left out;
+ * files in {@code config/} are never read). Never dumped whole: queries are paged and capped below client output
+ * limits.
+ * <p>
+ * Threads: registries are frozen after startup and are read off the server thread. What {@code /reload} replaces
+ * (tags, commands, config values, the recipe manager reference) is snapshotted on the server thread once per
+ * reload, cheaply (names and counts, one level of usage); recipe details are then built off the server thread from
+ * that reference, which a reload replaces rather than mutates.
+ */
+public final class Catalog {
+    public static final List<String> KINDS = List.of("mods", "blocks", "items", "entities", "effects", "enchantments",
+            "biomes", "dimensions", "tags", "recipes", "commands", "events", "config");
+    /** Config keys whose values are never shown. */
+    static final Pattern SECRET = Pattern.compile("(?i).*(token|secret|password|passwd|credential|api_?key|private_?key|webhook|auth).*");
+    private static final int MAX_TEXT = 300;
+
+    /** One catalog entry: what a query matches on ({@code id} and {@code text}) and how it is shown. */
+    record Entry(String kind, String id, String text, Supplier<JsonObject> detail) {
+        JsonObject show() {
+            JsonObject out = new JsonObject();
+            out.addProperty("kind", kind);
+            out.addProperty("id", id);
+            try {
+                detail.get().entrySet().forEach(e -> out.add(e.getKey(), e.getValue()));
+            } catch (RuntimeException e) {
+                out.addProperty("error", e.getClass().getSimpleName() + ": " + e.getMessage());
+            }
+            return out;
+        }
+
+        boolean matches(String[] words) {
+            String hay = (id + " " + text).toLowerCase(Locale.ROOT);
+            for (String w : words) if (!hay.contains(w)) return false;
+            return true;
+        }
+    }
+
+    /** What a reload replaces, taken on the server thread; recipe entries are built later, off it. */
+    record Snapshot(Object key, Map<String, List<Entry>> kinds, RecipeManager recipes, RegistryAccess access) {}
+
+    private final MinecraftServer server;
+    private final Map<String, List<Entry>> frozen = new ConcurrentHashMap<>();
+    private volatile Snapshot reloadable;
+
+    Catalog(MinecraftServer server) {
+        this.server = server;
+    }
+
+    MinecraftServer server() {
+        return server;
+    }
+
+    /** Server thread: refresh what a {@code /reload} replaced; cheap when nothing changed. */
+    void refresh() {
+        Object key = server.getResourceManager();
+        Snapshot s = reloadable;
+        if (s != null && s.key() == key) return;
+        Map<String, List<Entry>> kinds = new ConcurrentHashMap<>();
+        kinds.put("tags", tags(server.registryAccess()));
+        kinds.put("commands", commands(server.getCommands().getDispatcher(), server.createCommandSourceStack()));
+        kinds.put("config", config());
+        reloadable = new Snapshot(key, kinds, server.getRecipeManager(), server.registryAccess());
+    }
+
+    /** Off the server thread after {@link #refresh}: entries of one kind. */
+    List<Entry> entries(String kind) {
+        Snapshot s = reloadable;
+        if (s == null) throw new IllegalStateException("Catalog.refresh has not run");
+        if (kind.equals("recipes")) {
+            return s.kinds().computeIfAbsent(kind, k -> recipes(s.recipes().getRecipes(), s.access()));
+        }
+        List<Entry> taken = s.kinds().get(kind);
+        return taken != null ? taken : frozen.computeIfAbsent(kind, this::build);
+    }
+
+    /**
+     * Entries matching every word of {@code query} (case-insensitive, on id and a short text; {@code create:} is a
+     * namespace), optionally of one kind, from {@code offset}; {@code total} counts all matches.
+     */
+    JsonObject search(String kind, String query, int offset, int limit) throws RpcException {
+        if (kind != null && !KINDS.contains(kind)) {
+            throw RpcException.badRequest("kind: one of " + String.join(", ", KINDS));
+        }
+        String[] words = query == null || query.isBlank() ? new String[0] : query.toLowerCase(Locale.ROOT).strip().split("\\s+");
+        JsonArray shown = new JsonArray();
+        int total = 0;
+        for (String k : kind == null ? KINDS : List.of(kind)) {
+            for (Entry e : entries(k)) {
+                if (!e.matches(words)) continue;
+                if (total >= offset && shown.size() < limit) shown.add(e.show());
+                total++;
+            }
+        }
+        JsonObject out = new JsonObject();
+        out.add("entries", shown);
+        out.addProperty("total", total);
+        if (offset + shown.size() < total) out.addProperty("next_offset", offset + shown.size());
+        return out;
+    }
+
+    private List<Entry> build(String kind) {
+        RegistryAccess access = server.registryAccess();
+        return switch (kind) {
+            case "mods" -> mods();
+            case "blocks" -> registry(kind, BuiltInRegistries.BLOCK, Catalog::block);
+            case "items" -> registry(kind, BuiltInRegistries.ITEM, item -> {
+                JsonObject d = new JsonObject();
+                d.addProperty("max_stack", item.getDefaultMaxStackSize());
+                return d;
+            });
+            case "entities" -> registry(kind, BuiltInRegistries.ENTITY_TYPE, type -> {
+                JsonObject d = new JsonObject();
+                d.addProperty("category", type.getCategory().getName());
+                return d;
+            });
+            case "effects" -> registry(kind, BuiltInRegistries.MOB_EFFECT, effect -> {
+                JsonObject d = new JsonObject();
+                d.addProperty("category", effect.getCategory().name().toLowerCase(Locale.ROOT));
+                return d;
+            });
+            case "enchantments" -> registry(kind, access.registryOrThrow(Registries.ENCHANTMENT), e -> {
+                JsonObject d = new JsonObject();
+                d.addProperty("max_level", e.getMaxLevel());
+                return d;
+            });
+            case "biomes" -> registry(kind, access.registryOrThrow(Registries.BIOME), b -> new JsonObject());
+            case "dimensions" -> {
+                List<Entry> out = new ArrayList<>();
+                for (ResourceKey<?> key : server.levelKeys()) {
+                    out.add(new Entry(kind, key.location().toString(), "", JsonObject::new));
+                }
+                yield List.copyOf(out);
+            }
+            case "events" -> {
+                List<Entry> out = new ArrayList<>();
+                EventTypes.all().forEach((className, mod) -> {
+                    String name = EventTypes.shortName(className);
+                    out.add(new Entry(kind, name, className + " " + mod, () -> {
+                        JsonObject d = new JsonObject();
+                        d.addProperty("class", className);
+                        d.addProperty("mod", mod);
+                        return d;
+                    }));
+                });
+                yield List.copyOf(out);
+            }
+            default -> List.of();
+        };
+    }
+
+    private static List<Entry> mods() {
+        List<Entry> out = new ArrayList<>();
+        for (IModInfo mod : ModList.get().getMods()) {
+            String description = Notes.shorten(mod.getDescription(), MAX_TEXT);
+            out.add(new Entry("mods", mod.getModId(), mod.getDisplayName() + " " + description, () -> {
+                JsonObject d = new JsonObject();
+                d.addProperty("name", mod.getDisplayName());
+                d.addProperty("version", mod.getVersion().toString());
+                if (!description.isEmpty()) d.addProperty("description", description);
+                mod.getModURL().ifPresent(url -> d.addProperty("url", url.toString()));
+                return d;
+            }));
+        }
+        return List.copyOf(out);
+    }
+
+    private static <T> List<Entry> registry(String kind, Registry<T> registry, java.util.function.Function<T, JsonObject> detail) {
+        List<Entry> out = new ArrayList<>();
+        for (Map.Entry<ResourceKey<T>, T> e : registry.entrySet()) {
+            T value = e.getValue();
+            out.add(new Entry(kind, e.getKey().location().toString(), "", () -> detail.apply(value)));
+        }
+        out.sort((a, b) -> a.id().compareTo(b.id()));
+        return List.copyOf(out);
+    }
+
+    private static JsonObject block(Block block) {
+        JsonObject d = new JsonObject();
+        StringBuilder states = new StringBuilder();
+        for (Property<?> p : block.getStateDefinition().getProperties()) {
+            if (!states.isEmpty()) states.append(", ");
+            states.append(p.getName()).append('=').append(String.join("|", p.getPossibleValues().stream().map(v -> name(p, v)).toList()));
+        }
+        if (!states.isEmpty()) d.addProperty("states", Notes.shorten(states.toString(), MAX_TEXT));
+        return d;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static String name(Property p, Object value) {
+        return p.getName((Comparable) value);
+    }
+
+    /** Tags of the main registries with their sizes: taken on the server thread (a reload rebinds them). */
+    private static List<Entry> tags(RegistryAccess access) {
+        List<Entry> out = new ArrayList<>();
+        for (ResourceKey<? extends Registry<?>> key : List.of(Registries.BLOCK, Registries.ITEM, Registries.ENTITY_TYPE,
+                Registries.FLUID, Registries.BIOME, Registries.ENCHANTMENT)) {
+            access.registry(key).ifPresent(r -> r.getTags().forEach(pair -> {
+                int size = pair.getSecond().size();
+                String registry = key.location().getPath();
+                String id = "#" + pair.getFirst().location();
+                out.add(new Entry("tags", id, registry, () -> {
+                    JsonObject d = new JsonObject();
+                    d.addProperty("registry", registry);
+                    d.addProperty("size", size);
+                    return d;
+                }));
+            }));
+        }
+        out.sort((a, b) -> a.id().compareTo(b.id()));
+        return List.copyOf(out);
+    }
+
+    /** Root commands with the usage of their direct children; taken on the server thread. */
+    private static List<Entry> commands(CommandDispatcher<CommandSourceStack> dispatcher, CommandSourceStack source) {
+        List<Entry> out = new ArrayList<>();
+        for (CommandNode<CommandSourceStack> root : dispatcher.getRoot().getChildren()) {
+            List<String> usage = new ArrayList<>();
+            try {
+                usage.addAll(dispatcher.getSmartUsage(root, source).values());
+            } catch (RuntimeException e) {
+                usage.add("(usage unavailable: " + e.getClass().getSimpleName() + ")");
+            }
+            String text = Notes.shorten(String.join(" | ", usage), MAX_TEXT);
+            out.add(new Entry("commands", root.getName(), text, () -> {
+                JsonObject d = new JsonObject();
+                if (!text.isEmpty()) d.addProperty("usage", text);
+                return d;
+            }));
+        }
+        out.sort((a, b) -> a.id().compareTo(b.id()));
+        return List.copyOf(out);
+    }
+
+    /** Recipes from the reload's recipe manager; details are computed only for the entries shown. */
+    private static List<Entry> recipes(Collection<RecipeHolder<?>> holders, RegistryAccess access) {
+        List<Entry> out = new ArrayList<>(holders.size());
+        for (RecipeHolder<?> holder : holders) {
+            Recipe<?> recipe = holder.value();
+            String type = String.valueOf(BuiltInRegistries.RECIPE_TYPE.getKey(recipe.getType()));
+            String result;
+            try {
+                ItemStack stack = recipe.getResultItem(access);
+                result = stack.isEmpty() ? "" : BuiltInRegistries.ITEM.getKey(stack.getItem()) + (stack.getCount() > 1 ? " x" + stack.getCount() : "");
+            } catch (RuntimeException e) {
+                result = "";
+            }
+            String shownResult = result;
+            out.add(new Entry("recipes", holder.id().toString(), type + " " + result, () -> {
+                JsonObject d = new JsonObject();
+                d.addProperty("type", type);
+                if (!shownResult.isEmpty()) d.addProperty("result", shownResult);
+                JsonArray ingredients = new JsonArray();
+                for (Ingredient ingredient : recipe.getIngredients()) {
+                    if (ingredient.isEmpty()) continue;
+                    Set<String> items = new LinkedHashSet<>();
+                    for (ItemStack s : ingredient.getItems()) items.add(BuiltInRegistries.ITEM.getKey(s.getItem()).toString());
+                    List<String> first = items.stream().limit(4).toList();
+                    ingredients.add(String.join("|", first) + (items.size() > 4 ? "|…(" + items.size() + ")" : ""));
+                }
+                if (!ingredients.isEmpty()) d.add("ingredients", ingredients);
+                return d;
+            }));
+        }
+        out.sort((a, b) -> a.id().compareTo(b.id()));
+        return List.copyOf(out);
+    }
+
+    /** Mods' NeoForge config values (common and server), without keys that look like secrets. */
+    private static List<Entry> config() {
+        List<Entry> out = new ArrayList<>();
+        for (IModInfo mod : ModList.get().getMods()) {
+            for (ModConfig config : ModConfigs.getModConfigs(mod.getModId())) {
+                if (config.getType() == ModConfig.Type.CLIENT) continue;
+                IConfigSpec.ILoadedConfig loaded = config.getLoadedConfig();
+                if (loaded == null) continue;
+                flatten(mod.getModId(), config.getFileName(), "", loaded.config(), out);
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static void flatten(String mod, String file, String prefix, UnmodifiableConfig config, List<Entry> out) {
+        for (UnmodifiableConfig.Entry e : config.entrySet()) {
+            String key = prefix.isEmpty() ? e.getKey() : prefix + "." + e.getKey();
+            Object value = e.getValue();
+            if (value instanceof UnmodifiableConfig sub) {
+                flatten(mod, file, key, sub, out);
+                continue;
+            }
+            boolean secret = SECRET.matcher(key).matches();
+            String shown = secret ? "(hidden: looks like a secret)" : Notes.shorten(String.valueOf(value), MAX_TEXT);
+            String id = mod + ":" + key;
+            out.add(new Entry("config", id, file, () -> {
+                JsonObject d = new JsonObject();
+                d.addProperty("file", file);
+                d.addProperty("value", shown);
+                return d;
+            }));
+        }
+    }
+}

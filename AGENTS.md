@@ -95,11 +95,17 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   do not load on a dedicated server (signatures with `ClientLevel`; Groovy cannot see them either; scripts access
   ships only through `gm.ship`).
 - `mixin/PlayerListMixin`: the only mixin, respawning a bot with its own class (see Bots and vision for why).
-- `notes/Notes`: agent notes from mods and datapacks, `data/<namespace>/almighty/notes/<name>.md` in the server's
-  current data (`server.getResourceManager()`, refreshed after `/reload`), id `<namespace>:<name>`. A datapack
-  overrides a mod note at the same path; an empty file removes it. On startup the adapter fetches notes (5 s) and
-  appends them to MCP instructions; on failure it adds a line about the `notes` tool. Mod-specific hints belong
-  only in that mod's note, not the adapter: the bridge depends on no mod.
+- `knowledge/`: what the agent learns about this server, one method `notes`. `Notes`: notes from mods and
+  datapacks (`data/<namespace>/almighty/notes/<name>.md` in the server's current data, refreshed after `/reload`,
+  id `<namespace>:<name>`; a datapack overrides a mod note at the same path, an empty file removes it), the
+  owner's `config/almighty/notes/` (`server:<name>`) and world notes `<world>/almighty/notes/` (`world:<name>`,
+  written by agents with server-set provenance `author`, `requester`, `confirmed`, `updated` that the text cannot
+  forge). Optional Agent Skills frontmatter (`name`, `description`); without it the first line is the description.
+  Progressive disclosure: the index carries ids and descriptions only, `notes {id}` one note. `Catalog`: the live
+  catalog (mods, registries, tags, recipes, commands, events, mod config without secret-like keys); registries
+  off the server thread, what `/reload` replaces snapshotted on it once per reload, recipe details off it; paged.
+  Notes are reference, never instructions or rights. Mod-specific hints belong only in that mod's note, not the
+  adapter: the bridge depends on no mod.
 
 ## Methods
 
@@ -114,7 +120,9 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 `bot.spawn {name, pos?, dimension?, yaw?, pitch?, gamemode?, skin? (account name | {value, signature}), marker?, auto_respawn?}`,
 `bot.remove {name}`, `bot.act {name, actions, replace?, wait?}`,
 `see {name | uuid | at+yaw+pitch, image? (yes), width?, height?, fov?, distance?, radius?, sounds_ticks?}`,
-`ships {name?, center+radius?}` (Sable ships; 503 without Sable), `notes` → `[{id, source, text}]`.
+`ships {name?, center+radius?}` (Sable ships; 503 without Sable),
+`notes {id? | query?+kind?+offset?+limit? | id: "world:<name>"+text}` → index `{notes: [{id, source, description}], catalog}`,
+one note, or `{entries, total, next_offset?, notes}`.
 
 All accept `dimension` (Overworld by default); long operations accept `wait` (default 30 s, up to 50): if the job
 has not finished, return its description and continue with `job`. A snapshot image is returned once (`png_base64`);
@@ -223,7 +231,7 @@ Before planning or changing bot or vision behavior (including compatibility driv
 ## Checks
 
 - Unit tests (`src/test`): loopback HTTP bridge, token, feed, PNG (read by a standard decoder), build plan, macro
-  parameters, event list, script deadline (`ScriptsTest`: closure and object after execution, interrupting a run,
+  parameters, event list, notes (`NotesTest`: real packs, datapack override, provenance; `CatalogTest`: secret keys), script deadline (`ScriptsTest`: closure and object after execution, interrupting a run,
   nested execution), bot movement packets (`MovePacketsTest`).
 - Bot and vision GameTest: `GmBotGameTests`: sprinting, mining and building, chest, chat and whisper (14 messages
   without a spam kick), death and respawn (same class), Nether, vehicles (horse gallops and jumps; boat reaches

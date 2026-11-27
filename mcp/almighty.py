@@ -88,6 +88,9 @@ def _notes():
         index = rpc("notes", timeout=5)
     except (GmError, OSError) as e:
         return f"\nNotes from the server's mods, datapacks, owner and world: the notes tool (not received at startup: {e})."
+    if not isinstance(index, dict):
+        # An older bridge returns the notes themselves: point at the tool instead of failing at startup.
+        return "\nNotes from the server's mods and datapacks: the notes tool."
     notes = index.get("notes") or []
     if not notes:
         return ""

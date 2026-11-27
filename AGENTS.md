@@ -231,7 +231,8 @@ Before planning or changing bot or vision behavior (including compatibility driv
 ## Checks
 
 - Unit tests (`src/test`): loopback HTTP bridge, token, feed, PNG (read by a standard decoder), build plan, macro
-  parameters, event list, notes (`NotesTest`: real packs, datapack override, provenance; `CatalogTest`: secret keys), script deadline (`ScriptsTest`: closure and object after execution, interrupting a run,
+  parameters, event list,
+  notes (`NotesTest`: real packs, datapack override, provenance; `CatalogTest`: secret keys), script deadline (`ScriptsTest`: closure and object after execution, interrupting a run,
   nested execution), bot movement packets (`MovePacketsTest`).
 - Bot and vision GameTest: `GmBotGameTests`: sprinting, mining and building, chest, chat and whisper (14 messages
   without a spam kick), death and respawn (same class), Nether, vehicles (horse gallops and jumps; boat reaches

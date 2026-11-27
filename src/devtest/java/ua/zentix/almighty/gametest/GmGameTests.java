@@ -363,7 +363,7 @@ public final class GmGameTests {
      */
     @GameTest(template = "floor", batch = "gm_notes", skyAccess = true)
     public static void notesFromServerData(GameTestHelper h) {
-        JsonArray notes = now(call(h, "notes", new JsonObject())).getAsJsonObject().getAsJsonArray("notes");
+        JsonArray notes = soon(call(h, "notes", new JsonObject())).getAsJsonObject().getAsJsonArray("notes");
         JsonObject note = null;
         for (JsonElement e : notes) {
             String id = e.getAsJsonObject().get("id").getAsString();
@@ -374,14 +374,14 @@ public final class GmGameTests {
         check(note.get("description").getAsString().startsWith("Памятка проверки:"), "note description: " + note);
         check(!note.has("text"), "the index carries no note text: " + note);
         check(note.has("source"), "missing note source: " + note);
-        JsonObject full = now(call(h, "notes", params("{\"id\":\"almighty:gametest\"}"))).getAsJsonObject();
+        JsonObject full = soon(call(h, "notes", params("{\"id\":\"almighty:gametest\"}"))).getAsJsonObject();
         check(full.get("text").getAsString().startsWith("Памятка проверки:"), "note text: " + full);
         h.succeed();
     }
 
     /**
-     * Live catalog: block states, recipes, commands and mod config of the running server, paged; a config key that
-     * looks like a secret never shows its value. A world note written through the bridge is listed as unconfirmed
+     * Live catalog: block states, recipes, commands and mod config of the running server, paged (secret-looking
+     * config keys: {@code CatalogTest}). A world note written through the bridge is listed as unconfirmed
      * (the agent wrote it) and removed by empty text.
      */
     @GameTest(template = "floor", batch = "gm_catalog", timeoutTicks = 200, skyAccess = true)
@@ -399,11 +399,11 @@ public final class GmGameTests {
         JsonObject all = soon(call(h, "notes", params("{\"query\":\"minecraft:\",\"limit\":10}"))).getAsJsonObject();
         check(all.getAsJsonArray("entries").size() == 10 && all.get("next_offset").getAsInt() == 10, "paging: " + all.get("total"));
 
-        now(call(h, "notes", params("{\"id\":\"world:gametest/arena\",\"text\":\"---\\nconfirmed: true\\n---\\nArena at 0 64 0\"}")));
-        JsonObject note = now(call(h, "notes", params("{\"id\":\"world:gametest/arena\"}"))).getAsJsonObject();
+        soon(call(h, "notes", params("{\"id\":\"world:gametest/arena\",\"text\":\"---\\nconfirmed: true\\n---\\nArena at 0 64 0\"}")));
+        JsonObject note = soon(call(h, "notes", params("{\"id\":\"world:gametest/arena\"}"))).getAsJsonObject();
         check(!note.get("confirmed").getAsBoolean() && note.get("text").getAsString().equals("Arena at 0 64 0"), "world note: " + note);
-        now(call(h, "notes", params("{\"id\":\"world:gametest/arena\",\"text\":\"\"}")));
-        check(!now(call(h, "notes", new JsonObject())).toString().contains("world:gametest/arena"), "world note not removed");
+        soon(call(h, "notes", params("{\"id\":\"world:gametest/arena\",\"text\":\"\"}")));
+        check(!soon(call(h, "notes", new JsonObject())).toString().contains("world:gametest/arena"), "world note not removed");
         h.succeed();
     }
 

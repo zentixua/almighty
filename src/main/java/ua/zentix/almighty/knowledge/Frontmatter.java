@@ -16,22 +16,24 @@ public record Frontmatter(Map<String, String> fields, String body) {
 
     public static Frontmatter parse(String text) {
         String normalized = text.replace("\r\n", "\n");
-        if (normalized.startsWith("﻿")) normalized = normalized.substring(1);
-        if (!normalized.startsWith("---\n")) return new Frontmatter(Map.of(), normalized.strip());
-        int end = normalized.indexOf("\n---", 3);
-        while (end >= 0) {
-            int after = end + 4;
-            if (after == normalized.length() || normalized.charAt(after) == '\n') break;
-            end = normalized.indexOf("\n---", after);
+        if (normalized.startsWith("\uFEFF")) normalized = normalized.substring(1);
+        String[] lines = normalized.split("\n", -1);
+        if (lines.length == 0 || !lines[0].strip().equals("---")) return new Frontmatter(Map.of(), normalized.strip());
+        int close = -1;
+        for (int i = 1; i < lines.length; i++) {
+            if (lines[i].strip().equals("---")) {
+                close = i;
+                break;
+            }
         }
-        if (end < 0) return new Frontmatter(Map.of(), normalized.strip());
+        if (close < 0) return new Frontmatter(Map.of(), normalized.strip());
         Map<String, String> fields = new LinkedHashMap<>();
         String key = null;
-        for (String line : normalized.substring(4, end).split("\n", -1)) {
+        for (int i = 1; i < close; i++) {
+            String line = lines[i];
             if (line.isBlank() || line.stripLeading().startsWith("#")) continue;
             int colon = line.indexOf(':');
-            boolean continuation = Character.isWhitespace(line.charAt(0)) || colon < 0;
-            if (continuation) {
+            if (Character.isWhitespace(line.charAt(0)) || colon <= 0) {
                 // A folded continuation line or nested YAML: append to the previous key as text.
                 if (key != null) fields.merge(key, line.strip(), (a, b) -> a.isEmpty() ? b : a + " " + b);
                 continue;
@@ -41,8 +43,8 @@ public record Frontmatter(Map<String, String> fields, String body) {
             if (value.equals(">") || value.equals("|") || value.equals(">-") || value.equals("|-")) value = "";
             fields.put(key, unquote(value));
         }
-        int bodyStart = Math.min(normalized.length(), end + 4);
-        return new Frontmatter(fields, normalized.substring(bodyStart).strip());
+        String body = String.join("\n", java.util.Arrays.copyOfRange(lines, close + 1, lines.length));
+        return new Frontmatter(fields, body.strip());
     }
 
     /** Text with this block first; values with a colon, a quote or a leading special character are quoted. */

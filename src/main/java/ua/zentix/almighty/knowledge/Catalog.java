@@ -47,14 +47,15 @@ import java.util.regex.Pattern;
  * <p>
  * Threads: registries are frozen after startup and are read off the server thread. What {@code /reload} replaces
  * (tags, commands, config values, the recipe manager reference) is snapshotted on the server thread once per
- * reload, cheaply (names and counts, one level of usage); recipe details are then built off the server thread from
- * that reference, which a reload replaces rather than mutates.
+ * reload (names and counts, one level of usage, config values; tens of ms at most once per reload on a large pack);
+ * recipe details are then built off the server thread from that reference, which a reload replaces rather than
+ * mutates. Config values are as of the last reload, not a later file-watcher reload.
  */
 public final class Catalog {
     public static final List<String> KINDS = List.of("mods", "blocks", "items", "entities", "effects", "enchantments",
             "biomes", "dimensions", "tags", "recipes", "commands", "events", "config");
     /** Config keys whose values are never shown. */
-    static final Pattern SECRET = Pattern.compile("(?i).*(token|secret|password|passwd|credential|api_?key|private_?key|webhook|auth).*");
+    static final Pattern SECRET = Pattern.compile("(?i).*(token|secret|pass(word|wd|phrase)?|pwd|credential|key|webhook|auth(?!or)|cookie|session|jdbc|dsn|(database|db)[._-]?url).*");
     private static final int MAX_TEXT = 300;
 
     /** One catalog entry: what a query matches on ({@code id} and {@code text}) and how it is shown. */
@@ -102,6 +103,10 @@ public final class Catalog {
         kinds.put("tags", tags(server.registryAccess()));
         kinds.put("commands", commands(server.getCommands().getDispatcher(), server.createCommandSourceStack()));
         kinds.put("config", config());
+        // The level map is the server thread's: a mod may add a dimension at runtime.
+        List<Entry> dimensions = new ArrayList<>();
+        for (ResourceKey<?> level : server.levelKeys()) dimensions.add(new Entry("dimensions", level.location().toString(), "", JsonObject::new));
+        kinds.put("dimensions", List.copyOf(dimensions));
         reloadable = new Snapshot(key, kinds, server.getRecipeManager(), server.registryAccess());
     }
 
@@ -167,13 +172,6 @@ public final class Catalog {
                 return d;
             });
             case "biomes" -> registry(kind, access.registryOrThrow(Registries.BIOME), b -> new JsonObject());
-            case "dimensions" -> {
-                List<Entry> out = new ArrayList<>();
-                for (ResourceKey<?> key : server.levelKeys()) {
-                    out.add(new Entry(kind, key.location().toString(), "", JsonObject::new));
-                }
-                yield List.copyOf(out);
-            }
             case "events" -> {
                 List<Entry> out = new ArrayList<>();
                 EventTypes.all().forEach((className, mod) -> {
@@ -323,7 +321,7 @@ public final class Catalog {
         return List.copyOf(out);
     }
 
-    private static void flatten(String mod, String file, String prefix, UnmodifiableConfig config, List<Entry> out) {
+    static void flatten(String mod, String file, String prefix, UnmodifiableConfig config, List<Entry> out) {
         for (UnmodifiableConfig.Entry e : config.entrySet()) {
             String key = prefix.isEmpty() ? e.getKey() : prefix + "." + e.getKey();
             Object value = e.getValue();

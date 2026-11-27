@@ -49,6 +49,8 @@ public final class Notes {
     public static final String SERVER = "server";
     /** A world note: lowercase path segments as in resource paths, at most 4 levels. */
     private static final Pattern NAME = Pattern.compile("[a-z0-9_-]{1,48}(/[a-z0-9_-]{1,48}){0,3}");
+    /** Windows device names: a file named so would be a device on a Windows server. */
+    private static final Pattern RESERVED = Pattern.compile("(^|/)(con|prn|aux|nul|com[0-9]|lpt[0-9])(/|$)");
     public static final int MAX_NOTE_CHARS = 32_000;
     public static final int MAX_WORLD_NOTES = 500;
     /** Frontmatter keys only the server writes: the agent's text cannot set them. */
@@ -100,13 +102,16 @@ public final class Notes {
     /** Who writes a world note; {@code confirmed} only when the writer acts with the owner's authority. */
     public record Author(String agent, String requester, boolean confirmed) {}
 
-    /** All notes: mods and datapacks (server thread: the resource manager), then server notes, then world notes. */
-    public static List<Note> all(ResourceManager resources, Path serverDir, Path worldDir) {
+    /**
+     * All notes: those from server data (read on the server thread with {@link #fromData}), then server notes, then
+     * world notes (read from disk on the calling thread). A local note shadows a data note with the same id.
+     */
+    public static List<Note> all(List<Note> data, Path serverDir, Path worldDir) {
         List<Note> out = new ArrayList<>();
         Map<String, Note> files = new LinkedHashMap<>();
         for (Note n : fromFiles(serverDir, SERVER)) files.put(n.id(), n);
         for (Note n : fromFiles(worldDir, WORLD)) files.put(n.id(), n);
-        for (Note n : fromData(resources)) if (!files.containsKey(n.id())) out.add(n);
+        for (Note n : data) if (!files.containsKey(n.id())) out.add(n);
         out.addAll(files.values());
         return out;
     }
@@ -123,7 +128,8 @@ public final class Notes {
                 String text = reader.lines().collect(Collectors.joining("\n"));
                 if (text.isBlank()) return;
                 out.add(new Note(id, source, Frontmatter.parse(text), null));
-            } catch (IOException e) {
+            } catch (IOException | RuntimeException e) {
+                // One unreadable note must not hide the others.
                 out.add(new Note(id, source, null, e.toString()));
             }
         });
@@ -133,25 +139,30 @@ public final class Notes {
     /** Notes in a directory of {@code .md} files (subdirectories allowed), id {@code <namespace>:<relative path>}. */
     public static List<Note> fromFiles(Path dir, String namespace) {
         List<Note> out = new ArrayList<>();
-        if (dir == null || !Files.isDirectory(dir)) return out;
-        try (Stream<Path> walk = Files.walk(dir, 5)) {
-            for (Path file : walk.filter(p -> p.toString().endsWith(EXT) && Files.isRegularFile(p)).sorted().toList()) {
-                String rel = dir.relativize(file).toString().replace('\\', '/');
-                String name = rel.substring(0, rel.length() - EXT.length());
-                if (!NAME.matcher(name).matches()) continue;
-                String id = namespace + ":" + name;
-                try {
-                    String text = Files.readString(file, StandardCharsets.UTF_8);
-                    if (text.isBlank()) continue;
-                    out.add(new Note(id, namespace, Frontmatter.parse(text), null));
-                } catch (IOException e) {
-                    out.add(new Note(id, namespace, null, e.toString()));
-                }
+        for (Path file : files(dir)) {
+            String rel = dir.relativize(file).toString().replace('\\', '/');
+            String name = rel.substring(0, rel.length() - EXT.length());
+            if (!NAME.matcher(name).matches()) continue;
+            String id = namespace + ":" + name;
+            try {
+                String text = Files.readString(file, StandardCharsets.UTF_8);
+                if (text.isBlank()) continue;
+                out.add(new Note(id, namespace, Frontmatter.parse(text), null));
+            } catch (IOException | RuntimeException e) {
+                out.add(new Note(id, namespace, null, e.toString()));
             }
-        } catch (IOException e) {
-            out.add(new Note(namespace + ":", namespace, null, e.toString()));
         }
         return out;
+    }
+
+    /** The {@code .md} files under a notes directory, sorted; an unreadable folder is skipped. */
+    static List<Path> files(Path dir) {
+        if (dir == null || !Files.isDirectory(dir)) return List.of();
+        try (Stream<Path> walk = Files.walk(dir, 5)) {
+            return walk.filter(p -> p.toString().endsWith(EXT) && Files.isRegularFile(p)).sorted().toList();
+        } catch (IOException | java.io.UncheckedIOException e) {
+            return List.of();
+        }
     }
 
     /** Index: every note as id, source and a one-line description; whole notes come from {@link #get}. */
@@ -176,7 +187,8 @@ public final class Notes {
         JsonArray out = new JsonArray();
         for (Note n : notes) {
             if (out.size() >= limit) break;
-            String hay = (n.id() + "\n" + (n.doc() == null ? "" : n.doc().get("name") + "\n" + n.description() + "\n" + n.doc().body()))
+            String name = n.doc() == null || n.doc().get("name") == null ? "" : n.doc().get("name");
+            String hay = (n.id() + "\n" + (n.doc() == null ? "" : name + "\n" + n.description() + "\n" + n.doc().body()))
                     .toLowerCase(Locale.ROOT);
             boolean all = true;
             for (String w : words) all &= hay.contains(w);
@@ -209,8 +221,9 @@ public final class Notes {
             throw RpcException.badRequest("id: agents write world notes only, world:<name> (lowercase a-z 0-9 _ -, / for folders)");
         }
         String name = id.substring(WORLD.length() + 1);
-        if (!NAME.matcher(name).matches()) {
-            throw RpcException.badRequest("id: world:<name> with lowercase a-z, 0-9, _ and -, up to 4 folders separated by /");
+        if (!NAME.matcher(name).matches() || RESERVED.matcher(name).find()) {
+            throw RpcException.badRequest("id: world:<name> with lowercase a-z, 0-9, _ and -, up to 4 folders separated by /"
+                    + " (not a Windows device name such as con or nul)");
         }
         if (text.length() > MAX_NOTE_CHARS) throw RpcException.badRequest("text: at most " + MAX_NOTE_CHARS + " characters");
         Path file = worldDir.resolve(name + EXT);
@@ -221,7 +234,7 @@ public final class Notes {
                 out.addProperty("removed", Files.deleteIfExists(file));
                 return out;
             }
-            if (!Files.exists(file) && fromFiles(worldDir, WORLD).size() >= MAX_WORLD_NOTES) {
+            if (!Files.exists(file) && files(worldDir).size() >= MAX_WORLD_NOTES) {
                 throw RpcException.conflict("The world already has " + MAX_WORLD_NOTES + " notes: merge or remove some first");
             }
             Frontmatter given = Frontmatter.parse(text);

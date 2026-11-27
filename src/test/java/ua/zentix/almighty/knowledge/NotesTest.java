@@ -111,7 +111,7 @@ class NotesTest {
     void worldNoteNamesStayInsideTheNotesFolder() {
         Path world = tmp.resolve("w");
         Notes.Author a = new Notes.Author("gm", null, false);
-        for (String bad : List.of("world:../x", "world:Arena", "world:a//b", "world:/abs", "mod:x", "server:x", "world:a.b"))
+        for (String bad : List.of("world:../x", "world:Arena", "world:a//b", "world:/abs", "mod:x", "server:x", "world:a.b", "world:con", "world:x/nul"))
             assertThrows(RpcException.class, () -> Notes.write(world, bad, "text", a), bad);
         assertFalse(Files.exists(tmp.resolve("x.md")));
     }
@@ -123,7 +123,7 @@ class NotesTest {
         Files.writeString(server.resolve("rules.md"), "Owner's server rules.");
         Path mod = pack("m", Map.of("server:rules", "A mod using namespace server.", "m:a", "A"));
         try (MultiPackResourceManager rm = new MultiPackResourceManager(PackType.SERVER_DATA, List.of(resources("mod/m", mod)))) {
-            List<Notes.Note> all = Notes.all(rm, server, tmp.resolve("none"));
+            List<Notes.Note> all = Notes.all(Notes.fromData(rm), server, tmp.resolve("none"));
             assertEquals(List.of("m:a", "server:rules"), all.stream().map(Notes.Note::id).toList());
             assertEquals("server", all.get(1).source());
         }
@@ -139,5 +139,10 @@ class NotesTest {
         assertNull(Frontmatter.parse("--- not frontmatter\ntext").get("name"));
         assertEquals("Title", Frontmatter.parse("\n## Title\nmore").description());
         assertEquals("no end", Frontmatter.parse("---\nname: x\nno end").body().lines().toList().get(2));
+        // An empty block, a bare block and a closing line with trailing spaces.
+        assertEquals("Body", Frontmatter.parse("---\n---\nBody").body());
+        assertEquals("", Frontmatter.parse("---\n---").body());
+        assertEquals("d", Frontmatter.parse("---\ndescription: d\n---   \nB").get("description"));
+        assertTrue(Frontmatter.parse("---\n: x\n---\nB").fields().isEmpty());
     }
 }

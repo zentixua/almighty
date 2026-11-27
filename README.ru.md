@@ -116,9 +116,9 @@ Agent Skills (`name`, `description`). Агент видит оглавление
 (`call`, `follow` и посредник stdio для приложений без HTTP) не обязательна, ей нужен [uv](https://docs.astral.sh/uv/):
 
 ```sh
-uv run mcp/almighty.py call status                                      # one call, JSON answer
+uv run mcp/almighty.py call status                                      # один вызов, ответ — JSON
 uv run mcp/almighty.py call map '{"center": [0, 0], "size": 256}' --png map.png
-uv run mcp/almighty.py follow                                           # event feed, one JSON line per event
+uv run mcp/almighty.py follow                                           # лента событий, строка JSON на событие
 ```
 
 ## Настройки
@@ -131,6 +131,9 @@ uv run mcp/almighty.py follow                                           # event 
 | `bridge.host` | `"127.0.0.1"` | Адрес, который слушает мост. |
 | `bridge.port` | `25650` | Порт моста. |
 | `bridge.public_url` | `""` | Публичный адрес HTTPS, когда обратный прокси или туннель выводит мост в интернет (облачные приложения). |
+| `bridge.allowed_origins` | `[]` | Адреса веб-страниц, которым можно обращаться к мосту; запросы других страниц отклоняются. |
+| `bridge.tls_cert`, `bridge.tls_key` | `""` | Ваш сертификат (цепочка PEM) и ключ (PKCS#8 PEM): тогда мост говорит только по HTTPS. |
+| `bridge.integrated` | `false` | Запускать мост и в одиночной игре и в мирах LAN (только на петле). |
 | `work.ms_per_tick` | `3.0` | Время на тик сервера для построек, откатов и картинок, мс (от 0,5 до 20). |
 | `work.build_max_blocks` | `2000000` | Наибольшее число мест в одной постройке. |
 | `work.max_chunks` | `1500` | Сколько чанков агент держит загруженными сразу: постройки и подготовленные районы вместе с кольцом соседей. |

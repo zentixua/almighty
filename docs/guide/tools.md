@@ -3,8 +3,8 @@
 <!-- Generated from src/main/resources/assets/almighty/mcp/tools.json by scripts/gen_tools_md.py; edit the JSON. -->
 
 The tools every connected agent gets, exactly as the server describes them (English only: this text is what
-the agent reads). `?profile=compact` gives small models six of them (`status`, `events`, `view`, `act`, `notes`,
-`call`) with one-line descriptions.
+the agent reads). `?profile=compact` gives small models 6 tools (`status`, `events`, `view`, `act`, `notes`, `call`)
+with one-line descriptions; `act` there combines `command`, `build` and `say`.
 
 | Tool | What it does | Can change things |
 |---|---|---|

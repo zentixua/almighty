@@ -13,13 +13,20 @@ TOOLS = ROOT / "src/main/resources/assets/almighty/mcp/tools.json"
 OUT = ROOT / "docs/guide/tools.md"
 
 
+def compact():
+    """The compact profile's tools, as Tools.COMPACT lists them."""
+    import re
+    java = (ROOT / "src/main/java/ua/zentix/almighty/mcp/Tools.java").read_text(encoding="utf-8")
+    return re.findall(r'"(\w+)"', re.search(r"COMPACT = List\.of\(([^)]*)\)", java).group(1))
+
+
 def render():
     tools = json.loads(TOOLS.read_text(encoding="utf-8"))["tools"]
     lines = ["# Tools", "",
              "<!-- Generated from src/main/resources/assets/almighty/mcp/tools.json by scripts/gen_tools_md.py; edit the JSON. -->", "",
              "The tools every connected agent gets, exactly as the server describes them (English only: this text is what",
-             "the agent reads). `?profile=compact` gives small models six of them (`status`, `events`, `view`, `act`, `notes`,",
-             "`call`) with one-line descriptions.", ""]
+             "the agent reads). `?profile=compact` gives small models " + str(len(compact())) + " tools ("
+             + ", ".join(f"`{n}`" for n in compact()) + ")", "with one-line descriptions; `act` there combines `command`, `build` and `say`.", ""]
     lines += ["| Tool | What it does | Can change things |", "|---|---|---|"]
     for t in tools:
         lines.append(f"| [`{t['name']}`](#{t['name']}) | {t.get('title', '')} | {'no' if t['annotations'].get('readOnlyHint') else 'yes'} |")

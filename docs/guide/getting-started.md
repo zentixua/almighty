@@ -12,7 +12,7 @@ Put `almighty-<version>.jar` from the [releases](https://github.com/zentixua/alm
 `mods/` folder and start the server. Players install nothing. When the server is ready, its console says:
 
 ```
-Almighty ready - tell your AI agent: "connect to my Minecraft server at http://127.0.0.1:25650/mcp"
+Almighty ready - tell your AI agent: "connect to my Minecraft server at http://127.0.0.1:25650/mcp" (all ways: /almighty connect)
 ```
 
 ## 2. Tell your agent to connect

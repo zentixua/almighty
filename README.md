@@ -126,6 +126,9 @@ uv run mcp/almighty.py follow                                           # event 
 | `bridge.host` | `"127.0.0.1"` | Address the bridge listens on. |
 | `bridge.port` | `25650` | Bridge port. |
 | `bridge.public_url` | `""` | The public HTTPS address when a reverse proxy or tunnel puts the bridge on the internet (cloud apps). |
+| `bridge.allowed_origins` | `[]` | Browser origins allowed to call the bridge; requests from other web pages are refused. |
+| `bridge.tls_cert`, `bridge.tls_key` | `""` | Your certificate (PEM chain) and key (PKCS#8 PEM): the bridge then speaks only HTTPS. |
+| `bridge.integrated` | `false` | Also start the bridge in single-player and LAN worlds (loopback only). |
 | `work.ms_per_tick` | `3.0` | Time per server tick for builds, undos and pictures, in ms (0.5 to 20). |
 | `work.build_max_blocks` | `2000000` | Maximum number of block positions in one build. |
 | `work.max_chunks` | `1500` | Maximum number of chunks the agent keeps loaded at once: builds and prepared areas, counting a ring of neighbouring chunks. |

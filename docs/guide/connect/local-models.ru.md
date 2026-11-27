@@ -14,7 +14,7 @@
 
 | Приложение | Как |
 |---|---|
-| LM Studio | ссылка LM Studio из `/almighty connect` или Program → Install → Edit `mcp.json`: `{"mcpServers": {"almighty": {"url": "<адрес>"}}}`; войдите, когда приложение попросит |
+| LM Studio | ссылка LM Studio из `/almighty connect` (она ставит адрес без параметров: допишите их в LM Studio) или Program → Install → Edit `mcp.json`: `{"mcpServers": {"almighty": {"url": "<адрес>"}}}`; войдите, когда приложение попросит |
 | Goose | ссылка Goose из `/almighty connect` или `goose configure` → Add Extension → Remote (streamable HTTP) |
 | Cline | попросите его или MCP Servers → Remote Servers → добавьте адрес |
 | Continue | `~/.continue/config.yaml`: `mcpServers: [{name: almighty, type: streamable-http, url: <адрес>}]` |

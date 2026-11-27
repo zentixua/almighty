@@ -12,7 +12,7 @@
 сервера и запустите сервер. Игрокам ничего ставить не нужно. Когда сервер готов, в консоли появится строка:
 
 ```
-Almighty ready - tell your AI agent: "connect to my Minecraft server at http://127.0.0.1:25650/mcp"
+Almighty ready - tell your AI agent: "connect to my Minecraft server at http://127.0.0.1:25650/mcp" (all ways: /almighty connect)
 ```
 
 ## 2. Попросите агента подключиться

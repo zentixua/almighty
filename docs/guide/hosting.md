@@ -11,7 +11,7 @@ the bridge without opening the bridge to the internet:
 | Server on your own PC or in your home network | Run the agent on that PC, or keep the bridge on loopback and use the PC's own agent app. |
 | VPS or dedicated server with SSH | An SSH tunnel from your computer: `ssh -N -L 25650:127.0.0.1:25650 you@server`, then connect the agent to `http://127.0.0.1:25650/mcp` on your computer. Or Tailscale on both machines. The bridge stays on loopback. |
 | Self-hosted panel (Crafty, Pterodactyl, Pelican) | A tunnel to the host as above, or an allocated port bound to the container's own address (`bridge.host`), reachable only from the host. |
-| Paid shared hosting (no SSH) | Only an extra allocated port on the public internet. Not recommended: the bridge speaks plain HTTP. If you must, use it only with a reverse proxy or tunnel that adds HTTPS in front (below). |
+| Paid shared hosting (no SSH) | Only an extra allocated port on the public internet, which means the bridge itself is public. Use it only with the bridge's own HTTPS: a certificate for that host's name in `bridge.tls_cert` and `bridge.tls_key`. Without it, tokens and sign-in codes cross the internet in plain text: do not. A proxy elsewhere does not help, because it would still reach the bridge over plain HTTP. |
 | Free hosting such as Aternos | Not supported: it offers only mods from its own library and no extra ports. |
 | Cloud agent apps (claude.ai, ChatGPT on the web, cloud agents) | A public HTTPS address in front of the bridge: see below and [cloud.md](connect/cloud.md). |
 
@@ -22,11 +22,16 @@ put an existing tool in front of it:
 
 - On a VPS with a domain: a reverse proxy with automatic certificates, for example Caddy:
   `mc.example.org { reverse_proxy 127.0.0.1:25650 }`.
-- Without a domain: Cloudflare Tunnel (`cloudflared tunnel --url http://127.0.0.1:25650`) gives an HTTPS address.
+- Without a domain: Cloudflare Tunnel. A quick tunnel (`cloudflared tunnel --url http://127.0.0.1:25650`) gets a new address
+  each time it starts, so `bridge.public_url` has to change with it; a named tunnel keeps its address.
 
 Then set `bridge.public_url = "https://mc.example.org"` in `config/almighty-common.toml` and restart, so sign-in and
 links use the public address. Everyone on the internet can reach that address; only the sign-in (your typed code)
 and agent tokens stand between them and operator rights, so read [Security](security.md).
+
+Behind a proxy or tunnel the server sees every client as the proxy: `/almighty agents` and sign-in notices show its
+address (usually `127.0.0.1`), and the wrong-token lockout counts all outside clients together (a valid token always
+passes it, so agents keep working).
 
 ## Several servers, proxies, Bedrock
 

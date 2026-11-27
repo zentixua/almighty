@@ -13,7 +13,7 @@ Address for these apps: `http://127.0.0.1:25650/mcp?profile=compact&images=false
 
 | App | How |
 |---|---|
-| LM Studio | the LM Studio link from `/almighty connect`, or Program → Install → Edit `mcp.json`: `{"mcpServers": {"almighty": {"url": "<address>"}}}`; sign in when it asks |
+| LM Studio | the LM Studio link from `/almighty connect` (it installs the plain address: add the query in LM Studio), or Program → Install → Edit `mcp.json`: `{"mcpServers": {"almighty": {"url": "<address>"}}}`; sign in when it asks |
 | Goose | the Goose link from `/almighty connect`, or `goose configure` → Add Extension → Remote (streamable HTTP) |
 | Cline | ask it, or MCP Servers → Remote Servers → add the address |
 | Continue | `~/.continue/config.yaml`: `mcpServers: [{name: almighty, type: streamable-http, url: <address>}]` |

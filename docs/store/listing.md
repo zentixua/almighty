@@ -44,7 +44,7 @@ and CurseForge), and the house style of Artem's Incoming, which this page follow
 
 - **Title:** "Almighty: AI Game Master" (the name stays Almighty).
 - **Slug:** `almighty` on Modrinth. On CurseForge `almighty` is taken by a 2023 Fabric modpack named "Almighty"
-  (https://www.curseforge.com/minecraft/modpacks/almighty), so use `almighty-game-master` there; the title with
+  (https://www.curseforge.com/minecraft/modpacks/almighty), so CurseForge uses `almighty-ai-game-master` (its default from the title; project ID 1836284, created 28.11.2026); the title with
   "AI Game Master" keeps the two apart.
 - **Summary** (210 of 256 characters; one sentence, as CurseForge prefers; the same on both sites):
 
@@ -129,8 +129,9 @@ All brand images are from [docs/brand](../brand/README.md) (pixel art enlarged b
 | Modrinth page banner | `docs/brand/store/modrinth-banner-1920x480.png` (top of description.md, so of modrinth.md) |
 | CurseForge page header | `docs/brand/store/curseforge-header-1600x400.png` (top of curseforge.md) |
 
-Gallery, in this order (the first is featured); upload the same images to CurseForge's Images page, with the cover
-as its first image:
+Gallery, in this order (the first is featured). CurseForge's Media page takes images under 850 px wide, so it gets
+the same pictures from `docs/store/curseforge-gallery/` (cover at 3× its pixel grid, the in-game pictures at 1×, no
+smoothing), same order and captions:
 
 | File | Title | Description |
 |---|---|---|
@@ -200,6 +201,6 @@ The CurseForge description is not uploaded by the workflow (its API takes files 
 each change.
 
 A CurseForge project can only be created on the site. Create it by hand first with the fields above (title, slug
-`almighty-game-master`, summary, CurseForge categories, license, links, the avatar
+`almighty-ai-game-master`, summary, CurseForge categories, license, links, the avatar
 `docs/brand/social/avatar-400.png`, curseforge.md as the description), then add its ID as
 `CURSEFORGE_ID`.

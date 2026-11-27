@@ -39,16 +39,23 @@ public final class GmLimitsGameTests {
         if (!ok) throw new GameTestAssertException(what);
     }
 
+    /** A refusal (at once, or a future already failed): never joins a call that would need another tick. */
     private static RpcException refused(GmServer gm, String method, JsonObject p) {
+        java.util.concurrent.CompletableFuture<?> f;
         try {
-            gm.dispatch().invoke(GM, method, p).join();
+            f = gm.dispatch().invoke(GM, method, p);
         } catch (RpcException e) {
             return e;
-        } catch (java.util.concurrent.CompletionException e) {
-            if (e.getCause() instanceof RpcException r) return r;
-            throw e;
         }
-        throw new GameTestAssertException(method + " was allowed: " + p);
+        if (f.isCompletedExceptionally()) {
+            try {
+                f.join();
+            } catch (java.util.concurrent.CompletionException e) {
+                if (e.getCause() instanceof RpcException r) return r;
+                throw e;
+            }
+        }
+        throw new GameTestAssertException(method + " was allowed: " + p + (f.isDone() ? " → " + f.join() : " (still running)"));
     }
 
     private static String set(BlockPos at, String block) {
@@ -88,18 +95,21 @@ public final class GmLimitsGameTests {
         Policy before = gm.policies().current();
         BlockPos at = h.absolutePos(new BlockPos(4, 2, 4));
         gm.policies().set(Policy.parse("preset = \"private\""));
-        gm.dispatch().invoke(GM, "build", params(set(at, "minecraft:command_block{Command:\"say hi\"}")));
+        // Job ids from the calls' own answers (other batches' jobs share the queue).
         long[] ids = new long[2];
+        gm.dispatch().invoke(GM, "build", params(set(at, "minecraft:command_block{Command:\"say hi\"}")))
+                .thenAccept(d -> ids[0] = d.getAsJsonObject().get("id").getAsLong());
         h.runAfterDelay(10, () -> {
-            for (JsonElement j : gm.jobs().describe()) ids[0] = Math.max(ids[0], j.getAsJsonObject().get("id").getAsLong());
+            check(ids[0] > 0, "build answered");
             try {
-                gm.dispatch().invoke(GM, "undo", params("{\"job\":%d,\"wait\":0}", ids[0]));
+                gm.dispatch().invoke(GM, "undo", params("{\"job\":%d,\"wait\":0}", ids[0]))
+                        .thenAccept(d -> ids[1] = d.getAsJsonObject().get("id").getAsLong());
             } catch (RpcException e) {
                 throw new GameTestAssertException("owner undo: " + e.getMessage());
             }
         });
         h.runAfterDelay(30, () -> {
-            for (JsonElement j : gm.jobs().describe()) ids[1] = Math.max(ids[1], j.getAsJsonObject().get("id").getAsLong());
+            check(ids[1] > 0, "undo answered");
             try {
                 gm.policies().set(Policy.parse("preset = \"friends\""));
                 RpcException e = refused(gm, "undo", params("{\"job\":%d,\"wait\":0}", ids[1]));

@@ -67,6 +67,16 @@ public final class Api {
     public static final java.util.Set<String> LONG = java.util.Set.of(
             "events", "job", "build", "undo", "area.prepare", "map", "look", "see", "bot.act", "bot.spawn");
 
+    /** Whether a call has no effects: idempotency keys are ignored for it. {@code notes} with {@code text} writes a note. */
+    public static boolean readOnly(String method, JsonObject params) {
+        return READ_ONLY.contains(method) || (method.equals("notes") && !params.has("text"));
+    }
+
+    /** Methods without effects on the world, whatever their parameters. */
+    public static final java.util.Set<String> READ_ONLY = java.util.Set.of(
+            "status", "players", "player", "entities", "blocks", "map", "look", "see", "jobs", "job", "areas",
+            "bots", "bot", "ships", "rules", "event.types", "events");
+
     private Api() {}
 
     public static Map<String, Method> methods(GmServer gm) {

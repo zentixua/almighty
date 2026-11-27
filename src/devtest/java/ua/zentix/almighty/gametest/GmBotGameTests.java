@@ -828,7 +828,7 @@ public final class GmBotGameTests {
     private static boolean refused(GameTestHelper h, String json) {
         CompletableFuture<JsonElement> f;
         try {
-            f = Api.methods(gm(h)).get("bot.spawn").call(new Args(params(json)));
+            f = gm(h).dispatch().invoke(ua.zentix.almighty.bridge.Caller.INTERNAL, "bot.spawn", params(json));
         } catch (RpcException e) {
             return true;
         }

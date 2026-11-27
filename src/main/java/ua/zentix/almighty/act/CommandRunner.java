@@ -37,6 +37,7 @@ import org.slf4j.Logger;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.GmConfig;
 import ua.zentix.almighty.bridge.Args;
+import ua.zentix.almighty.policy.DenyList;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.world.Dims;
 
@@ -130,6 +131,12 @@ public final class CommandRunner {
     public static JsonArray run(MinecraftServer server, ServerLevel level, Vec3 pos, Entity as, List<String> commands, boolean quiet) {
         JsonArray results = new JsonArray();
         for (String command : commands) {
+            // Scripts and rules reach here without the bridge's per-call check: the deny list applies to every GM command.
+            String denied = DenyList.command(command);
+            if (denied != null) {
+                LOG.warn("GM: refused /{}: {}", command.startsWith("/") ? command.substring(1) : command, denied);
+                throw new IllegalArgumentException("denied: " + denied);
+            }
             Capture capture = new Capture();
             String text = command.startsWith("/") ? command.substring(1) : command;
             if (quiet) LOG.debug("GM: /{}", text);

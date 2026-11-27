@@ -79,6 +79,7 @@ public final class Observe {
         work.addProperty("jobs", gm.jobs().running());
         work.addProperty("chunks_held", gm.areas().held());
         work.addProperty("chunk_tickets", gm.areas().ticketed());
+        work.addProperty("lag_guard", gm.lagging());
         out.add("gm", work);
         return out;
     }

@@ -29,7 +29,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongSupplier;
 
 /**
- * HTTP bridge: {@code POST /rpc} with body {@code {"method": "...", "params": {...}}} and header
+ * HTTP bridge: {@code POST /rpc} with body {@code {"method": "...", "params": {...}, "key": "..."}} (key: optional
+ * idempotency key, {@link Dispatch}) and header
  * {@code Authorization: Bearer <token>} (one token per agent, {@link Agents}); response {@code {"ok": true, "result": ...}}
  * or {@code {"ok": false, "error": {"code": ..., "message": ...}}}. Uses Java's own HTTP server ({@code jdk.httpserver}).
  *
@@ -193,7 +194,7 @@ public final class Bridge {
         }
     }
 
-    private record Request(Caller caller, String method, JsonObject params) {}
+    private record Request(Caller caller, String method, JsonObject params, String key) {}
 
     private Request accept(HttpExchange exchange) throws RpcException, IOException {
         if (!"POST".equals(exchange.getRequestMethod())) throw new RpcException(405, "method_not_allowed", "Only POST /rpc");
@@ -212,12 +213,15 @@ public final class Bridge {
         if (name == null || !name.isJsonPrimitive()) throw RpcException.badRequest("Missing field method");
         JsonElement params = request.get("params");
         if (params != null && !params.isJsonNull() && !params.isJsonObject()) throw RpcException.badRequest("params: expected an object");
-        return new Request(caller, name.getAsString(), params == null || params.isJsonNull() ? null : params.getAsJsonObject());
+        JsonElement key = request.get("key");
+        if (key != null && !key.isJsonNull() && !key.isJsonPrimitive()) throw RpcException.badRequest("key: expected a string");
+        return new Request(caller, name.getAsString(), params == null || params.isJsonNull() ? null : params.getAsJsonObject(),
+                key == null || key.isJsonNull() ? null : key.getAsString());
     }
 
     private void finish(HttpExchange exchange, Request request) {
         try {
-            send(exchange, 200, ok(call(request.caller, request.method, request.params)));
+            send(exchange, 200, ok(call(request.caller, request.method, request.params, request.key)));
         } catch (RpcException e) {
             trySend(exchange, e);
         } catch (IOException e) {
@@ -225,10 +229,10 @@ public final class Bridge {
         }
     }
 
-    /** Invoke and wait for a method's result, mapping failures to bridge errors. */
-    public JsonElement call(Caller caller, String method, JsonObject params) throws RpcException {
+    /** Invoke and wait for a method's result, mapping failures to bridge errors; {@code key}: idempotency key or null. */
+    public JsonElement call(Caller caller, String method, JsonObject params, String key) throws RpcException {
         try {
-            return dispatch.invoke(caller, method, params).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return dispatch.invoke(caller, method, params, key).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof RpcException rpc) throw rpc;

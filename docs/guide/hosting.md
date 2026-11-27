@@ -9,7 +9,7 @@ the bridge without opening the bridge to the internet:
 | Your setup | Recommended |
 |---|---|
 | Server on your own PC or in your home network | Run the agent on that PC, or keep the bridge on loopback and use the PC's own agent app. |
-| VPS or dedicated server with SSH | An SSH tunnel from your computer: `ssh -N -L 25650:127.0.0.1:25650 you@server`, then connect the agent to `http://127.0.0.1:25650/mcp` on your computer. Or Tailscale on both machines. The bridge stays on loopback. |
+| VPS or dedicated server with SSH | An SSH tunnel from your computer: `ssh -N -L 25650:127.0.0.1:25650 you@server`, then connect the agent to `http://127.0.0.1:25650/mcp` on your computer. The bridge stays on loopback. Or Tailscale on both machines, with `bridge.host` set to the server's Tailscale address. |
 | Self-hosted panel (Crafty, Pterodactyl, Pelican) | A tunnel to the host as above, or an allocated port bound to the container's own address (`bridge.host`), reachable only from the host. |
 | Paid shared hosting (no SSH) | Only an extra allocated port on the public internet, which means the bridge itself is public. Use it only with the bridge's own HTTPS: a certificate for that host's name in `bridge.tls_cert` and `bridge.tls_key`. Without it, tokens and sign-in codes cross the internet in plain text: do not. A proxy elsewhere does not help, because it would still reach the bridge over plain HTTP. |
 | Free hosting such as Aternos | Not supported: it offers only mods from its own library and no extra ports. |
@@ -33,9 +33,25 @@ Behind a proxy or tunnel the server sees every client as the proxy: `/almighty a
 address (usually `127.0.0.1`), and the wrong-token lockout counts all outside clients together (a valid token always
 passes it, so agents keep working).
 
+## The bridge's own HTTPS
+
+When the bridge itself must be reachable from other machines, give it your certificate instead of a proxy:
+
+```toml
+[bridge]
+host = "0.0.0.0"
+tls_cert = "certs/fullchain.pem"
+tls_key = "certs/privkey.pem"
+```
+
+The files are a PEM certificate chain and an unencrypted PKCS#8 private key (`BEGIN PRIVATE KEY`), for example from
+Let's Encrypt; paths are relative to the server folder. The bridge then speaks only HTTPS, and sign-in and
+`/almighty connect` use `https`. Almighty does not create certificates itself. A bridge listening beyond loopback
+without TLS still starts, with a warning in the log: only do that on a network nobody else reaches.
+
 ## Several servers, proxies, Bedrock
 
-- Behind Velocity or BungeeCord, each backend server has its own bridge and its own agents.
-- Bedrock players through Geyser and Floodgate are players like any other; Geyser for modded servers supports only
-  the newest Minecraft version: on 26.3 (the latest release Almighty supports) it can work, on 1.21.1 it is not
-  available.
+- Behind Velocity or BungeeCord, each backend server has its own bridge and its own agents. With Velocity modern
+  forwarding set `identity = "proxy"` in `policy.toml`, so players count as verified.
+- Bedrock players through Geyser and Floodgate are players like any other and count as verified. Geyser for modded
+  servers supports only some Minecraft versions; check its site for yours.

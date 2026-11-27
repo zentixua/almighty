@@ -13,6 +13,7 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.audit.Journal;
+import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.bridge.Agents;
 import ua.zentix.almighty.bridge.Caller;
 
@@ -118,38 +119,51 @@ public final class GmJournalGameTests {
      * A crash mid-build leaves an undoable journal: while a slow build still runs, what it wrote is already on disk,
      * and a journal opened afresh on the same directory (a restart) lists the change as interrupted and reads it.
      */
-    @GameTest(template = "floor", batch = "gm_journal_crash", timeoutTicks = 200)
+    @GameTest(template = "floor", batch = "gm_journal_crash", timeoutTicks = 300)
     public static void crashMidBuildLeavesAnUndoableJournal(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);
         java.util.function.LongSupplier clock = GmServer.clock;
         java.util.concurrent.atomic.AtomicLong t = new java.util.concurrent.atomic.AtomicLong();
-        // 1 ms per call (as other job tests): a few 32-position portions per tick, so the build takes several ticks.
-        // Not more per call: a job left in the queue by an earlier test would then take every tick's only slice.
-        GmServer.clock = () -> t.addAndGet(1_000_000L);
-        BlockPos a = h.absolutePos(new BlockPos(0, 2, 0)), b = h.absolutePos(new BlockPos(7, 5, 7));
+        // 16×4×16 positions: at most a few 32-position portions per tick (clock below), so the build runs for well over
+        // ten ticks and the checks see it mid-way whatever the order of the server's and the test's tick work.
+        BlockPos a = h.absolutePos(new BlockPos(0, 2, 0)), b = h.absolutePos(new BlockPos(15, 5, 15));
+        int total = 16 * 4 * 16;
         // The build and its neighbour ring ready now (as other build tests): writes start within the ticks below even
         // when this is the first batch on a fresh world.
         for (int x = (a.getX() >> 4) - 1; x <= (b.getX() >> 4) + 1; x++) for (int z = (a.getZ() >> 4) - 1; z <= (b.getZ() >> 4) + 1; z++) h.getLevel().getChunk(x, z);
-        gm.dispatch().invoke(GM, "build", params("{\"ops\":[{\"op\":\"fill\",\"from\":[%d,%d,%d],\"to\":[%d,%d,%d],\"block\":\"minecraft:stone\"}],\"wait\":0}",
-                a.getX(), a.getY(), a.getZ(), b.getX(), b.getY(), b.getZ()));
-        long id = newest(gm);
         java.nio.file.Path dir = h.getLevel().getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
                 .resolve("almighty").resolve("changes");
         var blocks = h.getLevel().registryAccess().lookupOrThrow(Registries.BLOCK);
         java.util.concurrent.atomic.AtomicReference<Journal.Records> seen = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicLong id = new java.util.concurrent.atomic.AtomicLong();
         // The clock goes back even if the test times out (other batches share it).
-        h.runAfterDelay(190, () -> GmServer.clock = clock);
-        // Mid-build, once its first writes reached the disk (the job may start a few ticks late on a busy server): a
-        // journal reopened on the directory, as after a crash, lists the change as interrupted and reads those writes.
+        h.runAfterDelay(290, () -> GmServer.clock = clock);
         h.startSequence()
+                // The job queue is server-wide: the build must be the only job, or a job an earlier test left running
+                // takes the tick's budget first and this build would not progress until the real clock is back.
+                .thenWaitUntil(() -> check(gm.jobs().running() == 0, "other jobs still in the queue: " + gm.jobs().describe()))
+                .thenExecute(() -> {
+                    // 1 ms per call (as other job tests): a few portions per tick, not the whole build at once.
+                    GmServer.clock = () -> t.addAndGet(1_000_000L);
+                    try {
+                        gm.dispatch().invoke(GM, "build", params("{\"ops\":[{\"op\":\"fill\",\"from\":[%d,%d,%d],\"to\":[%d,%d,%d],\"block\":\"minecraft:stone\"}],\"wait\":0}",
+                                a.getX(), a.getY(), a.getZ(), b.getX(), b.getY(), b.getZ()));
+                    } catch (RpcException e) {
+                        throw new GameTestAssertException("build: " + e.getMessage());
+                    }
+                    id.set(newest(gm));
+                })
+                // Mid-build, once its first writes reached the disk: a journal reopened on the directory, as after a
+                // crash, lists the change as interrupted and reads those writes.
                 .thenWaitUntil(() -> {
                     try {
-                        check(gm.journal().describe(id).has("open"), "the build is still running");
+                        JsonObject live = gm.journal().describe(id.get());
+                        check(live != null && live.has("open"), "the build is no longer running: " + live + ", jobs " + gm.jobs().describe());
                         Journal restarted = new Journal(dir);
-                        JsonObject meta = restarted.describe(id);
+                        JsonObject meta = restarted.describe(id.get());
                         check(meta != null, "the change is not on disk yet");
                         check(meta.has("interrupted"), "after a restart the change is listed as interrupted: " + meta);
-                        Journal.Records r = restarted.read(id, tag -> NbtUtils.readBlockState(blocks, tag));
+                        Journal.Records r = restarted.read(id.get(), tag -> NbtUtils.readBlockState(blocks, tag));
                         check(r.size() > 0, "no write on disk yet");
                         seen.set(r);
                     } catch (java.io.IOException e) {
@@ -158,7 +172,7 @@ public final class GmJournalGameTests {
                 })
                 .thenExecute(() -> {
                     GmServer.clock = clock;
-                    check(seen.get().size() < 256, "what was written so far is on disk, and only that: " + seen.get().size());
+                    check(seen.get().size() < total, "what was written so far is on disk, and only that: " + seen.get().size());
                 })
                 .thenSucceed();
     }

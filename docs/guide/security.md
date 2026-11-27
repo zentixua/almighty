@@ -16,6 +16,9 @@ network. Treat access to the bridge like shell access to the server machine.
 - **One identity per app.** Each approved app is its own agent with its own token: `/almighty agents` shows who
   called last and from where; `/almighty agent remove <name>` ends one at once; `/almighty revoke <name>` replaces
   its token.
+- **Rights per app.** An approved app may look, build, talk and drive bots, but not run commands or scripts, unless you
+  approve it as your own (`/almighty approve <code> <name> owner`) or raise its ceiling in
+  `config/almighty/policy.toml`.
 - **Tokens stay secret.** They live in files only the server's owner can read (`config/almighty/token` for `gm`, `config/almighty/agents/`
   for the others; on Windows the folder's own permissions apply), are never
   printed or logged, and sign-in links carry no secret. Five wrong tokens within a minute lock the address out for a

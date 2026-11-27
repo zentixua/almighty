@@ -24,8 +24,9 @@ English · <a href="README.ru.md">Русский</a>
    `mods/` folder and start it. The console says: `Almighty ready - tell your AI agent: "connect to my Minecraft
    server at http://127.0.0.1:25650/mcp"`.
 2. Tell your agent exactly that. It adds the server itself.
-3. Your agent opens a sign-in page with a four-digit code. Type `/almighty approve <code>` in the game (as an
-   operator) or in the console. Done: no tokens, no config files, no extra software.
+3. Your agent opens a sign-in page with a four-digit code. Type `/almighty approve <code> <name> owner` in the game
+   (as an operator) or in the console (`owner`: it is your own app and acts with your rights). Done: no tokens, no
+   config files, no extra software.
 
 More: [Getting started](docs/guide/getting-started.md) · [Connect your app](docs/guide/connect/README.md) ·
 [Game master mode](docs/guide/game-master.md) · [Hosting](docs/guide/hosting.md) · [Guide](docs/guide/README.md)

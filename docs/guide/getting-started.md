@@ -43,6 +43,11 @@ with the code from the page. The page returns to your app, and the agent is conn
 edits a file. Only someone who can see the page and type on the server can approve it, so a stranger's sign-in
 cannot be approved by mistake.
 
+Your own app on your own computer should act with your rights (run commands and scripts too): approve it with its
+name and the word `owner`, for example `/almighty approve 4821 claude-code owner`. Without `owner` it may look,
+build, talk and drive bots, but not run commands or scripts (it can still be raised later in
+`config/almighty/policy.toml`).
+
 Each app you approve becomes its own agent (`claude-code`, `codex`, ...): `/almighty agents` lists them with their
 last call, and `/almighty agent remove <name>` ends one.
 

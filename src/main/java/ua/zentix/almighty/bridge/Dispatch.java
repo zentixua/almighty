@@ -19,6 +19,8 @@ import java.util.function.LongSupplier;
  * <p>Idempotency: a call may carry a key; a repeat of the same key by the same agent within
  * {@value #KEY_TTL_MS} ms gets the first call's result (waiting for it if it is still running) instead of running
  * again — a retry after a 504 does not run a command twice. The same key with a different call is refused (409).
+ * Keys matter only for calls with effects: read-only methods simply run again (their results, images included, are
+ * never kept), and a call that failed forgets its key, so a retry runs it afresh.
  */
 public final class Dispatch {
     /** A check on every call before it runs; throws to refuse. */
@@ -33,22 +35,25 @@ public final class Dispatch {
 
     private final Map<String, Method> methods;
     private final List<Check> checks;
+    private final Set<String> readOnly;
     private final LongSupplier clockMillis;
     private final Map<String, Remembered> keys = new LinkedHashMap<>();
 
     private record Remembered(String call, CompletableFuture<JsonElement> result, long expires) {}
 
     public Dispatch(Map<String, Method> methods) {
-        this(methods, List.of());
+        this(methods, List.of(), Set.of());
     }
 
-    public Dispatch(Map<String, Method> methods, List<Check> checks) {
-        this(methods, checks, System::currentTimeMillis);
+    /** {@code readOnly}: methods without effects, for which idempotency keys are ignored. */
+    public Dispatch(Map<String, Method> methods, List<Check> checks, Set<String> readOnly) {
+        this(methods, checks, readOnly, System::currentTimeMillis);
     }
 
-    Dispatch(Map<String, Method> methods, List<Check> checks, LongSupplier clockMillis) {
+    Dispatch(Map<String, Method> methods, List<Check> checks, Set<String> readOnly, LongSupplier clockMillis) {
         this.methods = Map.copyOf(methods);
         this.checks = List.copyOf(checks);
+        this.readOnly = Set.copyOf(readOnly);
         this.clockMillis = clockMillis;
     }
 
@@ -65,8 +70,10 @@ public final class Dispatch {
         }
         JsonObject p = params == null ? new JsonObject() : params;
         for (Check c : checks) c.check(caller, name, p);
-        if (key == null) return method.call(new Args(params, caller));
-        if (key.isEmpty() || key.length() > MAX_KEY_LENGTH) throw RpcException.badRequest("key: 1 to " + MAX_KEY_LENGTH + " characters");
+        if (key != null && (key.isEmpty() || key.length() > MAX_KEY_LENGTH)) {
+            throw RpcException.badRequest("key: 1 to " + MAX_KEY_LENGTH + " characters");
+        }
+        if (key == null || readOnly.contains(name)) return method.call(new Args(params, caller));
         String slot = caller.name() + "\u0000" + key;
         String call = name + "\u0000" + p;
         CompletableFuture<JsonElement> mine = new CompletableFuture<>();
@@ -83,8 +90,14 @@ public final class Dispatch {
         }
         try {
             method.call(new Args(params, caller)).whenComplete((v, e) -> {
-                if (e != null) mine.completeExceptionally(e);
-                else mine.complete(v);
+                if (e != null) {
+                    synchronized (keys) {
+                        keys.remove(slot);
+                    }
+                    mine.completeExceptionally(e);
+                } else {
+                    mine.complete(v);
+                }
             });
         } catch (RpcException | RuntimeException e) {
             // Refused before it ran: forget the key, so a corrected retry with it may run.
@@ -93,7 +106,8 @@ public final class Dispatch {
             }
             throw e;
         }
-        return mine.thenApply(JsonElement::deepCopy);
+        // The first caller gets the result itself; only repeats get copies (above).
+        return mine;
     }
 
     public Set<String> names() {

@@ -123,7 +123,7 @@ access to the bridge like shell access to the server machine.
   load chunks synchronously, start threads, register listeners, sleep, exit the JVM or start processes are refused
   too. The owner can still run such commands in the console.
 - Game master work shares a fixed time per tick (`work.ms_per_tick`). When the server lags (average tick above 50 ms
-  for 10 seconds), game master work drops to its minimum until the server recovers.
+  for 10 seconds, at 20 ticks per second), game master work gets a quarter of its time until the server recovers.
 - To turn scripts off, set `scripts.enabled = false`. The `script` method and rules with a script are then refused,
   and saved rules with a script do not load. Commands and rules without a script still work.
 - To turn the bridge off, set `bridge.enabled = false`.

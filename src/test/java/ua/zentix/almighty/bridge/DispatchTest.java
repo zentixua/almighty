@@ -23,10 +23,12 @@ class DispatchTest {
     private final Caller builder = new Caller(agents.get("builder"), "127.0.0.1");
     private final Dispatch dispatch = new Dispatch(Map.of(
             "count", a -> CompletableFuture.completedFuture(new JsonPrimitive(runs.incrementAndGet())),
-            "pending", a -> new CompletableFuture<>()),
+            "pending", a -> new CompletableFuture<>(),
+            "look", a -> CompletableFuture.completedFuture(new JsonPrimitive(runs.incrementAndGet())),
+            "flaky", a -> CompletableFuture.failedFuture(new RpcException(504, "timeout", "late " + runs.incrementAndGet()))),
             List.of((caller, method, params) -> {
                 if (params.has("forbidden")) throw new RpcException(403, "denied", "no");
-            }), clock::get);
+            }), java.util.Set.of("look"), clock::get);
 
     private static JsonObject json(String s) {
         return JsonParser.parseString(s).getAsJsonObject();
@@ -64,6 +66,19 @@ class DispatchTest {
     void refusedCallDoesNotKeepItsKey() throws Exception {
         assertThrows(RpcException.class, () -> dispatch.invoke(gm, "count", json("{\"forbidden\":1}"), "k2"));
         assertEquals(1, dispatch.invoke(gm, "count", json("{\"ok\":1}"), "k2").get().getAsInt());
+    }
+
+    @Test
+    void readOnlyCallsIgnoreKeys() throws Exception {
+        assertEquals(1, dispatch.invoke(gm, "look", null, "v").get().getAsInt());
+        assertEquals(2, dispatch.invoke(gm, "look", null, "v").get().getAsInt(), "a view runs again; its image is never kept");
+    }
+
+    @Test
+    void failedCallForgetsItsKey() {
+        assertThrows(Exception.class, () -> dispatch.invoke(gm, "flaky", null, "f").get());
+        assertThrows(Exception.class, () -> dispatch.invoke(gm, "flaky", null, "f").get());
+        assertEquals(2, runs.get(), "a retry after a failure runs afresh");
     }
 
     @Test

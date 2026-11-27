@@ -67,6 +67,11 @@ public final class Api {
     public static final java.util.Set<String> LONG = java.util.Set.of(
             "events", "job", "build", "undo", "area.prepare", "map", "look", "see", "bot.act", "bot.spawn");
 
+    /** Methods without effects on the world: idempotency keys are ignored for them. */
+    public static final java.util.Set<String> READ_ONLY = java.util.Set.of(
+            "status", "notes", "players", "player", "entities", "blocks", "map", "look", "see", "jobs", "job", "areas",
+            "bots", "bot", "ships", "rules", "event.types", "events");
+
     private Api() {}
 
     public static Map<String, Method> methods(GmServer gm) {

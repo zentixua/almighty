@@ -36,7 +36,8 @@ class DenyListTest {
     @ValueSource(strings = {
             "stopsound @a", "reloadx", "save-all", "save-on", "forceload remove 0 0", "forceload query 0 0",
             "tick rate 100", "tick rate 20", "tick freeze", "tp @s 19999999 64 0", "say stop the server",
-            "give @s stone 20000000", "time set 20000000", "execute as @a run say hi", "gm hello"})
+            "give @s stone 20000000", "time set 20000000", "execute as @a run say hi", "gm hello",
+            "say don't run stop", "tellraw @a \"run reload now\""})
     void allowedCommands(String command) {
         assertNull(DenyList.command(command), command);
     }

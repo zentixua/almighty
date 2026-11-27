@@ -72,7 +72,8 @@ public final class GmServer {
         this.rules = new Rules(server, NeoForge.EVENT_BUS, feed, state,
                 server.getWorldPath(LevelResource.ROOT).resolve("almighty").resolve("rules.json"));
         this.bots = new Bots(this);
-        this.dispatch = new Dispatch(Api.methods(this), List.of((caller, method, params) -> DenyList.check(method, params)));
+        this.dispatch = new Dispatch(Api.methods(this), List.of((caller, method, params) -> DenyList.check(method, params)),
+                Api.READ_ONLY);
     }
 
     /** This server's game master; null if the server has not started yet or has already stopped. */
@@ -122,7 +123,8 @@ public final class GmServer {
      */
     void tickEnd() {
         bots.tick();
-        if (lagGuard.update(server.getAverageTickTimeNanos() / 1e6, System.currentTimeMillis())) {
+        if (lagGuard.update(server.getAverageTickTimeNanos() / 1e6, server.tickRateManager().millisecondsPerTick(),
+                System.currentTimeMillis())) {
             JsonObject d = new JsonObject();
             d.addProperty("on", lagGuard.lagging());
             d.addProperty("mspt", Math.round(server.getAverageTickTimeNanos() / 1e4) / 100.0);
@@ -133,14 +135,15 @@ public final class GmServer {
         long budget = budget();
         runWorldCalls(Math.max(0, budget - usedThisTick), true);
         long jobsStart = System.nanoTime();
-        jobs.tick(usedThisTick == 0 ? budget : Math.max(0, budget - usedThisTick));
+        jobs.tick(Math.max(0, budget - usedThisTick));
         // Jobs count too: calls answered between ticks get only what this tick left.
         usedThisTick += System.nanoTime() - jobsStart;
         areas.tick(server.getTickCount());
     }
 
+    /** The GM budget per tick; a quarter of it while the lag guard holds, so builds and views slow down but go on. */
     private long budget() {
-        return lagGuard.lagging() ? 0 : GmConfig.workNanosPerTick();
+        return lagGuard.lagging() ? GmConfig.workNanosPerTick() / 4 : GmConfig.workNanosPerTick();
     }
 
     /**
@@ -241,7 +244,11 @@ public final class GmServer {
             }
             try {
                 out.complete(call.run());
-            } catch (RpcException | RuntimeException e) {
+            } catch (VirtualMachineError e) {
+                if (!(e instanceof StackOverflowError)) throw e;
+                out.completeExceptionally(e);
+            } catch (Throwable e) {
+                // Never into the tick loop: server.execute used to log such throws; a queued call must not crash the tick.
                 out.completeExceptionally(e);
             }
         };
@@ -249,7 +256,12 @@ public final class GmServer {
         else if (stopped) out.completeExceptionally(RpcException.unavailable("The server is stopping"));
         else {
             worldCalls.add(run);
-            if (drainQueued.compareAndSet(false, true)) server.execute(this::drainBetweenTicks);
+            // Stopped meanwhile: the drain in stop() may have missed this call; it fails fast when run here.
+            if (stopped) {
+                for (Runnable r; (r = worldCalls.poll()) != null; ) r.run();
+            } else if (drainQueued.compareAndSet(false, true)) {
+                server.execute(this::drainBetweenTicks);
+            }
         }
         return out;
     }

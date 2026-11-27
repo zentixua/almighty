@@ -36,6 +36,7 @@ public final class DenyList {
             Pattern.CASE_INSENSITIVE);
     private static final Pattern NUMBER = Pattern.compile("(?<![\\w.~^])-?\\d+(?:\\.\\d+)?");
     private static final Pattern RUN = Pattern.compile("\\brun\\s+");
+    private static final Pattern EXECUTE = Pattern.compile("^execute\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern MACRO = Pattern.compile("\\$\\((\\w+)\\)");
 
     private static final List<Rule> SCRIPT = List.of(
@@ -136,10 +137,12 @@ public final class DenyList {
         return null;
     }
 
+    /** The command and, for {@code execute … run} chains, each command after a {@code run} (chat text is not split). */
     static List<String> segments(String command) {
         String c = strip(command);
         List<String> out = new ArrayList<>();
         out.add(c);
+        if (!EXECUTE.matcher(c).find()) return out;
         String[] parts = RUN.split(c, -1);
         for (int i = 1; i < parts.length; i++) out.add(strip(parts[i]));
         return out;

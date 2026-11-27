@@ -90,11 +90,13 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   processes). Checked in `Dispatch` (403 `denied`), again for every GM command at run time (`CommandRunner.run`:
   scripts and rules) and in `Scripts.compile` (rules loaded from a file). An accident guard, not security.
 - Server-thread budget: `GmServer.onMain` from another thread queues the call; queued world calls run at tick end
-  before jobs, sharing `work.ms_per_tick` (at least one call per tick); on the server thread it runs at once. Lag
-  guard (`work/LagGuard`): average tick above 50 ms for 10 s → GM work at its minimum (one call, one job unit per
-  tick) until 10 s below; `lag_guard` feed event, `lag_guard` in `status`. Idempotency: `/rpc` body `key` (≤ 128
-  characters): the same agent's repeat within 10 minutes returns the first result (joining it if still running);
-  the same key for a different call → 409. Vanilla already caps `fill`/`clone` at 32 768 blocks: larger work uses `build`.
+  before jobs, sharing `work.ms_per_tick` (at least one call per tick); on the server thread it runs at once; a
+  throw completes the call's future, never the tick. Lag guard (`work/LagGuard`): average tick above the target
+  tick length (`/tick rate`; 50 ms at 20) for 10 s → GM budget a quarter until 10 s below; `lag_guard` feed event,
+  `lag_guard` in `status`. Idempotency: `/rpc` body `key` (≤ 128 characters): the same agent's repeat of a call
+  with effects within 10 minutes returns the first result (joining it if still running); the same key for a
+  different call → 409; read-only methods (`Api.READ_ONLY`) ignore keys (images are never kept); a failed call
+  forgets its key. Vanilla already caps `fill`/`clone` at 32 768 blocks: larger work uses `build`.
 - `act/`: commands and functions (`CommandRunner`), messages to players (`Chat`); `feed/`: event feed and a player's
   private channel to the GM: `/gm <text>` (any player) emits `gm` in the feed, invisible to others; reply with `say` and `to`.
 - `script/`: Groovy scripts (`Scripts`: compilation with a deadline, execution), scripts' `gm` variable (`ScriptApi`),

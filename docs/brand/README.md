@@ -1,6 +1,8 @@
 # Almighty brand kit: pixel-art directions
 
-**Round six (current):** from above, against no. 2: [`finalists3.png`](finalists3.png), reads in [`finalists3.md`](finalists3.md).
+**Round seven (current):** four face treatments for the cloud on strings: [`cloud-faces.png`](cloud-faces.png), reads in [`cloud-faces.md`](cloud-faces.md).
+
+**Round six:** from above, against no. 2: [`finalists3.png`](finalists3.png), reads in [`finalists3.md`](finalists3.md).
 
 **Round five:** finalists from four concept families: [`finalists2.png`](finalists2.png), process and reads in [`finalists2.md`](finalists2.md).
 

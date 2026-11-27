@@ -75,7 +75,7 @@ public final class Api {
     /** Methods without effects on the world, whatever their parameters. */
     public static final java.util.Set<String> READ_ONLY = java.util.Set.of(
             "status", "players", "player", "entities", "blocks", "map", "look", "see", "jobs", "job", "areas",
-            "bots", "bot", "ships", "rules", "event.types", "events");
+            "bots", "bot", "ships", "rules", "event.types", "events", "audit");
 
     private Api() {}
 
@@ -178,6 +178,13 @@ public final class Api {
             String query = a.string("query", "");
             int limit = a.integer("limit", 50, 1, 500);
             return CompletableFuture.completedFuture(Json.from(EventTypes.search(query, limit)));
+        });
+        m.put("audit", a -> {
+            int limit = a.integer("limit", 50, 1, 1000);
+            String agent = a.string("agent", null), method = a.string("method", null);
+            return CompletableFuture.completedFuture(gm.audit().recent(limit, e ->
+                    (agent == null || e.get("agent").getAsString().equals(agent))
+                            && (method == null || e.get("method").getAsString().equals(method))));
         });
         m.put("events", a -> {
             long after = a.longValue("after", 0, 0, Long.MAX_VALUE);

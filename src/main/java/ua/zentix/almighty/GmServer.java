@@ -12,6 +12,8 @@ import ua.zentix.almighty.bridge.Agents;
 import ua.zentix.almighty.bridge.Bridge;
 import ua.zentix.almighty.bridge.Dispatch;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.audit.Audit;
+import ua.zentix.almighty.audit.Pause;
 import ua.zentix.almighty.feed.Feed;
 import ua.zentix.almighty.feed.Inbox;
 import ua.zentix.almighty.mcp.McpEndpoint;
@@ -59,6 +61,9 @@ public final class GmServer {
     private final Dispatch dispatch;
     private final Tickets tickets = new Tickets(System::currentTimeMillis);
     private final Inbox inbox;
+    private final Pause pause = new Pause();
+    private static final java.util.Set<String> PAUSE_ALLOWS = java.util.Set.of("cancel", "area.release", "rule.remove", "bot.remove");
+    private final Audit audit;
     private Bridge bridge;
     private long lastTick;
     /** World calls from bridge threads, run at tick end under the GM budget ({@link #runWorldCalls}). */
@@ -77,9 +82,24 @@ public final class GmServer {
         this.rules = new Rules(server, NeoForge.EVENT_BUS, feed, state,
                 server.getWorldPath(LevelResource.ROOT).resolve("almighty").resolve("rules.json"));
         this.bots = new Bots(this);
+        // GameTest keeps the audit in memory: no files in the test run directory.
+        this.audit = new Audit(server instanceof net.minecraft.gametest.framework.GameTestServer ? null
+                : server.getServerDirectory().resolve("logs").resolve("almighty"),
+                GmConfig.AUDIT_DAYS.get());
+        jobs.paused(pause::paused);
+        rules.paused(pause::all);
         this.inbox = new Inbox(server, feed, tickets, () -> bridge == null ? null : bridge.agents());
-        this.dispatch = new Dispatch(Api.methods(this), List.of((caller, method, params) -> DenyList.check(method, params)),
+        this.dispatch = new Dispatch(Api.methods(this), List.of(
+                (caller, method, params) -> DenyList.check(method, params),
+                (caller, method, params) -> {
+                    // Cancelling, releasing and removing only reduce effects: allowed, so a paused agent can clean up.
+                    if (!Api.readOnly(method, params) && !PAUSE_ALLOWS.contains(method) && pause.paused(caller.name())) {
+                        throw new RpcException(423, "paused", "Paused by the owner (/almighty resume): only reading is allowed");
+                    }
+                }),
                 Api::readOnly);
+        dispatch.listen((caller, method, params, text, result, error, nanos) ->
+                audit.ended(caller, method, params, text, result, error, nanos, Api.readOnly(method, params)));
     }
 
     /** This server's game master; null if the server has not started yet or has already stopped. */
@@ -193,6 +213,7 @@ public final class GmServer {
         bots.stop();
         rules.stop();
         jobs.cancelAll();
+        audit.stop();
         areas.releaseAll();
     }
 
@@ -222,6 +243,27 @@ public final class GmServer {
 
     public Bots bots() {
         return bots;
+    }
+
+    public Audit audit() {
+        return audit;
+    }
+
+    public Pause pause() {
+        return pause;
+    }
+
+    /** Pause one agent (or, null, every agent): its calls with effects are refused, its jobs freeze, its bots stop. */
+    public int pause(String agent) {
+        pause.pause(agent);
+        int stopped = 0;
+        for (ua.zentix.almighty.bot.Bot bot : bots.all()) {
+            if (agent == null || bot.controller().equals(agent)) {
+                bot.stop("paused by the owner");
+                stopped++;
+            }
+        }
+        return stopped;
     }
 
     public Inbox inbox() {
@@ -255,13 +297,17 @@ public final class GmServer {
      */
     public <T> CompletableFuture<T> onMain(MainCall<T> call) {
         CompletableFuture<T> out = new CompletableFuture<>();
+        // The caller travels with the call: jobs and bots started on the server thread know which agent acts.
+        ua.zentix.almighty.bridge.Caller caller = Dispatch.current();
         Runnable run = () -> {
             if (stopped) {
                 out.completeExceptionally(RpcException.unavailable("The server is stopping"));
                 return;
             }
             try {
-                out.complete(call.run());
+                // Completed inside the caller's scope: continuations that run here (thenCompose on the server thread)
+                // still act as this caller, so a job they submit is tagged with the right agent.
+                Dispatch.as(caller, () -> out.complete(call.run()));
             } catch (VirtualMachineError e) {
                 if (!(e instanceof StackOverflowError)) throw e;
                 out.completeExceptionally(e);

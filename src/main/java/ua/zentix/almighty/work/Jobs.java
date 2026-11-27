@@ -31,8 +31,15 @@ public final class Jobs {
         this.clock = clock;
     }
 
+    /** Agents whose jobs wait without running (paused by the owner); never null. */
+    private java.util.function.Predicate<String> paused = a -> false;
+
+    public void paused(java.util.function.Predicate<String> paused) {
+        this.paused = paused;
+    }
+
     public <J extends Job> J submit(J job) {
-        job.assign(nextId++);
+        job.assign(nextId++, ua.zentix.almighty.bridge.Dispatch.current().name());
         active.add(job);
         return job;
     }
@@ -41,9 +48,13 @@ public final class Jobs {
     public void tick(long nanos) {
         if (active.isEmpty()) return;
         Budget budget = new Budget(clock, nanos);
-        for (int i = 0; i < active.size(); i++) {
-            Job job = active.get(i);
-            if (i == 0 || budget.left()) job.run(budget);
+        boolean first = true;
+        for (Job job : active) {
+            // A paused agent's builds and undos are frozen in place (resume continues them, cancel ends them); views
+            // and area preparation go on, so the paused agent can still look.
+            if (job.effects() && paused.test(job.agent())) continue;
+            if (first || budget.left()) job.run(budget);
+            first = false;
         }
         active.removeIf(job -> {
             if (!job.state().finished()) return false;

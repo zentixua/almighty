@@ -1,5 +1,6 @@
 package ua.zentix.almighty.command;
 
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -23,8 +24,8 @@ import java.util.List;
 
 /**
  * Owner command {@code /almighty} (permission level 4: the console and level-4 operators): agents and their tokens.
- * Tokens are never printed: a command names the file that holds one. Later steps add {@code log}, {@code pause},
- * {@code role}, {@code confirm}, {@code undo}.
+ * Tokens are never printed: a command names the file that holds one. Also the red button ({@code pause},
+ * {@code resume}) and the audit ({@code log}). Later steps add {@code role}, {@code confirm}, {@code undo}.
  */
 public final class AlmightyCommand {
     private AlmightyCommand() {}
@@ -49,6 +50,20 @@ public final class AlmightyCommand {
         root.then(Commands.literal("revoke").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
                 .executes(c -> change(c, "revoke"))));
         root.then(Commands.literal("reload").executes(c -> reload(c.getSource())));
+        root.then(Commands.literal("pause").executes(c -> pause(c.getSource(), null, true))
+                .then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
+                        .executes(c -> pause(c.getSource(), StringArgumentType.getString(c, "name"), true))));
+        root.then(Commands.literal("resume").executes(c -> pause(c.getSource(), null, false))
+                .then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
+                        .executes(c -> pause(c.getSource(), StringArgumentType.getString(c, "name"), false))));
+        root.then(Commands.literal("log").executes(c -> log(c.getSource(), null, 10))
+                .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
+                        .executes(c -> log(c.getSource(), null, IntegerArgumentType.getInteger(c, "count"))))
+                .then(Commands.argument("who", StringArgumentType.word()).suggests(AGENTS)
+                        .executes(c -> log(c.getSource(), StringArgumentType.getString(c, "who"), 10))
+                        .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
+                                .executes(c -> log(c.getSource(), StringArgumentType.getString(c, "who"),
+                                        IntegerArgumentType.getInteger(c, "count"))))));
         e.getDispatcher().register(root);
     }
 
@@ -110,6 +125,45 @@ public final class AlmightyCommand {
             source.sendFailure(Component.literal(e.getMessage()));
             return 0;
         }
+    }
+
+    /** The red button: pause (or resume) one agent or every agent. */
+    private static int pause(CommandSourceStack source, String agent, boolean on) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        String who = agent == null ? "every agent" : "agent " + agent;
+        if (on) {
+            int bots = gm.pause(agent);
+            gm.audit().owner(source.getTextName(), "pause", agent == null ? "all" : agent);
+            source.sendSuccess(() -> Component.literal("Paused " + who + ": calls with effects are refused, jobs wait, "
+                    + bots + " bot(s) stopped. /almighty resume" + (agent == null ? "" : " " + agent) + " to continue"), true);
+        } else {
+            gm.pause().resume(agent);
+            gm.audit().owner(source.getTextName(), "resume", agent == null ? "all" : agent);
+            source.sendSuccess(() -> Component.literal("Resumed " + who), true);
+        }
+        return 1;
+    }
+
+    /** The last entries of the audit log, optionally of one agent. */
+    private static int log(CommandSourceStack source, String who, int count) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        var entries = gm.audit().recent(count, e -> who == null || e.get("agent").getAsString().equals(who));
+        StringBuilder out = new StringBuilder("Almighty log (" + entries.size() + "):");
+        for (var el : entries) {
+            var e = el.getAsJsonObject();
+            String time = e.get("time").getAsString();
+            out.append("\n").append(time, Math.min(11, time.length()), Math.min(19, time.length())).append(' ')
+                    .append(e.get("agent").getAsString()).append(' ').append(e.get("method").getAsString()).append(' ')
+                    .append(e.get("outcome").getAsString());
+            if (e.has("job")) out.append(" job #").append(e.get("job").getAsLong());
+            String params = e.has("params") ? e.get("params").getAsString() : "";
+            if (!params.isEmpty() && !params.equals("{}")) out.append(' ').append(params.length() > 80 ? params.substring(0, 80) + "…" : params);
+        }
+        String text = out.toString();
+        source.sendSuccess(() -> Component.literal(text), false);
+        return entries.size();
     }
 
     private static int reload(CommandSourceStack source) {

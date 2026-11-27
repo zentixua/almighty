@@ -1,0 +1,12 @@
+// Stonecutter controller: the active node is the one src/ is written for (switch with the Stonecutter tasks).
+plugins {
+    id 'net.neoforged.moddev' version '2.0.149' apply false
+}
+
+stonecutter.active '1.21.1-neoforge'
+
+stonecutter.parameters {
+    String project = node.metadata.project
+    String loader = project.substring(project.lastIndexOf('-') + 1)
+    constants.match(loader, 'neoforge', 'fabric')
+}

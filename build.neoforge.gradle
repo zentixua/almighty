@@ -1,15 +1,17 @@
 // Almighty: an AI agent's (game master's) bridge to a Minecraft server; server only, not needed by players.
+// One Stonecutter node on NeoForge (versions/<version>-neoforge): the shared source in the root src/.
 plugins {
     id 'java-library'
-    id 'net.neoforged.moddev' version '2.0.147'
+    id 'net.neoforged.moddev'
 }
 
-version = mod_version
 group = 'ua.zentix.almighty'
 
-base { archivesName = 'almighty' }
+base { archivesName = "almighty" }
+// almighty-<mod version>+<game version>-neoforge.jar: one jar per node.
+version = "${mod_version}+${minecraft_version}-neoforge"
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+java.toolchain.languageVersion = JavaLanguageVersion.of(java_version as int)
 
 // GameTest is for Gradle runs only; not included in the jar.
 sourceSets {
@@ -53,14 +55,14 @@ neoForge {
         // Dedicated server with the bridge (manual mcp/almighty.py check): ./gradlew runServer
         server {
             server()
-            gameDirectory = project.file('run/server')
+            gameDirectory = rootProject.file("run/${project.name}/server")
             programArgument '--nogui'
         }
         gameTestServer {
             type = 'gameTestServer'
             // Companion mods (IA planes) come from devtestRuntimeOnly.
             sourceSet = sourceSets.devtest
-            gameDirectory = project.file('run/gametest')
+            gameDirectory = rootProject.file("run/${project.name}/gametest")
             systemProperty 'neoforge.enabledGameTestNamespaces', 'almighty'
         }
         configureEach {
@@ -87,11 +89,11 @@ dependencies {
     // GM scripts (Groovy): nested jar in the mod jar (Jar-in-Jar), alongside the game in Gradle runs.
     jarJar(implementation('org.apache.groovy:groovy')) {
         version {
-            strictly '[4.0.33,5)'
-            prefer '4.0.33'
+            strictly groovy_range
+            prefer groovy_version
         }
     }
-    additionalRuntimeClasspath 'org.apache.groovy:groovy:4.0.33'
+    additionalRuntimeClasspath "org.apache.groovy:groovy:${groovy_version}"
 
     // Immersive Aircraft 1.7.0 (Modrinth version xO17G766): bot aircraft control is called only when the mod is installed.
     compileOnly 'maven.modrinth:immersive-aircraft:xO17G766'
@@ -124,7 +126,7 @@ var generateModMetadata = tasks.register('generateModMetadata', ProcessResources
     ]
     inputs.properties replaceProperties
     expand replaceProperties
-    from 'src/main/templates'
+    from rootProject.file('src/main/templates')
     into 'build/generated/sources/modMetadata'
 }
 sourceSets.main.resources.srcDir generateModMetadata
@@ -132,7 +134,7 @@ neoForge.ideSyncTask generateModMetadata
 
 // GPL: include a license copy in every jar shipped to servers.
 tasks.named('jar', Jar) {
-    from(file('LICENSE'))
+    from(rootProject.file('LICENSE'))
 }
 
 tasks.withType(JavaCompile).configureEach {

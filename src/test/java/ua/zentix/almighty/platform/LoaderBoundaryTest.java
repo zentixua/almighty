@@ -18,7 +18,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code net.fabricmc}, so a new loader needs only its package and the {@link Platform}.
  */
 class LoaderBoundaryTest {
-    private static final Path ROOT = Path.of("src/main/java/ua/zentix/almighty");
+    private static final Path ROOT = root();
+
+    /** The shared source: from the project directory, or from a Stonecutter node's ({@code versions/<node>}). */
+    private static Path root() {
+        for (Path dir = Path.of("").toAbsolutePath(); dir != null; dir = dir.getParent()) {
+            Path src = dir.resolve("src/main/java/ua/zentix/almighty");
+            if (Files.isDirectory(src)) return src;
+        }
+        return Path.of("src/main/java/ua/zentix/almighty");
+    }
     private static final Pattern LOADER = Pattern.compile("\\bnet\\.(neoforged|fabricmc)\\.");
 
     @Test

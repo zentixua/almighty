@@ -1,6 +1,6 @@
-# GM toolkit (Python), mod build, unit tests and GameTest (NeoForge server, ~1 min); jar in artifacts.
-# Manual run on main with release=true: checks, then a GitHub release v<mod_version> with this jar and notes
-# from docs/releases/<mod_version>.md.
+# GM toolkit (Python, Node), then for every Stonecutter node (versions/<node>: game version and loader) the mod build,
+# unit tests and GameTest; one jar per node in the artifacts. Manual run on main with release=true: checks, then a
+# GitHub release v<mod_version> with every node's jar and notes from docs/releases/<mod_version>.md.
 name: build
 
 # Each commit is checked once: branches via pull_request (which decides merging), main via push.
@@ -11,6 +11,113 @@ on:
   workflow_dispatch:
     inputs:
       release:
+        description: Create release v<mod_version> (main only)
+        type: boolean
+        default: false
+
+# A push cancels the previous build of that branch; a manual release has its own group, unaffected by pushes to main.
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && format('release-{0}', github.run_id) || format('build-{0}', github.ref) }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  toolkit:
+    name: GM toolkit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      nodes: ${{ steps.nodes.outputs.nodes }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: GM toolkit (mcp/gm)
+        run: python3 -m unittest discover -s mcp/gm/tests
+
+      - name: Plugin skills match the notes in the jar
+        run: python3 scripts/export_skills.py --check
+
+      - name: Tools page matches the tool definitions
+        run: python3 scripts/gen_tools_md.py --check
+
+      - name: MCP adapter syntax
+        run: python3 -m py_compile mcp/almighty.py
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Chat channel syntax
+        working-directory: mcp/gm/almighty-chat
+        run: node --check almighty-chat.mjs
+
+      - name: Chat routing tests
+        working-directory: mcp/gm/almighty-chat
+        run: node --test
+
+      - name: Nodes (versions/*)
+        id: nodes
+        run: echo "nodes=$(ls versions | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.node }}
+    needs: toolkit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ${{ fromJSON(needs.toolkit.outputs.nodes) }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # Gradle and Stonecutter run on Java 25; each node compiles with its own toolchain (java_version).
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            25
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Build and unit tests
+        run: ./gradlew :${{ matrix.node }}:build --console=plain
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: almighty-${{ matrix.node }}
+          path: versions/${{ matrix.node }}/build/libs/*.jar
+          if-no-files-found: error
+
+      - name: GameTest
+        run: |
+          ./gradlew :${{ matrix.node }}:runGameTestServer --console=plain
+          grep -E 'All [0-9]+ required tests passed' run/${{ matrix.node }}/gametest/logs/latest.log
+
+      - name: Reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: reports-${{ matrix.node }}
+          path: |
+            versions/${{ matrix.node }}/build/reports/
+            run/${{ matrix.node }}/gametest/logs/
+          if-no-files-found: ignore
+
+  # One required check for branch protection, whatever the node list.
+  checks:
+    name: Сборка и тесты
+    needs: [toolkit, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          [ "${{ needs.toolkit.result }}" = success ] && [ "${{ needs.build.result }}" = success ]
+
+  release:
         description: Create release v<mod_version> (main only)
         type: boolean
         default: false
@@ -88,7 +195,7 @@ jobs:
 
   release:
     name: Релиз
-    needs: build
+    needs: checks
     if: github.event_name == 'workflow_dispatch' && inputs.release && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -98,7 +205,8 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v7
         with:
-          name: almighty-jar
+          pattern: almighty-*
+          merge-multiple: true
           path: build/libs
       - name: Release
         env:

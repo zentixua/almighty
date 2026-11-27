@@ -74,7 +74,8 @@ public final class Inbox {
                 body = parts.length > 1 ? parts[1] : "";
             }
         }
-        if (!addressing.allow(player.getUUID(), GmConfig.FEED_GM_MESSAGES.get())) {
+        // Cooling down after repeated refusals: answered by the server, so the attempts cost no model tokens either.
+        if (cooling(player.getUUID()) || !addressing.allow(player.getUUID(), GmConfig.FEED_GM_MESSAGES.get())) {
             player.sendSystemMessage(GmMessages.get("almighty.gm.slow_down", lang(player)).copy().withStyle(ChatFormatting.GRAY));
             return false;
         }
@@ -163,6 +164,34 @@ public final class Inbox {
         Collection<UUID> players = to == null ? new ArrayList<>(waiting) : to.stream().map(ServerPlayer::getUUID).toList();
         addressing.replied(players);
         players.forEach(waiting::remove);
+    }
+
+    /** Refused requests per player: {@value #REFUSALS} within 10 minutes cool their /gm down (plan 4.8 rule 4). */
+    static final int REFUSALS = 5;
+    static final long COOL_MS = 10 * 60_000;
+    private final java.util.Map<UUID, java.util.ArrayDeque<Long>> refusals = new java.util.HashMap<>();
+    private final java.util.Map<UUID, Long> cooled = new java.util.HashMap<>();
+
+    /** A request of this player was refused by the policy (server thread). */
+    public void refused(UUID player) {
+        long now = System.currentTimeMillis();
+        var times = refusals.computeIfAbsent(player, p -> new java.util.ArrayDeque<>());
+        while (!times.isEmpty() && now - times.peekFirst() >= COOL_MS) times.pollFirst();
+        times.addLast(now);
+        if (times.size() >= REFUSALS) {
+            times.clear();
+            cooled.put(player, now + COOL_MS);
+            com.mojang.logging.LogUtils.getLogger().info("Almighty: {} refusals in 10 minutes for {}; their /gm cools down for 10 minutes",
+                    REFUSALS, player);
+        }
+    }
+
+    private boolean cooling(UUID player) {
+        Long until = cooled.get(player);
+        if (until == null) return false;
+        if (System.currentTimeMillis() < until) return true;
+        cooled.remove(player);
+        return false;
     }
 
     public void left(ServerPlayer player) {

@@ -30,16 +30,38 @@ public final class Gate implements Dispatch.Check {
         boolean holds(UUID player, Node node);
     }
 
+    /** Shows a waiting confirmation to the people who may decide (in game, on the server thread). */
+    @FunctionalInterface
+    public interface Prompter {
+        void prompt(Confirmations.Pending p);
+    }
+
     private final Policies policies;
     private final Tickets tickets;
     private final Holder holder;
     private final Predicate<String> isBot;
+    private Confirmations confirmations;
+    private Prompter prompter = p -> {};
 
     public Gate(Policies policies, Tickets tickets, Holder holder, Predicate<String> isBot) {
         this.policies = policies;
         this.tickets = tickets;
         this.holder = holder;
         this.isBot = isBot;
+    }
+
+    /** Turn on human confirmation (step 6): irreversible requests wait for their requester, {@code ask_admin} kinds for an admin. */
+    public void confirmations(Confirmations c, Prompter prompter) {
+        this.confirmations = c;
+        this.prompter = prompter;
+    }
+
+    public Confirmations confirmations() {
+        return confirmations;
+    }
+
+    public Policies policies() {
+        return policies;
     }
 
     /** A parameter present and not JSON null (as {@code Args.has}). */
@@ -149,7 +171,30 @@ public final class Gate implements Dispatch.Check {
         if (node == null) throw new RpcException(403, "policy", "No permission node for " + method + ": refused by default");
         Rights r = rights(caller, params);
         if (method.equals("say") && replyToRequester(params, r.ticket)) node = Node.SPEAK_REPLY;
-        if (r.holds(node, holder)) return;
+        boolean decided = Confirmations.running() != null;
+        if (r.holds(node, holder)) {
+            // Allowed, but irreversible for others (or listed in confirm_first): the requester confirms the exact call.
+            if (!decided && confirmations != null && r.ticket != null && Nodes.role(r.ticket.player()) != Role.OWNER
+                    && Confirmations.needsRequester(method, params, r.ticket.name(), policies.current().safety().confirmFirst())) {
+                Confirmations.Pending p = confirmations.ask(Confirmations.Kind.REQUESTER, caller, method, params,
+                        r.ticket.player(), node, r.ticket.player(), r.ticket.name());
+                prompter.prompt(p);
+                throw Confirmations.waiting(p, r.ticket.name());
+            }
+            return;
+        }
+        // Above the requester's rights: only kinds the owner listed in ask_admin may go to an admin; the rest is refused.
+        if (!decided && confirmations != null && r.ticket != null && r.ceiling.atLeast(node.defaultRole())) {
+            java.util.Set<String> ask = policies.current().safety().askAdmin();
+            boolean listed = false;
+            for (String k : Confirmations.kinds(method, params)) if (ask.contains(k)) listed = true;
+            if (listed) {
+                Confirmations.Pending p = confirmations.ask(Confirmations.Kind.ADMIN, caller, method, params, null, node,
+                        r.ticket.player(), r.ticket.name());
+                if (p.count == 1) prompter.prompt(p);
+                throw Confirmations.waiting(p, "an admin");
+            }
+        }
         String as = r.ticket == null ? "unasked, agent " + r.agent + " acts as " + r.floor.id() + " (trust floor)"
                 : "this request runs with " + r.ticket.name() + "'s rights";
         if (r.ticket != null && !r.ceiling.atLeast(node.defaultRole())) as = "agent " + r.agent + "'s ceiling is " + r.ceiling.id();

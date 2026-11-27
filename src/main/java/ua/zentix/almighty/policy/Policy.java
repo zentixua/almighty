@@ -17,7 +17,16 @@ import java.util.UUID;
  * are, which preset applies and how far each agent may go. Parsed strictly: every mistake is reported with its key,
  * and a bad file never replaces a good policy ({@link Policies}).
  */
-public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Map<String, AgentRules> agents) {
+public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Map<String, AgentRules> agents, Safety safety) {
+
+    /**
+     * {@code [safety]}: {@code ask_admin}, the only kinds of request that may reach an admin when the requester lacks the
+     * right (plan 4.8; empty: none); {@code confirm_first}, reversible kinds the requester must still confirm. A kind is
+     * a command name ({@code kick}, {@code tp}) or a method ({@code build}).
+     */
+    public record Safety(Set<String> askAdmin, Set<String> confirmFirst) {
+        public static final Safety NONE = new Safety(Set.of(), Set.of());
+    }
 
     /** How much other players' text reaches the agents, which fixes their trust floor (plan 4.2). */
     public enum Preset {
@@ -68,12 +77,12 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
      * guest. A typo must never open the server wider than the owner chose.
      */
     public static Policy lockdown() {
-        return new Policy(Preset.PUBLIC, Set.of(), Identity.Mode.AUTO, Map.of());
+        return new Policy(Preset.PUBLIC, Set.of(), Identity.Mode.AUTO, Map.of(), Safety.NONE);
     }
 
     /** The policy when the file has nothing to say: private, no owners, every agent at its default ceiling. */
     public static Policy defaults() {
-        return new Policy(Preset.PRIVATE, Set.of(), Identity.Mode.AUTO, Map.of());
+        return new Policy(Preset.PRIVATE, Set.of(), Identity.Mode.AUTO, Map.of(), Safety.NONE);
     }
 
     public static final class Invalid extends Exception {
@@ -91,7 +100,7 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
             throw new Invalid("not valid TOML: " + e.getMessage());
         }
         List<String> errors = new ArrayList<>();
-        Set<String> known = Set.of("preset", "owners", "identity", "agents", "version");
+        Set<String> known = Set.of("preset", "owners", "identity", "agents", "safety", "version");
         for (Config.Entry entry : c.entrySet()) if (!known.contains(entry.getKey())) errors.add("unknown key " + entry.getKey());
 
         Preset preset = Preset.PRIVATE;
@@ -147,8 +156,34 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
         } else if (a != null) {
             errors.add("agents: tables such as [agents.gm]");
         }
+        Safety safety = Safety.NONE;
+        Object sf = c.get("safety");
+        if (sf instanceof Config t) {
+            for (Config.Entry k : t.entrySet()) {
+                if (!Set.of("ask_admin", "confirm_first").contains(k.getKey())) errors.add("safety: unknown key " + k.getKey());
+            }
+            safety = new Safety(kinds(t.get("ask_admin"), "safety.ask_admin", errors), kinds(t.get("confirm_first"), "safety.confirm_first", errors));
+        } else if (sf != null) {
+            errors.add("safety: a table [safety]");
+        }
         if (!errors.isEmpty()) throw new Invalid(String.join("; ", errors));
-        return new Policy(preset, Set.copyOf(owners), identity, Map.copyOf(agents));
+        return new Policy(preset, Set.copyOf(owners), identity, Map.copyOf(agents), safety);
+    }
+
+    private static Set<String> kinds(Object v, String key, List<String> errors) {
+        if (v == null) return Set.of();
+        if (!(v instanceof List<?> list)) {
+            errors.add(key + ": a list of command names or methods");
+            return Set.of();
+        }
+        Set<String> out = new LinkedHashSet<>();
+        for (Object x : list) {
+            String k = String.valueOf(x).strip().toLowerCase(Locale.ROOT);
+            if (k.startsWith("/")) k = k.substring(1);
+            if (k.isEmpty() || !k.matches("[a-z0-9_.:-]+")) errors.add(key + ": not a command name or method: " + x);
+            else out.add(k);
+        }
+        return Set.copyOf(out);
     }
 
     private static Role role(Object v, String key, List<String> errors) {
@@ -180,6 +215,13 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 # do unasked (derived from the preset unless set, never above the ceiling).
                 [agents.gm]
                 ceiling = "owner"
+
+                [safety]
+                # The only kinds of request that may reach an admin when the player lacks the right (command names such as
+                # "kick", or methods such as "build"); batched into one quiet line every 10 minutes. Empty: none ever.
+                ask_admin = []
+                # Kinds the requesting player must confirm even when allowed and reversible (for example "tp").
+                confirm_first = []
                 """.formatted(preset.id());
     }
 }

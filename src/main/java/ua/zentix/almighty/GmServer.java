@@ -17,6 +17,8 @@ import ua.zentix.almighty.audit.Pause;
 import ua.zentix.almighty.feed.Feed;
 import ua.zentix.almighty.feed.Inbox;
 import ua.zentix.almighty.mcp.Mcp;
+import ua.zentix.almighty.policy.Confirmations;
+import ua.zentix.almighty.policy.Decisions;
 import ua.zentix.almighty.policy.Gate;
 import ua.zentix.almighty.policy.Nodes;
 import ua.zentix.almighty.policy.Policies;
@@ -70,6 +72,7 @@ public final class GmServer {
     private final Pause pause = new Pause();
     private final Policies policies;
     private final Gate gate;
+    private final Decisions decisions;
     private static final java.util.Set<String> PAUSE_ALLOWS = java.util.Set.of("cancel", "area.release", "rule.remove", "bot.remove");
     private final Audit audit;
     private Bridge bridge;
@@ -101,6 +104,9 @@ public final class GmServer {
         this.policies = new Policies(GmServer.configDir == null ? null : GmServer.configDir.resolve("policy.toml"));
         // Bot names from a thread-safe set the bots keep (the gate runs on bridge threads).
         this.gate = new Gate(policies, tickets, Nodes::holds, bots::isBotName);
+        this.decisions = new Decisions(server, new Confirmations(System::currentTimeMillis), tickets, feed);
+        gate.confirmations(decisions.confirmations(), decisions::prompt);
+        Confirmations.players(name -> Nodes.online(name));
         this.dispatch = new Dispatch(Api.methods(this), List.of(
                 (caller, method, params) -> DenyList.check(method, params),
                 (caller, method, params) -> {
@@ -111,8 +117,33 @@ public final class GmServer {
                 },
                 gate),
                 Api::readOnly);
+        decisions.dispatch(dispatch);
+        dispatch.requester((caller, params) -> {
+            try {
+                return params.get("for").isJsonPrimitive() ? tickets.check(params.get("for").getAsString(), caller.name()).player() : null;
+            } catch (RpcException e) {
+                return null;
+            }
+        });
         dispatch.listen((caller, method, params, text, result, error, nanos) ->
                 audit.ended(caller, method, params, text, result, error, nanos, Api.readOnly(method, params)));
+        // Receipts: a player whose request changed something hears it at once, with undo for builds (plan 4.2).
+        dispatch.listen((caller, method, params, text, result, error, nanos) -> {
+            if (caller.requester() == null) return;
+            if (error instanceof RpcException r && r.status() == 403 && r.code().equals("policy")) {
+                server.execute(() -> inbox.refused(caller.requester()));
+                return;
+            }
+            if (error != null || Api.readOnly(method, params)) return;
+            Long job = result instanceof JsonObject o && o.has("kind") && o.get("id") instanceof com.google.gson.JsonPrimitive id
+                    && id.isNumber() && o.get("kind").getAsString().equals("build") ? id.getAsLong() : null;
+            String what = method.equals("command") || method.equals("function") ? Confirmations.render(method, params)
+                    : job != null ? "build #" + job : method;
+            server.execute(() -> {
+                net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(caller.requester());
+                if (p != null) p.sendSystemMessage(ua.zentix.almighty.policy.Prompts.receipt(what, job));
+            });
+        });
     }
 
     /** This server's game master; null if the server has not started yet or has already stopped. */
@@ -214,6 +245,7 @@ public final class GmServer {
         usedThisTick += System.nanoTime() - jobsStart;
         areas.tick(server.getTickCount());
         inbox.tick(server.getTickCount());
+        decisions.tick(server.getTickCount());
         if (server.getTickCount() % 20 == 0) Nodes.refresh(server);
     }
 
@@ -291,6 +323,23 @@ public final class GmServer {
 
     public Bots bots() {
         return bots;
+    }
+
+    public Decisions decisions() {
+        return decisions;
+    }
+
+    /**
+     * Who a command runs as (plan 4.3): in-process at level 4; unasked at the trust floor's level; for a request, as
+     * that player (their entity, at the higher of their op level and their role's level, capped by the ceiling).
+     */
+    public ua.zentix.almighty.act.CommandRunner.As commandAs(Gate.Rights r) throws RpcException {
+        if (r == null) return ua.zentix.almighty.act.CommandRunner.As.GM;
+        if (r.ticket() == null) return new ua.zentix.almighty.act.CommandRunner.As(r.floor().commandLevel(), null);
+        net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(r.ticket().player());
+        if (p == null) throw RpcException.conflict(r.ticket().name() + " is offline: a request runs as its player, who must be online");
+        int level = Math.max(server.getProfilePermissions(p.getGameProfile()), Nodes.role(p.getUUID()).commandLevel());
+        return new ua.zentix.almighty.act.CommandRunner.As(Math.min(level, r.ceiling().commandLevel()), p);
     }
 
     public Policies policies() {

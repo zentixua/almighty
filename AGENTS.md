@@ -135,6 +135,23 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   In-process calls (`Caller.INTERNAL`: GameTest, the server) are not gated. Preset `private` with `gm` at ceiling
   owner is today's behaviour; unlisted agents default to ceiling admin. `/almighty whoami` (anyone) shows UUID,
   verification and role.
+- Origins and confirmations (step 6): `command`/`function` run as `GmServer.commandAs(rights)`: in-process level 4;
+  unasked at the floor's level (`Role.commandLevel`: owner 4, admin 3, builder 2, else 0); for a request as that
+  player's own source (`withSource` keeps output captured and the feed quiet) at max(op level, role level) capped by
+  the ceiling; the requester must be online. So node `command` is guest and vanilla's `requires` decide.
+  `Caller.requester` (from a valid `for`, set in `Dispatch`) travels with the call: jobs record `requester`, and a
+  receipt ("[Almighty] Done for you: … [Undo]") reaches that player after any call with effects; `/almighty undo
+  <job>` works for that player or level 4. `policy/Confirmations` + `Decisions` + `Prompts`: a request that is
+  irreversible for others (kill, clear, give, effect, ban, kick, op, tp … aimed at a selector other than `@s` or
+  another online name, anywhere in an `execute` chain) or in `[safety] confirm_first` → 202 `pending` with an id;
+  the server asks that player (prompt rendered from the parsed call, `[Allow]`/`[Deny]` buttons and the typed
+  `/almighty confirm <nonce>`; the agent never sees the nonce); only that player may answer; 2 minutes. A request
+  above the player's rights whose kind (command name or method) is in `[safety] ask_admin` → 202 for an admin:
+  merged with an identical waiting one, 1 per player per 10 minutes, 20 per hour, one digest line at most every
+  10 minutes to online holders of the node, `/almighty inbox`; it runs with the deciding admin's rights (a ticket
+  minted for them); 30 minutes. Owners' requests apply at once. The agent polls `pending {id, wait?}`; every
+  state change is a `confirmation` feed event. 5 policy refusals of one player's requests in 10 minutes cool
+  their `/gm` down for 10 minutes (`Inbox.refused`).
 - `policy/DenyList`: built-in deny list (from `crash_guard.py`), refused for every agent and harness: `stop`, `reload`,
   `save-off`, `save-all flush`, `forceload add`, `tick rate` > 100, `almighty …` (agents and policy are the owner's),
   far commands, builds, areas and bot spawns at Sable plot coordinates (|x| or |z| ≥ 20 000 000), bot chat commands;
@@ -328,6 +345,10 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 ## Checks
 
+- Confirmations: `ConfirmationsTest` (what is irreversible for others, only the requester decides, first answer,
+  expiry, admin merge and limits); GameTest `GmConfirmGameTests` (a request's command runs at the player's level,
+  unasked at the floor's; an irreversible request waits for its requester; ask_admin only for listed kinds, then
+  with the admin's rights).
 - Gate: `PolicyTest` (template = today's behaviour, floors, UUID owners, named mistakes, bad file keeps the last
   good one), `GateTest` (every method has a node, private allows all, no ticket never exceeds the floor, tickets
   narrow to the requester and the ceiling, parameter-dependent nodes); GameTest `GmGateGameTests` (live method

@@ -65,7 +65,7 @@ public final class Api {
     private static final Logger LOG = LogUtils.getLogger();
     /** Methods that may wait for seconds (feed long poll, job waits): served by the bridge's long-poll pool. */
     public static final java.util.Set<String> LONG = java.util.Set.of(
-            "events", "job", "build", "undo", "area.prepare", "map", "look", "see", "bot.act", "bot.spawn");
+            "events", "job", "build", "undo", "area.prepare", "map", "look", "see", "bot.act", "bot.spawn", "pending");
 
     /** Whether a call has no effects: idempotency keys are ignored for it. {@code notes} with {@code text} writes a note. */
     public static boolean readOnly(String method, JsonObject params) {
@@ -75,7 +75,7 @@ public final class Api {
     /** Methods without effects on the world, whatever their parameters. */
     public static final java.util.Set<String> READ_ONLY = java.util.Set.of(
             "status", "players", "player", "entities", "blocks", "map", "look", "see", "jobs", "job", "areas",
-            "bots", "bot", "ships", "rules", "event.types", "events", "audit");
+            "bots", "bot", "ships", "rules", "event.types", "events", "audit", "pending");
 
     private Api() {}
 
@@ -96,8 +96,16 @@ public final class Api {
         m.put("players", a -> gm.onMain(() -> Observe.players(server)));
         m.put("player", a -> gm.onMain(() -> Observe.player(server, a)));
         m.put("entities", a -> gm.onMain(() -> Observe.entities(server, a)));
-        m.put("command", a -> gm.onMain(() -> CommandRunner.commands(server, a)));
-        m.put("function", a -> gm.onMain(() -> CommandRunner.function(server, a)));
+        m.put("command", a -> {
+            ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
+            return gm.onMain(() -> CommandRunner.commands(server, a, gm.commandAs(r)));
+        });
+        m.put("function", a -> {
+            ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
+            return gm.onMain(() -> CommandRunner.function(server, a, gm.commandAs(r)));
+        });
+        m.put("pending", a -> gm.decisions().pending(a.caller().name(), a.string("id"), a.integer("wait", 0, 0, MAX_WAIT))
+                .thenApply(o -> (JsonElement) o));
         m.put("say", a -> gm.onMain(() -> Chat.say(server, a)));
         m.put("blocks", a -> gm.onMain(() -> BlockText.read(Dims.level(server, a), a.ints("from", 3), a.ints("to", 3), a.bool("properties", true))));
         m.put("map", a -> view(gm, a, () -> map(server, a)));

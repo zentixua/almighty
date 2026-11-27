@@ -60,6 +60,10 @@ public final class GmServer {
     private final Queue<Runnable> worldCalls = new ConcurrentLinkedQueue<>();
     private final LagGuard lagGuard = new LagGuard();
     private volatile boolean stopped;
+    /** A drain of world calls is queued with the server's task queue (runs between ticks). */
+    private final java.util.concurrent.atomic.AtomicBoolean drainQueued = new java.util.concurrent.atomic.AtomicBoolean();
+    /** World-call time spent since this tick started (server thread only). */
+    private long usedThisTick;
 
     private GmServer(MinecraftServer server) {
         this.server = server;
@@ -99,6 +103,7 @@ public final class GmServer {
 
     /** Tick start: a pause longer than {@code lag_ms} since the previous tick emits a {@code lag} event. */
     void tickStart() {
+        usedThisTick = 0;
         long now = System.nanoTime();
         if (lastTick != 0) {
             long ms = (now - lastTick) / 1_000_000L;
@@ -125,22 +130,38 @@ public final class GmServer {
             LOG.info("Almighty: lag guard {} (average tick {} ms)", lagGuard.lagging() ? "on: GM work at its minimum" : "off",
                     d.get("mspt"));
         }
-        long budget = lagGuard.lagging() ? 0 : GmConfig.workNanosPerTick();
-        long used = runWorldCalls(budget);
-        jobs.tick(used == 0 ? budget : Math.max(0, budget - used));
+        long budget = budget();
+        runWorldCalls(Math.max(0, budget - usedThisTick), true);
+        long jobsStart = System.nanoTime();
+        jobs.tick(usedThisTick == 0 ? budget : Math.max(0, budget - usedThisTick));
+        // Jobs count too: calls answered between ticks get only what this tick left.
+        usedThisTick += System.nanoTime() - jobsStart;
         areas.tick(server.getTickCount());
     }
 
-    /** Run queued world calls, at least one, while the budget lasts; returns the nanoseconds used. */
-    private long runWorldCalls(long budget) {
-        if (worldCalls.isEmpty()) return 0;
+    private long budget() {
+        return lagGuard.lagging() ? 0 : GmConfig.workNanosPerTick();
+    }
+
+    /**
+     * Run queued world calls while {@code nanos} last; {@code atLeastOne} at tick end, so the queue always progresses.
+     * Time used counts against this tick's GM budget.
+     */
+    private void runWorldCalls(long nanos, boolean atLeastOne) {
+        if (worldCalls.isEmpty() || (!atLeastOne && nanos <= 0)) return;
         long start = System.nanoTime();
         Runnable call;
         while ((call = worldCalls.poll()) != null) {
             call.run();
-            if (System.nanoTime() - start >= budget) break;
+            if (System.nanoTime() - start >= nanos) break;
         }
-        return System.nanoTime() - start;
+        usedThisTick += System.nanoTime() - start;
+    }
+
+    /** Between ticks: answer queued calls at once while this tick's budget lasts; the rest wait for tick end. */
+    private void drainBetweenTicks() {
+        drainQueued.set(false);
+        runWorldCalls(budget() - usedThisTick, false);
     }
 
     /** Whether the lag guard holds GM work at its minimum. */
@@ -208,8 +229,8 @@ public final class GmServer {
 
     /**
      * Call on the server thread; errors complete the future exceptionally. From another thread the call is queued and
-     * runs at tick end under the per-tick GM budget shared with jobs (at least one call per tick); on the server
-     * thread itself (GameTest, rules, commands) it runs at once.
+     * runs between ticks while this tick's GM budget (shared with jobs) lasts, else at tick end (at least one call per
+     * tick); on the server thread itself (GameTest, rules, commands) it runs at once.
      */
     public <T> CompletableFuture<T> onMain(MainCall<T> call) {
         CompletableFuture<T> out = new CompletableFuture<>();
@@ -226,7 +247,10 @@ public final class GmServer {
         };
         if (server.isSameThread()) run.run();
         else if (stopped) out.completeExceptionally(RpcException.unavailable("The server is stopping"));
-        else worldCalls.add(run);
+        else {
+            worldCalls.add(run);
+            if (drainQueued.compareAndSet(false, true)) server.execute(this::drainBetweenTicks);
+        }
         return out;
     }
 

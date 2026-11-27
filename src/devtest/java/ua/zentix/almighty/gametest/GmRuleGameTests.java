@@ -123,12 +123,25 @@ public final class GmRuleGameTests {
             Thread.sleep(80);
             check(breaks(h, mine, builder), "expired");
             check(state(gm, "short").equals("gone"), "an expired rule is removed");
+            // A same name does not replace someone else's rule (here the owner's).
+            gm.dispatch().invoke(Caller.INTERNAL, "rule.add", params("{\"event\":\"BlockEvent.BreakEvent\",\"name\":\"owners\",\"then\":[\"emit\"]}"));
+            check(refused(gm, "rule.add", "{\"event\":\"BlockEvent.BreakEvent\",\"name\":\"owners\",\"then\":[\"emit\"],\"for\":\"" + t + "\"}").status() == 403,
+                    "the owner's rule is not replaced by name");
+            // Rule commands get the same checks as command calls below owner.
+            check(refused(gm, "rule.add", "{\"event\":\"PlayerEvent.PlayerLoggedInEvent\",\"name\":\"click\",\"then\":[{\"command\":"
+                    + "\"tellraw @a {\\\"text\\\":\\\"x\\\",\\\"clickEvent\\\":{\\\"action\\\":\\\"run_command\\\",\\\"value\\\":\\\"/op me\\\"}}\"}],\"for\":\"" + t + "\"}")
+                    .status() == 403, "no click events in rule commands");
+            // The owner's own ttl_hours expires too.
+            gm.dispatch().invoke(Caller.INTERNAL, "rule.add", params("{\"event\":\"BlockEvent.BreakEvent\",\"name\":\"ownerShort\",\"then\":[\"emit\"],\"ttl_hours\":0.00001}"));
+            Thread.sleep(80);
+            breaks(h, mine, builder);
+            check(state(gm, "ownerShort").equals("gone"), "an owner's rule with ttl_hours expires");
             // Bound to its creator: the agent unasked cannot remove the player's rule.
             call(gm, "rule.add", "{\"event\":\"BlockEvent.BreakEvent\",\"name\":\"theirs\",\"when\":" + when + ",\"then\":[\"cancel\"],\"for\":\"" + t + "\"}");
             gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\n[agents.gm]\nfloor = \"builder\""));
             check(refused(gm, "rule.remove", "{\"name\":\"theirs\"}").status() == 403, "only its creator or an admin removes it");
         } finally {
-            for (String n : new String[]{"keep", "short", "theirs", "probe", "mute"}) {
+            for (String n : new String[]{"keep", "short", "theirs", "probe", "mute", "owners", "click", "ownerShort"}) {
                 try {
                     gm.dispatch().invoke(Caller.INTERNAL, "rule.remove", params("{\"name\":\"" + n + "\"}"));
                 } catch (RpcException e) {

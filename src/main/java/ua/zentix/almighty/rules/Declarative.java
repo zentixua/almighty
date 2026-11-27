@@ -69,13 +69,23 @@ public final class Declarative {
             return then.stream().anyMatch(a -> a.kind.equals("cancel"));
         }
 
-        public boolean says(boolean toAll) {
-            return then.stream().anyMatch(a -> a.kind.equals("say") && (a.to == null) == toAll);
+        /** Whether any say action speaks to everyone for this creator (see {@link #speaksToAll}). */
+        public boolean saysToAll(Creator c) {
+            return then.stream().anyMatch(a -> a.kind.equals("say") && speaksToAll(a.to, a.style, c));
+        }
+
+        public List<Action> actions(String kind) {
+            return then.stream().filter(a -> a.kind.equals(kind)).toList();
         }
 
         public boolean commands() {
             return then.stream().anyMatch(a -> a.kind.equals("command"));
         }
+    }
+
+    /** Whether a say speaks to everyone: anything but a chat line to the creator player themself (case-insensitive). */
+    public static boolean speaksToAll(String to, String style, Creator c) {
+        return to == null || !style.equals("chat") || c.name() == null || !to.equalsIgnoreCase(c.name());
     }
 
     /** Whether events of this type have a place in the world (a block's, or an entity's): cancels can be zone-limited. */

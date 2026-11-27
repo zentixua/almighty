@@ -34,7 +34,10 @@ class DeclarativeTest {
         Declarative.Decl d = Declarative.parse(json("{\"player.name\":\"Steve\"}"),
                 JsonParser.parseString("[\"cancel\", {\"say\":\"no, {player.name}\", \"to\":\"{player.name}\"}, {\"command\":\"tp {player.name} 0 64 0\"}]"));
         assertEquals(3, d.then().size());
-        assertTrue(d.cancels() && d.says(false) && !d.says(true) && d.commands());
+        assertTrue(d.cancels() && d.commands());
+        Declarative.Creator steve = new Declarative.Creator("gm", java.util.UUID.randomUUID(), "Steve");
+        assertTrue(d.saysToAll(steve), "a templated name may be anyone: speaking to all");
+        assertTrue(!Declarative.speaksToAll("steve", "chat", steve) && Declarative.speaksToAll("steve", "title", steve), "only a chat line to oneself is a reply");
         assertThrows(RpcException.class, () -> Declarative.parse(json("{\"a\":{\"like\":1}}"), null));
         assertThrows(RpcException.class, () -> Declarative.parse(null, JsonParser.parseString("[\"explode\"]")));
         JsonObject fields = json("{\"player\":{\"name\":\"Steve\"},\"message\":\"x\\\"; op @a\"}");

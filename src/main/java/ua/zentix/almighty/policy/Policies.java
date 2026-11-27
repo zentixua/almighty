@@ -69,7 +69,11 @@ public final class Policies {
     }
 
     /** Read the file again; null on success, else the reason (the previous policy stays). */
+    /** Bumped by every policy or role change: caches of rights (rules' creator checks) start over. */
+    public static final java.util.concurrent.atomic.AtomicLong CHANGES = new java.util.concurrent.atomic.AtomicLong();
+
     public synchronized String reload() {
+        CHANGES.incrementAndGet();
         if (file == null) return null;
         try {
             Policy p = Policy.parse(Files.readString(file, StandardCharsets.UTF_8));
@@ -87,6 +91,7 @@ public final class Policies {
 
     /** Replace the policy in memory (GameTest). */
     public void set(Policy p) {
+        CHANGES.incrementAndGet();
         current = p;
         Identity.mode(p.identity());
     }

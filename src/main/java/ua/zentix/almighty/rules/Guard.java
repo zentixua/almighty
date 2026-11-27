@@ -9,8 +9,8 @@ import ua.zentix.almighty.bridge.RpcException;
  * scripts and rules of the owner) allows everything.
  */
 public interface Guard {
-    /** Null if the creator may still have rules at all; else why the rule turns off. */
-    String rules(Declarative.Creator c);
+    /** Null if the creator still holds {@code node} (rules, engine for script rules, command); else why the rule turns off. */
+    String lacks(Declarative.Creator c, ua.zentix.almighty.policy.Node node);
 
     /** Null if the creator may cancel this event: where they may build, or anywhere for the owner. */
     String cancel(Declarative.Creator c, Event event);
@@ -25,7 +25,7 @@ public interface Guard {
     boolean owner(Declarative.Creator c);
 
     Guard OPEN = new Guard() {
-        public String rules(Declarative.Creator c) {
+        public String lacks(Declarative.Creator c, ua.zentix.almighty.policy.Node node) {
             return null;
         }
 

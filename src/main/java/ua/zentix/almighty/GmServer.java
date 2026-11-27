@@ -398,10 +398,6 @@ public final class GmServer {
     }
 
     /**
-     * Who a command runs as (plan 4.3): in-process at level 4; unasked at the trust floor's level; for a request, as
-     * that player (their entity, at the higher of their op level and their role's level, capped by the ceiling).
-     */
-    /**
      * Declarative rules act for their creator (plan 4.12), asked again at every fire: rules need almighty.rules now;
      * a cancel only where the creator may build (zones, claims; an event without a place: only the owner); say and
      * commands with the creator's own rights, commands at the creator's level and through zones.
@@ -412,12 +408,16 @@ public final class GmServer {
                 return c.agent() == null || gate.role(c.agent(), c.player()) == ua.zentix.almighty.policy.Role.OWNER;
             }
 
-            public String rules(ua.zentix.almighty.rules.Declarative.Creator c) {
-                return gate.holds(c.agent(), c.player(), ua.zentix.almighty.policy.Node.RULES) ? null : "no almighty.rules any more";
+            public String lacks(ua.zentix.almighty.rules.Declarative.Creator c, ua.zentix.almighty.policy.Node node) {
+                return gate.holds(c.agent(), c.player(), node) ? null : "no " + node.key() + " any more";
             }
 
             /** The event's place: a block event's position, else its entity's; null for an event without one. */
             private Object[] place(net.neoforged.bus.api.Event e) {
+                // An interaction's place is the block it targets, not where the player stands.
+                if (e instanceof net.neoforged.neoforge.event.entity.player.PlayerInteractEvent pi && pi.getLevel() instanceof net.minecraft.server.level.ServerLevel l) {
+                    return new Object[]{l, pi.getPos()};
+                }
                 if (e instanceof net.neoforged.neoforge.event.level.BlockEvent b && b.getLevel() instanceof net.minecraft.server.level.ServerLevel l) {
                     return new Object[]{l, b.getPos()};
                 }
@@ -443,7 +443,8 @@ public final class GmServer {
             }
 
             public void say(ua.zentix.almighty.rules.Declarative.Creator c, String text, String to, String style) throws RpcException {
-                boolean all = to == null || !style.equals("chat");
+                // Only a chat line to the creator themself is a reply; anyone else, or a title, speaks to all.
+                boolean all = ua.zentix.almighty.rules.Declarative.speaksToAll(to, style, c);
                 if (!owner(c)) {
                     if (text.contains(ua.zentix.almighty.act.Chat.RESERVED)) throw new RpcException(403, "policy", "Rule text may not carry " + ua.zentix.almighty.act.Chat.RESERVED);
                     ua.zentix.almighty.policy.Node node = all ? ua.zentix.almighty.policy.Node.SPEAK_ALL : ua.zentix.almighty.policy.Node.SPEAK_REPLY;
@@ -467,7 +468,7 @@ public final class GmServer {
                             : c.player() == null ? ua.zentix.almighty.act.CommandRunner.As.GM
                             : new ua.zentix.almighty.act.CommandRunner.As(4, server.getPlayerList().getPlayer(c.player()));
                 } else if (c.player() != null) {
-                    // The creator's own source, at their level under the agent's ceiling (never a running approval's).
+                    // The creator's own source, at their level under the agent's ceiling.
                     net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(c.player());
                     if (p == null) throw RpcException.conflict(c.name() + " is offline: the rule's command runs as them");
                     int lvl = Math.max(server.getProfilePermissions(p.getGameProfile()), Nodes.role(p.getUUID()).commandLevel());
@@ -487,6 +488,10 @@ public final class GmServer {
         };
     }
 
+    /**
+     * Who a command runs as (plan 4.3): in-process at level 4; unasked at the trust floor's level; for a request, as
+     * that player (their entity, at the higher of their op level and their role's level, capped by the ceiling).
+     */
     public ua.zentix.almighty.act.CommandRunner.As commandAs(Gate.Rights r) throws RpcException {
         if (r == null) return ua.zentix.almighty.act.CommandRunner.As.GM;
         if (r.ticket() == null) return new ua.zentix.almighty.act.CommandRunner.As(r.floor().commandLevel(), null);

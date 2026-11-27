@@ -325,7 +325,13 @@ fire asks `Guard` (`GmServer.ruleGuard`) again: no `almighty.rules` any more →
 where the creator may build (`build`, zones, claims; an event without a block or entity place needs the owner at
 add time); say with `speak.reply` or `speak.all`; commands as the creator (their own source and level under the
 ceiling, the agent at its floor's level at the event's place), through the deny list and `CommandZones`. Below
-admin, `rule.remove` removes only rules made for you. Owner-approved scripts: `script {name, args}` (node
+admin, `rule.remove` (and a same-named `rule.add`) touches only rules made for you. The creator's rights are
+cached per rule for a second or until the policy or a role changes (`Policies.CHANGES`); a script rule needs
+`engine` again, a rule with commands `command`. A rule's command template gets a command call's checks at add time
+(no `run_command`/`suggest_command`/`[Almighty]`, nothing that would need a player's confirmation); a say is a
+reply only as a chat line to the creator themself. Pause stops rules made below the owner. A rule is never made
+through an admin's one-call approval. Saved rules keep their file's `expires` verbatim; any rule's `ttl_hours`
+expires. Time counts toward `budget_ms` from the rights check on, a non-matching `when` included. Owner-approved scripts: `script {name, args}` (node
 `almighty.scripts.run`, builder) runs `config/almighty/scripts/<name>.groovy` only while its SHA-256 matches the
 one `/almighty script approve <name>` pinned (`scripts/approved.json`); any edit needs a new approval. The script
 gets `requester` (UUID or null) and runs with the GM's full rights: it is the owner's code.

@@ -110,8 +110,10 @@ public final class Rules {
     static Spec saved(JsonObject params, long now) throws RpcException {
         Args a = new Args(params);
         Declarative.Creator creator = Declarative.Creator.from(params.get("creator"));
-        Spec s = parse(a, creator, creator.agent() == null, now);
+        // Parsed as the owner would (no TTL computed, no TTL limit): the expiry is the file's, verbatim.
+        Spec s = parse(a, creator, true, now);
         long expires = params.has("expires") ? params.get("expires").getAsLong() : 0;
+        s.params().remove("expires");
         if (expires > 0) s.params().addProperty("expires", expires);
         return new Spec(s.params(), s.event(), s.code(), s.script(), s.name(), s.every(), s.limit(), s.priority(), s.canceled(),
                 s.budgetMs(), s.persist(), s.decl(), creator, expires);
@@ -171,9 +173,20 @@ public final class Rules {
         return RpcException.unavailable("Scripts are disabled: scripts.enabled = false in config/almighty-common.toml");
     }
 
-    /** Add a rule (server thread). The same name replaces the previous rule. */
+    /** Add a rule (server thread), as the owner. The same name replaces the previous rule. */
     public JsonObject add(Spec spec) throws RpcException {
+        return add(spec, c -> true);
+    }
+
+    /** Add a rule; a same-named rule (or saved rule that did not load) is replaced only if {@code may} allows its creator. */
+    public JsonObject add(Spec spec, java.util.function.Predicate<Declarative.Creator> may) throws RpcException {
         Rule old = spec.name() == null ? null : byName(spec.name());
+        if (old != null && !may.test(old.spec.creator())
+                || old == null && spec.name() != null && !may.test(Declarative.Creator.OWNER) && unloaded.stream().anyMatch(u -> spec.name().equals(savedName(u)))) {
+            if (spec.script() != null) spec.script().close();
+            throw new RpcException(403, "policy", "A rule named " + spec.name() + " was made for "
+                    + (old != null ? old.spec.creator().describe() : "the owner") + ": choose another name");
+        }
         if (old == null && rules.size() >= MAX_RULES) {
             if (spec.script() != null) spec.script().close();
             throw RpcException.conflict("Already " + MAX_RULES + " rules: remove unused ones (rule.remove)");
@@ -367,7 +380,8 @@ public final class Rules {
 
         void fire(Event event) {
             if (off != null || running) return;
-            if (spec.script() != null && paused.getAsBoolean()) return;
+            // Paused: scripts stop, and so do rules made below the owner (they act for an agent or a player).
+            if (paused.getAsBoolean() && (spec.script() != null || !ownerMade())) return;
             if (!server.isSameThread()) {
                 if (!wrongThread) {
                     wrongThread = true;
@@ -378,30 +392,38 @@ public final class Rules {
             }
             long tick = server.getTickCount();
             if (spec.every() > 0 && lastRun != Long.MIN_VALUE && tick - lastRun < spec.every()) return;
-            // Bound to its creator (plan 4.12): expired, or the creator lost the right → the rule ends here.
-            if (!guard.owner(spec.creator())) {
-                if (spec.expires() > 0 && clockMillis.getAsLong() >= spec.expires()) {
-                    end("expired (made for " + spec.creator().describe() + "; ttl_hours)");
-                    return;
-                }
-                String lost = guard.rules(spec.creator());
+            if (spec.expires() > 0 && clockMillis.getAsLong() >= spec.expires()) {
+                end("expired (made for " + spec.creator().describe() + "; ttl_hours)");
+                return;
+            }
+            if (tick - timeTick >= WINDOW) {
+                timeTick = tick;
+                timeNanos = 0;
+            }
+            // Everything from here counts toward the budget, a non-matching condition too.
+            long start = System.nanoTime();
+            // Bound to its creator (plan 4.12): the creator's rights, asked again at most once a second.
+            if (!ownerMade()) {
+                String lost = creatorLacks(tick);
                 if (lost != null) {
-                    turnOff(spec.creator().describe() + " may no longer have rules: " + lost);
+                    turnOff(spec.creator().describe() + " may no longer have this rule: " + lost);
                     return;
                 }
             }
             JsonObject fields = null;
             if (spec.decl() != null && !spec.decl().when().isEmpty()) {
                 fields = Json.fields(event);
-                if (!Declarative.matches(spec.decl().when(), fields)) return;
+                if (!Declarative.matches(spec.decl().when(), fields)) {
+                    if (warm) timeNanos += System.nanoTime() - start;
+                    warm = true;
+                    if (timeNanos > spec.budgetMs() * 1e6 * WINDOW) {
+                        turnOff(String.format(Locale.ROOT, "%.1f ms over %d ticks with a budget of %.1f ms per tick (budget_ms)", timeNanos / 1e6, WINDOW, spec.budgetMs()));
+                    }
+                    return;
+                }
             }
             lastRun = tick;
-            if (tick - timeTick >= WINDOW) {
-                timeTick = tick;
-                timeNanos = 0;
-            }
             running = true;
-            long start = System.nanoTime();
             try {
                 if (spec.decl() != null) {
                     act(event, fields != null ? fields : Json.fields(event), tick);
@@ -434,6 +456,35 @@ public final class Rules {
             } else if (spec.limit() > 0 && fired >= spec.limit()) {
                 end("limit = " + spec.limit() + " reached");
             }
+        }
+
+        long checkedTick = -WINDOW, checkedChanges = -1;
+        String lacking;
+        boolean ownerChecked, owner;
+
+        /** Whether the rule's creator is the owner now (asked once a second with the rights). */
+        private boolean ownerMade() {
+            if (spec.creator().agent() == null) return true;
+            long tick = server.getTickCount();
+            if (!ownerChecked || tick - checkedTick >= WINDOW || checkedChanges != ua.zentix.almighty.policy.Policies.CHANGES.get()) creatorLacks(tick);
+            return owner;
+        }
+
+        /**
+         * The creator's rights for this rule, cached for one second or until the policy or a role changes (permission
+         * lookups are not free per event; a permission plugin's change is seen within a second).
+         */
+        private String creatorLacks(long tick) {
+            long changes = ua.zentix.almighty.policy.Policies.CHANGES.get();
+            if (ownerChecked && tick - checkedTick < WINDOW && checkedChanges == changes) return lacking;
+            checkedTick = tick;
+            checkedChanges = changes;
+            ownerChecked = true;
+            owner = guard.owner(spec.creator());
+            if (owner) return lacking = null;
+            lacking = guard.lacks(spec.creator(), spec.script() != null ? ua.zentix.almighty.policy.Node.ENGINE : ua.zentix.almighty.policy.Node.RULES);
+            if (lacking == null && spec.decl() != null && spec.decl().commands()) lacking = guard.lacks(spec.creator(), ua.zentix.almighty.policy.Node.COMMAND);
+            return lacking;
         }
 
         /** A planned end (limit, expiry): removed from the list and the file. */

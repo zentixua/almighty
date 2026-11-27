@@ -1,22 +1,19 @@
 """Two pixel typefaces drawn for the brand kit.
 
-DISPLAY: the 'Almighty' wordmark. Cap height 16, x-height 11, descender 4, 3-px stems, 1-px chamfers.
+DISPLAY: the 'Almighty' wordmark. Ascender 16, cap height 12 (so the l never reads as a capital I), x-height 11,
+descender 4, 3-px stems, 1-px chamfers.
 SMALL: 5x7 capitals for taglines and thumbnail titles; SMALL_BOLD doubles the horizontal stroke.
 """
 from pix import Layer
 
 # Rows 0..19; baseline after row 15. '#' is ink.
 DISPLAY = {
-    'A': [
-        "...######...",
+    'A': ["", "", "", "",                         # caps sit 4 rows below the ascenders: l, h, t stand taller
         "..########..",
         ".##########.",
         "####....####",
         "###......###",
         "###......###",
-        "###......###",
-        "###......###",
-        "############",
         "############",
         "############",
         "###......###",
@@ -25,7 +22,7 @@ DISPLAY = {
         "###......###",
         "###......###",
     ],
-    'l': ["###"] * 13 + ["###.", "####", ".###"],
+    'l': ["###.."] * 12 + ["###..", "####.", "#####", ".####"],
     'm': [""] * 5 + [
         "################.",
         "#################",

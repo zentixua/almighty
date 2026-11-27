@@ -3,33 +3,27 @@ import os
 from PIL import Image
 from pix import Layer, hexc, up
 from fonts import wordmark, draw_text, text_width, SMALL
-from marks import mark, INK, REGENT, GRASP, OVERSEER, PROMPT
+from marks import mark, INK, REGENT, GRASP, SOVEREIGN, PROMPT
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand')
 TAGLINE = 'INFINITE POWER. CONTROLLED USE.'
 SUB = 'AN AI GAME MASTER FOR YOUR SERVER'
 
 DIRS = {
-    'regent': REGENT, 'grasp': GRASP, 'overseer': OVERSEER, 'prompt': PROMPT,
+    'grasp': GRASP, 'sovereign': SOVEREIGN,  # regent and prompt were dropped (docs/brand/blind-check.md)
 }
-ACCENT = {'regent': hexc('#E9AE36'), 'grasp': hexc('#43D9C2'), 'overseer': hexc('#E9AE36'), 'prompt': hexc('#43D9C2')}
-FACE, SHADE, MUTED = hexc('#ECEFF4'), hexc('#9AA3B5'), hexc('#7C8699')
+ACCENT = {'regent': hexc('#E9AE36'), 'grasp': hexc('#43D9C2'), 'sovereign': hexc('#E9AE36'), 'prompt': hexc('#43D9C2')}
+FACE, SHADE, MUTED = hexc('#ECEFF4'), hexc('#9AA3B5'), hexc('#AEB6C6')
 HILLS = [3, 3, 5, 5, 5, 4, 4, 7, 7, 7, 7, 6, 4, 4, 3, 3, 3, 5, 6, 6, 8, 8, 6, 5, 5, 4, 3, 3, 4, 4, 6, 6, 5, 3]
 
 
 def scene(w, h, pal):
-    """Background: flat night tone, a quiet band of blocky hills along the bottom (4-px columns)."""
+    """Background: flat night tone with a sparse 8-px dot grid (a build grid, not texture)."""
     L = Layer(w, h, pal['bg'])
-    base = h - max(6, h // 12)
-    for i, x in enumerate(range(0, w, 4)):
-        hh = HILLS[i % len(HILLS)] + (h // 40)
-        L.rect(x, base - hh, x + 3, h - 1, pal['bg2'])
-    L.rect(0, base, w - 1, h - 1, pal['bg2'])
-    # far ridge one tone lighter, sparse, only where hills peak
-    for i, x in enumerate(range(0, w, 4)):
-        if HILLS[i % len(HILLS)] >= 7:
-            hh = HILLS[i % len(HILLS)] + (h // 40)
-            L.rect(x, base - hh, x + 3, base - hh, lighten(pal['bg2'], 10))
+    dot = lighten(pal['bg'], 9)
+    for y in range(4, h, 8):
+        for x in range(4, w, 8):
+            L.px(x, y, dot)
     return L
 
 

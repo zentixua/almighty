@@ -212,6 +212,11 @@ class McpProtocolTest {
         assertTrue(bridgeError.get("isError").getAsBoolean());
         assertTrue(bridgeError.toString().contains("not_found: No method nope"));
         assertEquals(List.of("nope {}"), b.calls, "refused arguments never reach the bridge");
+        JsonObject wrongType = send(legacy, "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"job\",\"arguments\":{\"id\":1,\"wait\":true}}}", FULL, b)
+                .body().getAsJsonObject("result");
+        assertTrue(wrongType.get("isError").getAsBoolean(), "a wrongly typed argument is a tool error, not a 500");
+        assertEquals(6, send(legacy, "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"initialize\",\"params\":{\"protocolVersion\":{}}}", FULL, b)
+                .body().get("id").getAsInt());
         JsonObject resources = send(legacy, "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/list\"}", FULL, b).body();
         assertEquals(McpProtocol.METHOD_NOT_FOUND, resources.getAsJsonObject("error").get("code").getAsInt());
         assertTrue(send(legacy, "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"ping\"}", FULL, b).body().has("result"));

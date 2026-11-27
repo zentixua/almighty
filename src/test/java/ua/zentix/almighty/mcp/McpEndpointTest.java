@@ -91,6 +91,7 @@ class McpEndpointTest {
         String init = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"t\",\"version\":\"1\"}}}";
         HttpResponse<String> none = post("/mcp", null, Map.of(), init);
         assertEquals(401, none.statusCode());
+        assertEquals(1, JsonParser.parseString(none.body()).getAsJsonObject().get("id").getAsInt(), "errors keep the request id");
         assertTrue(none.headers().firstValue("WWW-Authenticate").orElse("").startsWith("Bearer"));
         assertEquals(401, post("/mcp", "wrong", Map.of(), init).statusCode());
         assertEquals(403, post("/mcp", "secret-gm", Map.of("Origin", "http://evil.example"), init).statusCode());

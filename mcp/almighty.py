@@ -98,36 +98,65 @@ def serve_mcp():
     The tools, their descriptions and checks live in the mod (one source for every harness); this only relays.
     Clients that speak Streamable HTTP connect to <address>/mcp directly and need no Python at all.
     """
+    import io
+    stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
+    stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", line_buffering=True)
+
+    def emit(obj):
+        stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        stdout.flush()
+
+    def fail(msg_id, code, message):
+        if msg_id is not None:
+            emit({"jsonrpc": "2.0", "id": msg_id, "error": {"code": code, "message": message}})
+
     client = httpx.Client(timeout=70, trust_env=False, headers={"Authorization": "Bearer " + _token(),
                                                                "Accept": "application/json, text/event-stream"})
-    for line in sys.stdin:
+    for line in stdin:
         line = line.strip()
         if not line:
             continue
         try:
             msg = json.loads(line)
         except ValueError:
+            emit({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}})
             continue
+        msg_id = msg.get("id") if isinstance(msg, dict) else None
+        params = msg.get("params") if isinstance(msg, dict) else None
+        params = params if isinstance(params, dict) else {}
+        meta = params.get("_meta") if isinstance(params.get("_meta"), dict) else {}
         headers = {}
-        if isinstance(msg, dict):
-            meta = (msg.get("params") or {}).get("_meta") or {}
-            version = meta.get("io.modelcontextprotocol/protocolVersion")
-            if version:
-                headers["MCP-Protocol-Version"] = version
-                headers["Mcp-Method"] = msg.get("method", "")
-                name = (msg.get("params") or {}).get("name")
-                if name is not None:
-                    headers["Mcp-Name"] = name if name.isascii() and name.isprintable() else \
-                        "=?base64?" + base64.b64encode(name.encode()).decode() + "?="
+        version = meta.get("io.modelcontextprotocol/protocolVersion")
+        if isinstance(version, str):
+            headers["MCP-Protocol-Version"] = version
+            headers["Mcp-Method"] = str(msg.get("method", ""))
+            name = params.get("name")
+            if isinstance(name, str):
+                headers["Mcp-Name"] = name if name.isascii() and name.isprintable() and not name.startswith("=?base64?") \
+                    else "=?base64?" + base64.b64encode(name.encode()).decode() + "?="
+        for attempt in range(2):
+            try:
+                r = client.post(MCP_URL, content=line.encode("utf-8"), headers=headers)
+            except httpx.HTTPError as e:
+                r = None
+                fail(msg_id, -32603, f"bridge {MCP_URL} unreachable: {e}")
+                break
+            if r.status_code == 401 and attempt == 0 and not os.environ.get("ALMIGHTY_TOKEN"):
+                # The owner rotated the token (/almighty revoke): read the file again once.
+                client.headers["Authorization"] = "Bearer " + _token()
+                continue
+            break
+        if r is None or r.status_code == 202 or not r.content:
+            continue
         try:
-            r = client.post(MCP_URL, content=line.encode(), headers=headers)
-        except httpx.HTTPError as e:
-            if isinstance(msg, dict) and "id" in msg:
-                print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32603, "message": f"bridge {MCP_URL} unreachable: {e}"}}), flush=True)
+            reply = r.json()
+        except ValueError:
+            fail(msg_id, -32603, f"bridge answered {r.status_code}: {r.text[:300]}")
             continue
-        if r.status_code == 202 or not r.content:
-            continue
-        print(r.text, flush=True)
+        if isinstance(reply, dict) and "error" in reply and reply.get("id") is None and msg_id is not None:
+            reply["id"] = msg_id
+        if msg_id is not None:
+            emit(reply)
 
 
 def follow(from_start):

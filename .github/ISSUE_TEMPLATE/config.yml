@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Guide
+    url: https://github.com/zentixua/almighty/blob/main/docs/guide/README.md
+    about: Installation, connecting agents, permissions, commands, settings and troubleshooting.
+  - name: Security policy
+    url: https://github.com/zentixua/almighty/blob/main/SECURITY.md
+    about: Report a vulnerability privately, without posting details in public.

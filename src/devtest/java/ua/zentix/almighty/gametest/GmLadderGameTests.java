@@ -107,6 +107,7 @@ public final class GmLadderGameTests {
     @GameTest(template = "floor", batch = "gm_ladder")
     public static void rolesHandlersQuotasClaims(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);
+        CompletableFuture<?>[] claimed = new CompletableFuture<?>[1];
         Policy before = gm.policies().current();
         UUID id = UUID.randomUUID();
         ServerPlayer guest = player(h, "ladder-guest", id);
@@ -137,15 +138,35 @@ public final class GmLadderGameTests {
                     return cx != (at.getX() >> 4) || cz != (at.getZ() >> 4);
                 }
             });
-            check(refused(gm, "build", params(set(at.north(2), ",\"for\":\"" + t + "\""))).getMessage().contains("claimed"), "claimed chunk");
+            // The claim check is a world call: under a tight tick budget (slow CI) it runs on a later tick.
+            CompletableFuture<?> f;
+            try {
+                f = gm.dispatch().invoke(GM, "build", params(set(at.north(2), ",\"for\":\"" + t + "\"")));
+            } catch (RpcException e) {
+                f = CompletableFuture.failedFuture(e);
+            }
+            claimed[0] = f;
         } finally {
-            Claims.testSource(null);
             Nodes.handler(null);
             gm.roles().set(id, "ladder-guest", null, null, Role.OWNER, "test");
             gm.policies().set(before);
             h.getLevel().getServer().getPlayerList().remove(guest);
         }
-        h.succeed();
+        if (claimed[0] == null) {
+            Claims.testSource(null);
+            throw new GameTestAssertException("no claim check");
+        }
+        h.succeedWhen(() -> {
+            if (!claimed[0].isDone()) throw new GameTestAssertException("waiting for the claim check");
+            Claims.testSource(null);
+            try {
+                claimed[0].join();
+            } catch (java.util.concurrent.CompletionException e) {
+                check(e.getCause() instanceof RpcException r && r.getMessage().contains("claimed"), "claimed chunk: " + e.getCause());
+                return;
+            }
+            throw new GameTestAssertException("build was allowed in a claimed chunk");
+        });
     }
 
     /** Review of step 9: commands reaching into a zone by coordinates, execute relocation, bots in a zone without pos. */

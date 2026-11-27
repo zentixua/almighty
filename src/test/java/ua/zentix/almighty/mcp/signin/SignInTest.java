@@ -28,20 +28,27 @@ class SignInTest {
     @TempDir
     Path dir;
     final AtomicLong now = new AtomicLong(1_000_000);
-    final Set<String> made = new HashSet<>(Set.of("gm", "builder"));
+    /** Agents as the server has them: name to current token. */
+    final Map<String, String> made = new HashMap<>(Map.of("gm", "gm-token", "builder", "builder-token"));
     int issued;
 
     SignIn signIn() {
         return new SignIn(dir, new SignIn.Issuer() {
             @Override
             public String issue(String name) {
-                made.add(name);
-                return name + "-token-" + (++issued);
+                String t = name + "-token-" + (++issued);
+                made.put(name, t);
+                return t;
             }
 
             @Override
             public boolean exists(String name) {
-                return made.contains(name);
+                return made.containsKey(name);
+            }
+
+            @Override
+            public String current(String name) {
+                return made.get(name);
             }
         }, now::get);
     }
@@ -95,9 +102,30 @@ class SignInTest {
         // State survives a restart: the refresh token still works with a fresh instance.
         JsonObject again = signIn().exchange(Map.of("grant_type", "refresh_token", "refresh_token", next.get("refresh_token").getAsString()));
         assertEquals("claude-code-token-3", again.get("access_token").getAsString());
+        // The owner revokes the agent (its token rotates outside the sign-in): the refresh token dies with the old token.
+        made.put("claude-code", "rotated-by-owner");
+        assertEquals("invalid_grant", assertThrows(SignIn.OAuthError.class, () -> signIn().exchange(Map.of("grant_type", "refresh_token",
+                "refresh_token", again.get("refresh_token").getAsString()))).error(), "revoke ends a signed-in client");
+        assertEquals("rotated-by-owner", made.get("claude-code"), "and the owner's new token is left alone");
+    }
+
+    @Test
+    void aRemovedAgentReMadeByHandIsNeverTakenOver() throws Exception {
+        SignIn s = signIn();
+        SignIn.Client c = register(s, "Claude Code", "http://localhost:1/callback");
+        SignIn.Pending p = s.authorize(c, authorizeQuery(c.id(), "http://localhost:1/callback"), "http://127.0.0.1:25650/mcp", "127.0.0.1");
+        s.approve(p.code(), null);
+        JsonObject tokens = s.exchange(Map.of("grant_type", "authorization_code", "code", p.outcome("x").replaceAll(".*code=([0-9a-f]+).*", "$1"),
+                "client_id", c.id(), "code_verifier", VERIFIER));
+        // Owner: /almighty agent remove claude-code, later /almighty agent add claude-code for a tool of their own.
         made.remove("claude-code");
-        assertThrows(SignIn.OAuthError.class, () -> signIn().exchange(Map.of("grant_type", "refresh_token",
-                "refresh_token", again.get("refresh_token").getAsString())), "a removed agent cannot refresh back");
+        made.put("claude-code", "owner-made");
+        assertThrows(SignIn.OAuthError.class, () -> s.exchange(Map.of("grant_type", "refresh_token", "refresh_token",
+                tokens.get("refresh_token").getAsString())), "the old client's refresh token cannot take the new agent");
+        SignIn.Pending q = s.authorize(c, authorizeQuery(c.id(), "http://localhost:1/callback"), "http://127.0.0.1:25650/mcp", "127.0.0.1");
+        assertEquals("claude-code-2", s.approve(q.code(), null), "a new login gets another name");
+        assertEquals("owner-made", made.get("claude-code"));
+        assertThrows(SignIn.OAuthError.class, () -> s.approve("0000", "Bad Name"));
     }
 
     @Test
@@ -126,13 +154,18 @@ class SignInTest {
     @Test
     void codesExpireAreUniqueAndOnlyTheTypedOneIsApproved() throws Exception {
         SignIn s = signIn();
-        SignIn.Client c = register(s, "Cursor", "cursor://anysphere.cursor-retrieval/oauth/callback");
         Set<String> codes = new HashSet<>();
+        SignIn.Client c = null;
         for (int i = 0; i < SignIn.MAX_PENDING; i++) {
+            c = register(s, "Cursor " + i, "cursor://anysphere.cursor-retrieval/oauth/callback");
             codes.add(s.authorize(c, authorizeQuery(c.id(), "cursor://anysphere.cursor-retrieval/oauth/callback"), "http://127.0.0.1:25650/mcp", "1.2.3.4").code());
         }
+        SignIn.Client last = c;
+        assertEquals(429, assertThrows(SignIn.OAuthError.class, () -> s.authorize(last, authorizeQuery(last.id(),
+                "cursor://anysphere.cursor-retrieval/oauth/callback"), "http://127.0.0.1:25650/mcp", "1.2.3.4")).status(), "pending logins are capped overall");
         assertEquals(SignIn.MAX_PENDING, codes.size(), "waiting codes are unique");
-        assertEquals(429, assertThrows(SignIn.OAuthError.class, () -> s.authorize(c, authorizeQuery(c.id(),
+        SignIn.Client c2 = register(s, "Cursor x", "cursor://anysphere.cursor-retrieval/oauth/callback");
+        assertEquals(429, assertThrows(SignIn.OAuthError.class, () -> s.authorize(c2, authorizeQuery(c2.id(),
                 "cursor://anysphere.cursor-retrieval/oauth/callback"), "http://127.0.0.1:25650/mcp", "1.2.3.4")).status(), "logins cannot pile up");
         String wrong = "0000";
         while (codes.contains(wrong)) wrong = String.format("%04d", Integer.parseInt(wrong) + 1);
@@ -168,6 +201,9 @@ class SignInTest {
         assertEquals("claude-code", SignIn.agentName("Claude Code"));
         assertEquals("visual-studio-code", SignIn.agentName("Visual Studio Code"));
         assertEquals("agent", SignIn.agentName("☃"));
+        assertTrue(SignIn.loopback("127.0.0.1") && SignIn.loopback("[::1]") && SignIn.loopback("localhost"));
+        assertFalse(SignIn.loopback("127.evil.example") || SignIn.loopback("127.0.0.1.nip.io") || SignIn.loopback("127.0.0.999"));
+        assertEquals("Evil  name", SignIn.displayName("Evil\n\rname", null), "names reach logs and chat on one line");
         assertFalse(SignIn.agentName("x".repeat(80)).length() > 28);
         assertNotEquals(SignIn.s256("a"), SignIn.s256("b"));
         // RFC 7636 appendix B test vector.

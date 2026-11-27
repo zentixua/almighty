@@ -37,7 +37,11 @@ blocks, items or network packets of its own.
   start it. The bridge takes `POST /rpc` with `{"method": ..., "params": {...}}` and the header
   `Authorization: Bearer <token>`.
 - On first start the mod writes a random token to `config/almighty/token` (32 bytes as hex; on Linux and macOS only
-  the file's owner can read it). The token is not written to the log.
+  the file's owner can read it). The token is not written to the log. It belongs to the agent `gm`; each further agent
+  gets its own token with `/almighty agent add <name>` (in `config/almighty/agents/<name>.token`), and
+  `/almighty agents` shows who called last and from where.
+- Requests from web browsers (with an `Origin` header) are refused unless that origin is listed in
+  `bridge.allowed_origins`. Five wrong tokens within a minute lock the sending address out for a while.
 - The world is read and changed only on the server thread: between ticks, or by jobs that get a fixed time per tick
   (`work.ms_per_tick`, 3 ms by default). Large builds and pictures do not stall the server.
 - The agent connects through the MCP adapter [`mcp/almighty.py`](mcp/almighty.py). It has 14 tools: `status`,
@@ -111,8 +115,8 @@ access to the bridge like shell access to the server machine.
 - Keep `bridge.host` on loopback (`127.0.0.1`, the default) or on a network that only the server owner can reach, for
   example the address of a Docker container whose port is not published. The bridge speaks plain HTTP; do not expose
   its port to the internet.
-- Keep the token secret. Anyone who has it controls the server. To replace it, delete `config/almighty/token` and
-  restart the server.
+- Keep the tokens secret. Anyone who has one controls the server. To replace a token, run `/almighty revoke <agent>`
+  in the console: the old token stops working at once and the new one is in the same file.
 - To turn scripts off, set `scripts.enabled = false`. The `script` method and rules with a script are then refused,
   and saved rules with a script do not load. Commands and rules without a script still work.
 - To turn the bridge off, set `bridge.enabled = false`.

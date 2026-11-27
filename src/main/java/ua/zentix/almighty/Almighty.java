@@ -11,6 +11,7 @@ import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import ua.zentix.almighty.bot.Bots;
+import ua.zentix.almighty.command.AlmightyCommand;
 import ua.zentix.almighty.feed.FeedListeners;
 import ua.zentix.almighty.feed.GmCommand;
 
@@ -27,6 +28,7 @@ public final class Almighty {
         IEventBus bus = NeoForge.EVENT_BUS;
         FeedListeners.register(bus);
         GmCommand.register(bus);
+        AlmightyCommand.register(bus);
         Bots.register(bus);
         bus.addListener(Almighty::onStarted);
         bus.addListener(Almighty::onTickStart);
@@ -36,7 +38,7 @@ public final class Almighty {
     }
 
     private static void onStarted(ServerStartedEvent e) {
-        GmServer.start(e.getServer(), FMLPaths.CONFIGDIR.get().resolve(ID).resolve("token"));
+        GmServer.start(e.getServer(), FMLPaths.CONFIGDIR.get().resolve(ID));
     }
 
     private static void onTickStart(ServerTickEvent.Pre e) {

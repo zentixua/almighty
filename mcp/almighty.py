@@ -19,7 +19,7 @@ The mod listens over HTTP on the server (default 127.0.0.1:25650, only POST /rpc
 
 Address: ALMIGHTY_URL (default http://127.0.0.1:25650); token: ALMIGHTY_TOKEN or the file in
 ALMIGHTY_TOKEN_FILE (the mod writes config/almighty/token in the server directory on first start).
-Methods and parameters: CLAUDE.md.
+Methods and parameters: AGENTS.md ("Methods").
 """
 import argparse
 import base64
@@ -59,10 +59,19 @@ def rpc(method, params=None, timeout=None):
         # The bridge waits up to 60 s for the server response; loopback needs no environment proxy.
         _client = httpx.Client(timeout=70, trust_env=False, headers={"Authorization": "Bearer " + _token()})
     body = {"method": method, "params": {k: v for k, v in (params or {}).items() if v is not None}}
-    try:
-        r = _client.post(URL, json=body, **({"timeout": timeout} if timeout else {}))
-    except httpx.HTTPError as e:
-        raise GmError(f"bridge {URL} unreachable: {e}") from e
+    for attempt in range(4):
+        try:
+            r = _client.post(URL, json=body, **({"timeout": timeout} if timeout else {}))
+        except httpx.HTTPError as e:
+            raise GmError(f"bridge {URL} unreachable: {e}") from e
+        if r.status_code == 503 and attempt < 3 and '"busy"' in r.text:
+            time.sleep(0.5 * 2 ** attempt)  # the call was not started: the bridge's queue was full
+            continue
+        if r.status_code == 401 and attempt == 0 and not os.environ.get("ALMIGHTY_TOKEN"):
+            # The owner rotated the token (/almighty revoke): read the file again once.
+            _client.headers["Authorization"] = "Bearer " + _token()
+            continue
+        break
     try:
         data = r.json()
     except ValueError:

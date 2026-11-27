@@ -42,6 +42,9 @@ jobs:
       - name: Tools page matches the tool definitions
         run: python3 scripts/gen_tools_md.py --check
 
+      - name: Store pages (docs/store) are consistent
+        run: python3 scripts/store.py --check
+
       - name: MCP adapter syntax
         run: python3 -m py_compile mcp/almighty.py
 

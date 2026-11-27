@@ -1,10 +1,11 @@
 {
   "slug": "almighty",
   "title": "Almighty: AI Game Master",
-  "description": "Server-side NeoForge mod that lets an AI agent run your Minecraft server as game master: it sees the world, follows events, runs commands, builds with undo, adds rules on game events and spawns bot players.",
+  "description": "Let an AI agent run your Minecraft server as game master: it sees the world, talks to players, builds with undo, runs events and plays with bot players, within the rights you set. Server-side, NeoForge and Fabric; players install nothing.",
   "categories": [
     "management",
-    "utility"
+    "utility",
+    "game-mechanics"
   ],
   "additional_categories": [],
   "client_side": "unsupported",
@@ -12,22 +13,31 @@
   "license_id": "GPL-3.0-only",
   "source_url": "https://github.com/zentixua/almighty",
   "issues_url": "https://github.com/zentixua/almighty/issues",
-  "wiki_url": null,
+  "wiki_url": "https://github.com/zentixua/almighty/blob/main/docs/guide/README.md",
   "discord_url": null,
-  "icon": "docs/media/icon.png",
+  "icon": "docs/brand/icon/icon-512.png",
+  "curseforge_avatar": "docs/brand/social/avatar-400.png",
   "gallery": [
     {
-      "file": "docs/media/eye.png",
-      "title": "What a bot sees: the eye view of an airport, with the crosshair in the middle",
+      "file": "docs/brand/store/modrinth-cover-1920x1080.png",
+      "title": "Almighty",
+      "description": "An AI game master for your Minecraft server.",
       "featured": true
     },
     {
+      "file": "docs/media/eye.png",
+      "title": "Through a bot's eyes",
+      "description": "The first-person picture the agent gets from a bot at an airport, drawn by the server, with the crosshair in the middle."
+    },
+    {
       "file": "docs/media/map.png",
-      "title": "The map view: an airport from above, drawn like a vanilla map"
+      "title": "Map view",
+      "description": "An airport from above, drawn by the server like a vanilla map."
     },
     {
       "file": "docs/media/look.png",
-      "title": "An airport terminal from the side in the box view; the checkerboard marks chunks that are not loaded"
+      "title": "Box view",
+      "description": "An airport terminal from the side; the checkerboard marks chunks that are not loaded, which the agent never loads by looking."
     }
   ]
 }

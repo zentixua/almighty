@@ -189,7 +189,8 @@ public final class McpEndpoint implements HttpHandler {
         return new McpProtocol.Backend() {
             @Override
             public JsonElement call(String method, JsonObject params) throws RpcException {
-                return bridge.call(caller, method, params);
+                // MCP has no idempotency key: a client retry is a new request.
+                return bridge.call(caller, method, params, null);
             }
 
             @Override

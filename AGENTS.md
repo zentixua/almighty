@@ -124,7 +124,9 @@ all the way down": `status` (+ player), `entities`, `command` (commands or funct
 (spawn/remove/list/state/act), `notes`, `call` (any method). Before adding something, consider a script or rule;
 add a separate tool only if it really prevents errors. `from`/`to` are `start`/`end` there.
 
-Alongside it, `mcp/gm/` (README): the GM as one Claude Code session, with the `almighty-chat/` chat channel (Node
+Plugin `plugin/almighty/` (README; marketplaces `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`):
+GM skills in Claude and Agent Plugins formats, generated from the jar's notes `data/almighty/almighty/notes/`
+(`scripts/export_skills.py`, CI `--check`); edit the notes, not `skills/`. Alongside it, `mcp/gm/` (README): the GM as one Claude Code session, with the `almighty-chat/` chat channel (Node
 plugin), `crash_guard.py` crash-prevention hook (PreToolUse), and `recipes.py` recipe runner. Tests:
 `python3 -m unittest discover -s mcp/gm/tests` and `node --test` in `mcp/gm/almighty-chat/`.
 

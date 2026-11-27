@@ -6,7 +6,7 @@ server (its CLAUDE.md, skills, recipes, session settings) lives in that session'
 
 | Part | File | How it is connected |
 |---|---|---|
-| Chat channel | `almighty-chat/`, a Claude Code plugin in the `almighty` marketplace (this directory) | `--channels plugin:almighty-chat@almighty` |
+| Chat channel | `almighty-chat/`, a Claude Code plugin in the `almighty` marketplace (repository root) | `--channels plugin:almighty-chat@almighty` |
 | Crash guard hook | `crash_guard.py` | PreToolUse on `mcp__almighty__.*` in the session's `.claude/settings.json` |
 | Recipes | `recipes.py`: format and runner | a command from the server's skill |
 
@@ -101,7 +101,7 @@ return !server.overworld().isRaining()
 
 ```sh
 (cd mcp/gm/almighty-chat && npm ci)
-claude plugin marketplace add /path/to/almighty/mcp/gm && claude plugin install almighty-chat@almighty
+claude plugin marketplace add /path/to/almighty && claude plugin install almighty-chat@almighty
 ```
 
 The channel is not on the official allowlist. A managed policy can allow it (`allowedChannelPlugins` with the

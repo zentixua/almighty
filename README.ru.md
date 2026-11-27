@@ -2,7 +2,7 @@
 
 <h1 align="center">Almighty</h1>
 
-<p align="center"><b>Всемогущий ИИ для твоего сервера Minecraft.</b></p>
+<p align="center"><b>Всемогущий ИИ для вашего сервера Minecraft.</b></p>
 
 <p align="center">
 <a href="https://github.com/zentixua/almighty/releases/latest">Скачать</a> ·

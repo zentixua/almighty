@@ -51,7 +51,7 @@ uv run mcp/almighty.py call status       # one bridge call (address and token at
 ```
 
 CI (GitHub Actions) checks every PR and push to `main`: GM toolkit, build, unit tests, GameTest; the jar is the
-`almighty-jar` artifact. Release: bump `mod_version` (`gradle.properties`), write `docs/releases/<version>.md`, merge
+`almighty-jar` artifact. Release: bump `mod_version` (`gradle.properties`) and both `plugin/almighty` manifests (CI checks), write `docs/releases/<version>.md`, merge
 into `main` and manually run `build` on `main` with `release=true`; the workflow releases `v<version>` with the jar.
 open-skies-friends picks the jar up by itself (its `update` workflow, every 3 hours; run it manually to get it at once).
 Immersive Aircraft and Sable are pinned there: change them in an open-skies-friends PR together with the pins here.
@@ -140,7 +140,9 @@ all the way down": `status` (+ player), `entities`, `command` (commands or funct
 (spawn/remove/list/state/act), `notes`, `call` (any method). Before adding something, consider a script or rule;
 add a separate tool only if it really prevents errors. `from`/`to` are `start`/`end` there.
 
-Alongside it, `mcp/gm/` (README): the GM as one Claude Code session, with the `almighty-chat/` chat channel (Node
+Plugin `plugin/almighty/` (README; marketplaces `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`):
+GM skills in Claude and Agent Plugins formats, generated from the jar's notes `data/almighty/almighty/notes/`
+(`scripts/export_skills.py`, CI `--check`); edit the notes, not `skills/`. Alongside it, `mcp/gm/` (README): the GM as one Claude Code session, with the `almighty-chat/` chat channel (Node
 plugin), `crash_guard.py` crash-prevention hook (PreToolUse), and `recipes.py` recipe runner. Tests:
 `python3 -m unittest discover -s mcp/gm/tests` and `node --test` in `mcp/gm/almighty-chat/`.
 

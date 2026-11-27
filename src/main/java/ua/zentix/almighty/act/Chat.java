@@ -14,6 +14,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 import ua.zentix.almighty.GmConfig;
+import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
 
@@ -68,6 +69,8 @@ public final class Chat {
             default -> throw RpcException.badRequest("style: chat, title, subtitle or actionbar");
         }
         if (!style.equals("chat") || args.has("to")) LOG.info("GM ({}): {}", style, text.getString());
+        // A reply opens a conversation: the players' next lines reach the GM without its name.
+        if (GmServer.of(server) instanceof GmServer gm) gm.inbox().replied(args.has("to") ? to : null);
         JsonObject out = new JsonObject();
         out.addProperty("players", to.size());
         return out;

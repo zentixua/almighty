@@ -57,7 +57,7 @@ public final class AlmightyCommand {
                         .then(Commands.argument("duration", StringArgumentType.word())
                                 .executes(c -> role(c.getSource(), StringArgumentType.getString(c, "player"),
                                         StringArgumentType.getString(c, "role"), StringArgumentType.getString(c, "duration")))))));
-        root.then(owner("owner")
+        root.then(trueOwner("owner")
                 .then(Commands.literal("add").then(Commands.argument("player", StringArgumentType.word())
                         .executes(c -> owners(c.getSource(), StringArgumentType.getString(c, "player"), true))))
                 .then(Commands.literal("remove").then(Commands.argument("player", StringArgumentType.word())
@@ -65,12 +65,12 @@ public final class AlmightyCommand {
         root.then(Commands.literal("undo").then(Commands.argument("change", IntegerArgumentType.integer(1))
                 .executes(c -> undo(c.getSource(), IntegerArgumentType.getInteger(c, "change")))));
         root.then(owner("agents").executes(c -> agents(c.getSource())));
-        root.then(owner("agent")
+        root.then(trueOwner("agent")
                 .then(Commands.literal("add").then(Commands.argument("name", StringArgumentType.word())
                         .executes(c -> change(c, "add"))))
                 .then(Commands.literal("remove").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
                         .executes(c -> change(c, "remove")))));
-        root.then(owner("revoke").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
+        root.then(trueOwner("revoke").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
                 .executes(c -> change(c, "revoke"))));
         root.then(owner("reload").executes(c -> reload(c.getSource())));
         root.then(owner("pause").executes(c -> pause(c.getSource(), null, true))
@@ -93,6 +93,17 @@ public final class AlmightyCommand {
     /** An owner subcommand: permission level 4. */
     private static LiteralArgumentBuilder<CommandSourceStack> owner(String name) {
         return Commands.literal(name).requires(s -> s.hasPermission(4));
+    }
+
+    /**
+     * Owners and agent tokens (who gets owner rights and the engine): the console, or a verified owner from
+     * policy.toml. An operator who is not an owner is an admin on the ladder and cannot make themselves owner.
+     */
+    private static LiteralArgumentBuilder<CommandSourceStack> trueOwner(String name) {
+        return Commands.literal(name).requires(s -> s.hasPermission(4) && (!(s.getEntity() instanceof net.minecraft.server.level.ServerPlayer p)
+                ? s.getEntity() == null && (s.source == s.getServer() || s.source instanceof net.minecraft.server.rcon.RconConsoleSource)
+                : ua.zentix.almighty.policy.Identity.verified(p.getUUID()) && ua.zentix.almighty.policy.Nodes.role(p.getUUID())
+                        == ua.zentix.almighty.policy.Role.OWNER));
     }
 
     private static Bridge bridge(CommandSourceStack source) {

@@ -55,9 +55,14 @@ class LadderTest {
         assertTrue(!spawn.holds("minecraft:overworld", new int[]{5, 64, 5}, new int[]{50, 64, 50}));
         assertTrue(!spawn.meets("minecraft:the_nether", new int[]{0, 0, 0}, new int[]{0, 0, 0}));
         assertEquals(10, p.limits().buildBlocks());
+        Policy.Zone bots = Policy.parse("[zones.b]\nfrom = [0,0,0]\nto = [1,1,1]\ndeny = [\"bots\"]").zones().get("b");
+        assertTrue(bots.denies(Node.BOTS) && bots.denies(Node.BOTS_ADMIN) && !bots.denies(Node.BUILD), "bots covers bots.admin");
         assertEquals(Policy.Limits.DEFAULT.giveItems(), p.limits().giveItems());
         for (String bad : new String[]{"[zones.x]\nfrom = [1, 2]\nto = [1, 2, 3]", "[zones.x]\nfrom = [0,0,0]\nto = [1,1,1]\ndeny = [\"fly\"]",
-                "[quotas]\nbuild_blocks = -1", "[quotas]\nbots = 3"}) {
+                "[quotas]\nbuild_blocks = -1", "[quotas]\nbots = 3",
+                // Nodes no zone check enforces are refused, not silently ignored; a dimension must be an id.
+                "[zones.x]\nfrom = [0,0,0]\nto = [1,1,1]\ndeny = [\"give.self\"]", "[zones.x]\nfrom = [0,0,0]\nto = [1,1,1]\nagent_may = [\"command\"]",
+                "[zones.x]\ndim = \"Over World\"\nfrom = [0,0,0]\nto = [1,1,1]"}) {
             assertThrows(Policy.Invalid.class, () -> Policy.parse(bad), bad);
         }
     }
@@ -69,6 +74,11 @@ class LadderTest {
         q.charge(a, "build.blocks", 8, 10);
         assertEquals(429, assertThrows(ua.zentix.almighty.bridge.RpcException.class, () -> q.charge(a, "build.blocks", 3, 10)).status());
         q.charge(UUID.randomUUID(), "build.blocks", 10, 10);
+        q.charge("agent:gm", "build.blocks", 10, 10);
+        assertEquals(429, assertThrows(ua.zentix.almighty.bridge.RpcException.class, () -> q.charge("agent:gm", "build.blocks", 1, 10)).status(),
+                "the agent's own builds have a budget too");
+        q.prune();
+        assertEquals(429, assertThrows(ua.zentix.almighty.bridge.RpcException.class, () -> q.charge(a, "build.blocks", 3, 10)).status(), "prune keeps live windows");
         now.addAndGet(Quotas.HOUR_MS);
         q.charge(a, "build.blocks", 10, 10);
     }

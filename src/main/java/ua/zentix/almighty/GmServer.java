@@ -411,19 +411,33 @@ public final class GmServer {
         return new ua.zentix.almighty.act.CommandRunner.As(Math.min(level, r.ceiling().commandLevel()), p);
     }
 
-    /** Zones for commands (plan 4.7): checked at the command's source position (the requester, {@code pos}, or spawn). */
-    public void commandZone(ua.zentix.almighty.bridge.Args a, ua.zentix.almighty.act.CommandRunner.As as) throws RpcException {
-        net.minecraft.server.level.ServerLevel level;
-        net.minecraft.core.BlockPos at;
-        if (as.player() != null) {
-            level = as.player().serverLevel();
-            at = as.player().blockPosition();
-        } else {
-            level = ua.zentix.almighty.world.Dims.level(server, a);
-            at = a.has("pos") ? new net.minecraft.core.BlockPos(a.ints("pos", 3)[0], a.ints("pos", 3)[1], a.ints("pos", 3)[2]) : level.getSharedSpawnPos();
+    /**
+     * Zones for commands (plan 4.7), server thread, before anything runs: below owner, each command (or function
+     * line) is checked where it runs and, while any zone denies build or command, at every coordinate it names
+     * ({@link ua.zentix.almighty.policy.CommandZones}).
+     */
+    public void commandZone(ua.zentix.almighty.bridge.Args a, ua.zentix.almighty.act.CommandRunner.As as, boolean function) throws RpcException {
+        if (a.caller().agent() == null || gate.rights(a.caller(), a.raw()).effective() == ua.zentix.almighty.policy.Role.OWNER) return;
+        net.minecraft.commands.CommandSourceStack source = ua.zentix.almighty.act.CommandRunner.sourceFor(server, a, as);
+        ua.zentix.almighty.policy.CommandZones.Check check = (node, dim, lo, hi) -> gate.zone(a.caller(), a.raw(), node, dim, lo, hi);
+        java.util.Collection<ua.zentix.almighty.policy.Policy.Zone> zones = policies.current().zones().values();
+        if (!ua.zentix.almighty.policy.Policy.Zone.guards(zones)) {
+            // Nothing guards places: only the source position matters (a zone may still deny other nodes there).
+            net.minecraft.world.phys.Vec3 v = source.getPosition();
+            int[] p = {(int) Math.floor(v.x), (int) Math.floor(v.y), (int) Math.floor(v.z)};
+            check.zone(ua.zentix.almighty.policy.Node.COMMAND, ua.zentix.almighty.world.Dims.id(source.getLevel()), p, p);
+            return;
         }
-        int[] p = {at.getX(), at.getY(), at.getZ()};
-        gate.zone(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.COMMAND, ua.zentix.almighty.world.Dims.id(level), p, p);
+        var dispatcher = server.getCommands().getDispatcher();
+        for (String line : a.strings(function ? "lines" : "commands")) {
+            String t = line.strip();
+            if (function && (t.isEmpty() || t.startsWith("#"))) continue;
+            if (function) {
+                String why = ua.zentix.almighty.policy.CommandZones.unchecked(t);
+                if (why != null) throw new RpcException(403, "policy", "Not run: " + why + ", and zones protect places on this server");
+            }
+            ua.zentix.almighty.policy.CommandZones.check(dispatcher, source, t, check);
+        }
     }
 
     /**

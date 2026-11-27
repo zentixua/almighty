@@ -147,4 +147,55 @@ public final class GmLadderGameTests {
         }
         h.succeed();
     }
+
+    /** Review of step 9: commands reaching into a zone by coordinates, execute relocation, bots in a zone without pos. */
+    @GameTest(template = "floor", batch = "gm_ladder_commands")
+    public static void zonesCoverCommandsAndBots(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        UUID id = UUID.randomUUID();
+        ServerPlayer builder = player(h, "ladder-builder", id);
+        BlockPos in = h.absolutePos(new BlockPos(2, 2, 2)), out = h.absolutePos(new BlockPos(12, 2, 12));
+        builder.teleportTo(out.getX() + 0.5, out.getY(), out.getZ() + 0.5);
+        try {
+            gm.policies().set(Policy.parse("preset = \"public\"\nidentity = \"proxy\"\n[zones.spawn]\n" + box(in.offset(-1, -1, -1), in.offset(1, 1, 1))
+                    + "deny = [\"build\", \"bots\"]"));
+            check(gm.roles().set(id, "ladder-builder", Role.BUILDER, null, Role.OWNER, "test") == null, "role granted");
+            String t = ticket(h, gm, builder);
+            String fill = String.format(Locale.ROOT, "{\"commands\":[\"fill %d %d %d %d %d %d minecraft:stone\"],\"for\":\"%s\"}",
+                    out.getX(), in.getY(), out.getZ(), in.getX() - 3, in.getY(), in.getZ() - 3, t);
+            check(refused(gm, "command", params(fill)).getMessage().contains("Zone spawn"), "a fill straddling the zone is a build there");
+            String moved = String.format(Locale.ROOT, "{\"commands\":[\"execute positioned %d %d %d run setblock ~ ~ ~ minecraft:stone\"],\"for\":\"%s\"}",
+                    in.getX(), in.getY(), in.getZ(), t);
+            check(refused(gm, "command", params(moved)).getMessage().contains("execute positioned"), "execute relocation refused");
+            String macro = "{\"lines\":[\"$setblock $(x) 1 1 minecraft:stone\"],\"args\":{\"x\":1},\"for\":\"" + t + "\"}";
+            check(refused(gm, "function", params(macro)).status() == 403, "macro lines cannot be checked");
+            String fine = String.format(Locale.ROOT, "{\"commands\":[\"setblock %d %d %d minecraft:stone\"],\"for\":\"%s\"}",
+                    out.getX(), out.getY(), out.getZ(), t);
+            gm.dispatch().invoke(GM, "command", params(fine)).get(5, java.util.concurrent.TimeUnit.SECONDS);
+            check(h.getLevel().getBlockState(out).is(net.minecraft.world.level.block.Blocks.STONE), "outside the zone it runs");
+            // bots denies bots.admin too (a creative bot), and a bot without pos is checked at the world spawn.
+            String creative = String.format(Locale.ROOT, "{\"name\":\"zonebot\",\"pos\":[%d,%d,%d],\"gamemode\":\"creative\"}", in.getX(), in.getY(), in.getZ());
+            gm.policies().set(Policy.parse("preset = \"private\"\n[agents.gm]\nfloor = \"admin\"\n[zones.spawn]\n" + box(in.offset(-1, -1, -1), in.offset(1, 1, 1))
+                    + "deny = [\"bots\"]"));
+            String m1 = refused(gm, "bot.spawn", params(creative)).getMessage();
+            check(m1.contains("Zone spawn"), "bots denies bots.admin: " + m1);
+            BlockPos spawn = h.getLevel().getServer().overworld().getSharedSpawnPos();
+            gm.policies().set(Policy.parse("preset = \"private\"\n[agents.gm]\nfloor = \"admin\"\n[zones.spawn]\n" + box(spawn.offset(-1, -400, -1), spawn.offset(1, 400, 1))
+                    + "deny = [\"bots\"]"));
+            check(refused(gm, "bot.spawn", params("{\"name\":\"zonebot\"}")).getMessage().contains("Zone spawn"), "no pos: checked at spawn");
+            // An operator (level 4) who is not an owner cannot make owners or agent tokens; the console can.
+            var almighty = h.getLevel().getServer().getCommands().getDispatcher().getRoot().getChild("almighty");
+            var op = builder.createCommandSourceStack().withPermission(4);
+            for (String sub : new String[]{"owner", "agent", "revoke"}) {
+                check(!almighty.getChild(sub).canUse(op), "an operator who is not an owner: /almighty " + sub);
+                check(almighty.getChild(sub).canUse(h.getLevel().getServer().createCommandSourceStack()), "the console: /almighty " + sub);
+            }
+        } finally {
+            gm.roles().set(id, "ladder-builder", null, null, Role.OWNER, "test");
+            gm.policies().set(before);
+            h.getLevel().getServer().getPlayerList().remove(builder);
+        }
+        h.succeed();
+    }
 }

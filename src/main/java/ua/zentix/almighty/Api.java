@@ -100,7 +100,7 @@ public final class Api {
             ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
             return gm.onMain(() -> {
                 CommandRunner.As as = gm.commandAs(r);
-                gm.commandZone(a, as);
+                gm.commandZone(a, as, false);
                 gm.askAdmin(a.caller(), r, "command", a.raw(), as);
                 return CommandRunner.commands(server, a, as);
             });
@@ -109,7 +109,7 @@ public final class Api {
             ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
             return gm.onMain(() -> {
                 CommandRunner.As as = gm.commandAs(r);
-                gm.commandZone(a, as);
+                gm.commandZone(a, as, true);
                 gm.askAdmin(a.caller(), r, "function", a.raw(), as);
                 return CommandRunner.function(server, a, as);
             });
@@ -202,9 +202,11 @@ public final class Api {
             int[] from = a.ints("from", 2), to = a.ints("to", 2);
             int ttl = a.integer("ttl_seconds", 300, 1, 3600);
             int wait = a.integer("wait", 0, 0, MAX_WAIT);
-            gm.gate().zone(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.AREA, Dims.id(Dims.level(server, a)),
-                    new int[]{Math.min(from[0], to[0]), Integer.MIN_VALUE / 2, Math.min(from[1], to[1])},
-                    new int[]{Math.max(from[0], to[0]), Integer.MAX_VALUE / 2, Math.max(from[1], to[1])});
+            // The chunks it loads, full height: an agent_may zone must hold them, a deny zone must not meet them.
+            net.minecraft.server.level.ServerLevel al = Dims.level(server, a);
+            gm.gate().zone(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.AREA, Dims.id(al),
+                    new int[]{Math.min(from[0], to[0]) & ~15, al.getMinBuildHeight(), Math.min(from[1], to[1]) & ~15},
+                    new int[]{(Math.max(from[0], to[0]) & ~15) + 15, al.getMaxBuildHeight() - 1, (Math.max(from[1], to[1]) & ~15) + 15});
             return gm.onMain(() -> {
                 Areas.Lease lease = gm.areas().acquire(Dims.level(server, a), "area", from[0], from[1], to[0], to[1], ttl * 20L);
                 lease.owner("area #" + lease.id());
@@ -233,13 +235,21 @@ public final class Api {
         });
         m.put("bot.spawn", a -> {
             Bots.Spec spec = Bots.Spec.parse(a);
-            if (spec.pos() != null) {
-                int[] at = {(int) Math.floor(spec.pos()[0]), (int) Math.floor(spec.pos()[1]), (int) Math.floor(spec.pos()[2])};
-                String dim = spec.dimension() == null ? "minecraft:overworld" : spec.dimension().contains(":") ? spec.dimension() : "minecraft:" + spec.dimension();
-                gm.gate().zone(a.caller(), a.raw(), gm.gate().nodeOf("bot.spawn", a.raw()), dim, at, at);
-            } else if (a.raw().has(ua.zentix.almighty.policy.Gate.ZONE_ONLY)) {
+            if (spec.pos() == null && a.raw().has(ua.zentix.almighty.policy.Gate.ZONE_ONLY)) {
                 throw new RpcException(403, "policy", "A bot spawned on the agent's own initiative needs pos inside its zone");
             }
+            String dim = spec.dimension() == null ? "minecraft:overworld" : spec.dimension().contains(":") ? spec.dimension() : "minecraft:" + spec.dimension();
+            int[] at;
+            if (spec.pos() != null) {
+                at = new int[]{(int) Math.floor(spec.pos()[0]), (int) Math.floor(spec.pos()[1]), (int) Math.floor(spec.pos()[2])};
+            } else {
+                // Without pos the bot logs in at the world spawn: zones are checked there.
+                net.minecraft.server.level.ServerLevel l = spec.dimension() != null ? Dims.level(server, spec.dimension()) : server.overworld();
+                net.minecraft.core.BlockPos sp = l.getSharedSpawnPos();
+                at = new int[]{sp.getX(), sp.getY(), sp.getZ()};
+                dim = Dims.id(l);
+            }
+            gm.gate().zone(a.caller(), a.raw(), gm.gate().nodeOf("bot.spawn", a.raw()), dim, at, at);
             return gm.bots().spawn(spec).thenApply(o -> o);
         });
         m.put("bot.remove", a -> {
@@ -469,8 +479,10 @@ public final class Api {
         gm.gate().zone(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.BUILD, Dims.id(level),
                 new int[]{b[0], b[1], b[2]}, new int[]{b[3], b[4], b[5]});
         // A player's request below owner is charged to that player's hourly block quota.
-        if (limited && a.caller().requester() != null) {
-            gm.quotas().charge(a.caller().requester(), "build.blocks", plan.size(), gm.policies().current().limits().buildBlocks());
+        // The agent's own initiative below owner is charged to the agent (dropping the ticket must not lift the quota).
+        if (limited) {
+            gm.quotas().charge(a.caller().requester() != null ? a.caller().requester().toString() : "agent:" + a.caller().agent(),
+                    "build.blocks", plan.size(), gm.policies().current().limits().buildBlocks());
         }
         java.util.UUID requester = a.caller().requester();
         return gm.submit(() -> {

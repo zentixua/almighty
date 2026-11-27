@@ -25,6 +25,23 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
      * or where the agent may use some nodes on its own initiative even above its floor ({@code agent_may}, its arena).
      */
     public record Zone(String name, String dim, int[] from, int[] to, Set<String> deny, Set<String> agentMay) {
+        /** Nodes a zone can deny: those whose methods check their box against zones. */
+        public static final Set<String> DENIABLE = Set.of("build", "area", "bots", "bots.admin", "command");
+        /** Nodes a zone can open to the agent's own initiative: methods with a known box ({@code Gate.ZONED}). */
+        public static final Set<String> MAY = Set.of("build", "area", "bots", "bots.admin");
+
+        /** Whether this zone denies {@code node}: listed, or under a listed node ({@code bots} denies {@code bots.admin}). */
+        public boolean denies(Node node) {
+            for (String d : deny) if (node.id().equals(d) || node.id().startsWith(d + ".")) return true;
+            return false;
+        }
+
+        /** Whether any of these zones denies building or commands, anywhere (commands then have their coordinates checked). */
+        public static boolean guards(java.util.Collection<Zone> zones) {
+            for (Zone z : zones) if (z.deny.contains("build") || z.deny.contains("command")) return true;
+            return false;
+        }
+
         /** Whether the box (inclusive, in {@code dim}) meets this zone. */
         public boolean meets(String dimension, int[] lo, int[] hi) {
             if (!dim.equals(dimension)) return false;
@@ -211,8 +228,10 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 }
                 String dim = t.get("dim") == null ? "minecraft:overworld" : String.valueOf(t.<Object>get("dim"));
                 if (!dim.contains(":")) dim = "minecraft:" + dim;
+                if (net.minecraft.resources.ResourceLocation.tryParse(dim) == null) errors.add(key + ".dim: a dimension id such as \"overworld\" or \"minecraft:the_nether\"");
                 int[] from = point(t.get("from"), key + ".from", errors), to = point(t.get("to"), key + ".to", errors);
-                Set<String> deny = nodes(t.get("deny"), key + ".deny", errors), may = nodes(t.get("agent_may"), key + ".agent_may", errors);
+                Set<String> deny = nodes(t.get("deny"), key + ".deny", errors, Zone.DENIABLE),
+                        may = nodes(t.get("agent_may"), key + ".agent_may", errors, Zone.MAY);
                 if (from != null && to != null) zones.put(name, new Zone(name, dim, from, to, deny, may));
             }
         } else if (z != null) {
@@ -241,7 +260,7 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
         return new int[]{((Number) l.get(0)).intValue(), ((Number) l.get(1)).intValue(), ((Number) l.get(2)).intValue()};
     }
 
-    private static Set<String> nodes(Object v, String key, List<String> errors) {
+    private static Set<String> nodes(Object v, String key, List<String> errors, Set<String> allowed) {
         if (v == null) return Set.of();
         if (!(v instanceof List<?> l)) {
             errors.add(key + ": a list of node names such as [\"build\"]");
@@ -253,6 +272,7 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
             boolean known = false;
             for (Node node : Node.values()) if (node.id().equals(n)) known = true;
             if (!known) errors.add(key + ": no node " + x);
+            else if (!allowed.contains(n)) errors.add(key + ": " + n + " is not checked by zones (only " + String.join(", ", new java.util.TreeSet<>(allowed)) + ")");
             else out.add(n);
         }
         return Set.copyOf(out);
@@ -320,12 +340,15 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 # Kinds the requesting player must confirm even when allowed and reversible (for example "tp").
                 confirm_first = []
 
-                # What one player's requests may take per hour (below owner).
+                # What one player's requests may take per hour (below owner); the agent's own builds share one budget.
                 [quotas]
                 build_blocks = 50000
                 give_items = 128
 
                 # Zones: boxes where some rights are denied below owner, or where the agent may act on its own.
+                # deny: build, area, bots (bots.admin too), command. Commands are checked at their source and at every
+                # coordinate they name; ones that move where they run (execute as/at/positioned/in...) are refused
+                # while any zone denies build or command. Entity selectors are not checked. agent_may: build, area, bots.
                 # [zones.spawn]
                 # dim = "overworld"
                 # from = [-64, -64, -64]

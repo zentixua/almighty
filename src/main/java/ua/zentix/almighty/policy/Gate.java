@@ -250,7 +250,7 @@ public final class Gate implements Dispatch.Check {
         Rights r = rights(caller, params);
         if (r.effective() == Role.OWNER) return;
         for (Policy.Zone z : policies.current().zones().values()) {
-            if (z.deny().contains(node.id()) && z.meets(dim, lo, hi)) {
+            if (z.denies(node) && z.meets(dim, lo, hi)) {
                 throw new RpcException(403, "policy", "Zone " + z.name() + " denies " + node.key() + " here");
             }
         }

@@ -161,8 +161,10 @@ access to the bridge like shell access to the server machine.
 - A new server starts as a friends' server (`preset = "friends"`): anyone may talk to the game master, and unasked
   it acts as a member would. Servers updating from an earlier version keep `private`, so nothing changes for them.
   Zones (`[zones.<name>]` in `policy.toml`) protect places (for example no building at spawn) or give the game
-  master its own arena; `/almighty role <player> builder 3h` gives a player a role for a while (without LuckPerms);
-  `[quotas]` limits how many blocks and items one player's requests may take per hour. With Open Parties and Claims
+  master its own arena. A zone can deny `build`, `area`, `bots` and `command`; a command is checked where it runs and
+  at every coordinate it names, not by the entities it selects. `/almighty role <player> builder 3h` gives a player a role for a while (without LuckPerms);
+  `[quotas]` limits how many blocks and items one player's requests may take per hour (the game master's own builds
+  share one such budget). With Open Parties and Claims
   or FTB Chunks installed, the game master never builds in a claim the player may not build in.
 - Every game master call that changes something, and every refused call, is written to
   `logs/almighty/audit-<date>.jsonl` (kept 30 days, `audit.days`). `/almighty log [agent|player] [count]` shows the

@@ -83,6 +83,20 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 - `view/`: top-down map (`MapView`, like a vanilla map), side/top/bottom view (`LookView`), blocks as text
   (`BlockText`), PNG without AWT (`Png`).
 - `command/AlmightyCommand`: owner command `/almighty` (permission level 4).
+- `policy/DenyList`: built-in deny list (from `crash_guard.py`), refused for every agent and harness: `stop`, `reload`,
+  `save-off`, `save-all flush`, `forceload add`, `tick rate` > 100, `almighty …` (agents and policy are the owner's),
+  far commands, builds, areas and bot spawns at Sable plot coordinates (|x| or |z| ≥ 20 000 000), bot chat commands;
+  script accident guard (tickets, `getChunk`, threads and deferred tasks, bus listeners, sleeping, JVM exit,
+  processes). Checked in `Dispatch` (403 `denied`), again for every GM command at run time (`CommandRunner.run`:
+  scripts and rules) and in `Scripts.compile` (rules loaded from a file). An accident guard, not security.
+- Server-thread budget: `GmServer.onMain` from another thread queues the call; queued world calls run at tick end
+  before jobs, sharing `work.ms_per_tick` (at least one call per tick); on the server thread it runs at once; a
+  throw completes the call's future, never the tick. Lag guard (`work/LagGuard`): average tick above the target
+  tick length (`/tick rate`; 50 ms at 20) for 10 s → GM budget a quarter until 10 s below; `lag_guard` feed event,
+  `lag_guard` in `status`. Idempotency: `/rpc` body `key` (≤ 128 characters): the same agent's repeat of a call
+  with effects within 10 minutes returns the first result (joining it if still running); the same key for a
+  different call → 409; read-only calls (`Api.readOnly`; `notes` with `text` writes) ignore keys (images are never kept); a failed call
+  forgets its key. Vanilla already caps `fill`/`clone` at 32 768 blocks: larger work uses `build`.
 - `act/`: commands and functions (`CommandRunner`), messages to players (`Chat`); `feed/`: event feed and a player's
   private channel to the GM: `/gm <text>` (any player) emits `gm` in the feed, invisible to others; reply with `say` and `to`.
 - `script/`: Groovy scripts (`Scripts`: compilation with a deadline, execution), scripts' `gm` variable (`ScriptApi`),
@@ -143,7 +157,8 @@ add a separate tool only if it really prevents errors. `from`/`to` are `start`/`
 Plugin `plugin/almighty/` (README; marketplaces `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`):
 GM skills in Claude and Agent Plugins formats, generated from the jar's notes `data/almighty/almighty/notes/`
 (`scripts/export_skills.py`, CI `--check`); edit the notes, not `skills/`. Alongside it, `mcp/gm/` (README): the GM as one Claude Code session, with the `almighty-chat/` chat channel (Node
-plugin), `crash_guard.py` crash-prevention hook (PreToolUse), and `recipes.py` recipe runner. Tests:
+plugin), `crash_guard.py` crash-prevention hook (PreToolUse; the bridge now enforces the same list for every harness,
+`policy/DenyList`; keep both in step until the hook retires), and `recipes.py` recipe runner. Tests:
 `python3 -m unittest discover -s mcp/gm/tests` and `node --test` in `mcp/gm/almighty-chat/`.
 
 Scripts and rules run Groovy on the server thread. Variables: `server`, `gm` (`command`, `commandAs(entity, …)`
@@ -240,6 +255,9 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 ## Checks
 
+- Deny list: `DenyListTest` (one case per entry and near misses), `DispatchTest` (checks first, idempotency),
+  `LagGuardTest`; GameTest `GmSafetyGameTests` (choke point, a script's run-time `gm.command`, compile guard, queued
+  world calls). `GmGameTests.call` goes through `Dispatch`; `direct` bypasses it for tests of the layers below.
 - Unit tests (`src/test`): loopback HTTP bridge (per-agent callers, origin rule, lockout, long polls do not starve
   calls, full pool → 503), agents (add, revoke, remove, reload), failed-auth backoff, token, feed, PNG (read by a
   standard decoder), build plan, macro parameters, event list, notes (`NotesTest`: real packs, datapack override,

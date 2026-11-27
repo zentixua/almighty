@@ -93,7 +93,8 @@ public final class GmSableGameTests {
                     check(GmTickets.count(level) == tickets, "lease added tickets on ship plot: " + (GmTickets.count(level) - tickets));
                     JsonObject lease1 = lease.get().describe();
                     check(lease1.get("refused").getAsInt() == lease.get().chunks() && lease1.has("refusal"), "refused lease chunks: " + lease1);
-                    build.set(GmGameTests.call(h, "build", GmGameTests.params("{\"ops\":[{\"op\":\"set\",\"pos\":[%d,100,%d],\"block\":\"minecraft:stone\"}],\"wait\":50}",
+                    // Past the deny list, which refuses plot builds first: this checks the lease's own refusal underneath.
+                    build.set(GmGameTests.direct(h, "build", GmGameTests.params("{\"ops\":[{\"op\":\"set\",\"pos\":[%d,100,%d],\"block\":\"minecraft:stone\"}],\"wait\":50}",
                             c.getMinBlockX(), c.getMinBlockZ())));
                 })
                 .thenExecuteAfter(5, () -> {

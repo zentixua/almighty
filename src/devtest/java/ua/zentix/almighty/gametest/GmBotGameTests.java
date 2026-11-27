@@ -724,6 +724,12 @@ public final class GmBotGameTests {
      */
     @GameTest(template = "floor", batch = "gm_see", timeoutTicks = 200, skyAccess = true)
     public static void botSeesWallAndMobs(GameTestHelper h) {
+        // The picture is lit by the time of day, and the world clock runs through the whole GameTest run (26.x batch
+        // order varies from run to run): take it at noon, sky brightness updated at once.
+        MinecraftServer server = h.getLevel().getServer();
+        server.getCommands().performPrefixedCommand(server.createCommandSourceStack().withSuppressedOutput(), "time set 6000");
+        h.getLevel().updateSkyBrightness();
+        check(h.getLevel().getSkyDarken() == 0, "noon: sky darkening " + h.getLevel().getSkyDarken());
         for (int y = GROUND; y <= GROUND + 4; y++) for (int z = 4; z <= 16; z++) h.setBlock(new BlockPos(16, y, z), Blocks.GOLD_BLOCK);
         Zombie zombie = h.spawn(Gt.ZOMBIE, new Vec3(13.5, GROUND, 12.5));
         zombie.setNoAi(true);

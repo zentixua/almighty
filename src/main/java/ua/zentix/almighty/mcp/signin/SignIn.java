@@ -39,8 +39,11 @@ import java.util.regex.Pattern;
  * cannot be approved by mistake, and the in-game notice never shows the code.
  * <p>
  * An approved client becomes an ordinary agent ({@code ua.zentix.almighty.bridge.Agents}): its access token is that
- * agent's bearer token, so {@code /almighty agents} lists it, {@code /almighty revoke} ends it, and audit and policy
- * see its name. A refresh rotates the agent's token. Only agents this sign-in created are ever rotated by it.
+ * agent's bearer token, so {@code /almighty agents} lists it, and audit and policy see its name. A refresh rotates the
+ * agent's token. Ownership is proved, not remembered by name: the sign-in keeps the hash of the token it last issued
+ * to each of its agents, and touches an agent only while the agent's current token is still that one. So
+ * {@code /almighty revoke} or {@code agent remove} ends a signed-in client for good (its refresh token dies with the
+ * old token), and an agent the owner made by hand, even under a name the sign-in once used, is never rotated.
  * <p>
  * Clients register by Dynamic Client Registration or identify with a Client ID Metadata Document (an HTTPS URL as the
  * client id, fetched once per login with {@link ClientMetadata}). State: clients and refresh tokens (hashed) in
@@ -55,6 +58,10 @@ public final class SignIn {
     public static final long EXPIRES_SECONDS = 30L * 24 * 3600;
     static final int MAX_PENDING = 5;
     static final int MAX_CLIENTS = 200;
+    static final int MAX_METADATA_CLIENTS = 50;
+    /** Waiting sign-ins per client: one app cannot hold every slot. */
+    static final int MAX_PENDING_PER_CLIENT = 2;
+    private static final Pattern AGENT_NAME = Pattern.compile("[a-z0-9][a-z0-9_-]{0,31}");
     private static final Pattern NAME_CHARS = Pattern.compile("[^a-z0-9]+");
     private static final Set<String> BAD_SCHEMES = Set.of("javascript", "data", "file", "about", "blob", "vbscript");
 
@@ -65,6 +72,9 @@ public final class SignIn {
 
         /** Whether an agent with this name exists (made by anyone). */
         boolean exists(String name);
+
+        /** The agent's current token, or null if there is no such agent. */
+        String current(String name) throws IOException;
     }
 
     /** A registered client: DCR id or CIMD URL, display name, allowed redirects. */
@@ -147,7 +157,8 @@ public final class SignIn {
 
     private record Code(Pending pending, long expires) {}
 
-    private record Refresh(String agent, String client, long issued) {}
+    /** A refresh token's grant: valid only while the agent still holds the access token issued with it. */
+    private record Refresh(String agent, String client, long issued, String tokenHash) {}
 
     private final Path dir;
     private final Issuer issuer;
@@ -157,8 +168,8 @@ public final class SignIn {
     private final Map<String, Pending> pending = new LinkedHashMap<>();
     private final Map<String, Code> codes = new LinkedHashMap<>();
     private final Map<String, Refresh> refresh = new LinkedHashMap<>();
-    /** Agents this sign-in created: the only ones a later login or refresh may rotate. */
-    private final Set<String> agents = new java.util.LinkedHashSet<>();
+    /** Agents this sign-in made: name to the hash of the token it last issued them. */
+    private final Map<String, String> agents = new LinkedHashMap<>();
 
     public SignIn(Path dir, Issuer issuer, LongSupplier clock) {
         this.dir = dir;
@@ -172,16 +183,20 @@ public final class SignIn {
     /** Dynamic Client Registration (RFC 7591): public clients only, redirects checked. */
     public synchronized JsonObject register(JsonObject request) throws OAuthError {
         if (clients.values().stream().filter(c -> !c.metadataDocument()).count() >= MAX_CLIENTS) {
-            throw new OAuthError(400, "invalid_client_metadata", "Too many registered clients; remove config/almighty/oauth/clients.json entries");
+            // Evict the oldest registration nobody signed in with, so junk registrations cannot lock real clients out.
+            Set<String> used = new java.util.HashSet<>();
+            refresh.values().forEach(r -> used.add(r.client));
+            pending.values().forEach(p -> used.add(p.client.id()));
+            String oldest = clients.values().stream().filter(c -> !c.metadataDocument() && !used.contains(c.id())).map(Client::id).findFirst().orElse(null);
+            if (oldest == null) throw new OAuthError(400, "invalid_client_metadata", "Too many signed-in clients; remove some agents first");
+            clients.remove(oldest);
         }
         List<String> redirects = strings(request.get("redirect_uris"));
         if (redirects.isEmpty()) throw new OAuthError(400, "invalid_redirect_uri", "redirect_uris is required");
         for (String r : redirects) checkRedirect(r);
-        String name = request.has("client_name") && request.get("client_name").isJsonPrimitive()
-                ? request.get("client_name").getAsString().strip() : "";
-        if (name.isEmpty()) name = "an MCP client";
-        if (name.length() > 80) name = name.substring(0, 80);
-        String method = request.has("token_endpoint_auth_method") ? request.get("token_endpoint_auth_method").getAsString() : "none";
+        String name = displayName(string(request, "client_name"), "an MCP client");
+        String method = string(request, "token_endpoint_auth_method");
+        if (method == null) method = "none";
         if (!method.equals("none")) {
             // Public clients on the owner's machine: there is no secret to keep. Clients that ask for a secret still
             // get a public registration, which RFC 7591 allows the server to choose.
@@ -210,16 +225,32 @@ public final class SignIn {
 
     /** A Client ID Metadata Document client, as fetched; remembered for this server run only. */
     public synchronized Client metadataClient(String url, JsonObject doc) throws OAuthError {
-        if (!doc.has("client_id") || !url.equals(doc.get("client_id").getAsString())) {
+        if (!url.equals(string(doc, "client_id"))) {
             throw new OAuthError(400, "invalid_client", "The client metadata document's client_id is not its own URL");
         }
         List<String> redirects = strings(doc.get("redirect_uris"));
         if (redirects.isEmpty()) throw new OAuthError(400, "invalid_client", "The client metadata document lists no redirect_uris");
         for (String r : redirects) checkRedirect(r);
-        String name = doc.has("client_name") ? doc.get("client_name").getAsString() : URI.create(url).getHost();
-        Client c = new Client(url, name.length() > 80 ? name.substring(0, 80) : name, redirects, true);
+        String name = displayName(string(doc, "client_name"), URI.create(url).getHost());
+        Client c = new Client(url, name, redirects, true);
+        // Remembered for this run only, and bounded: unique URLs cannot grow memory.
+        if (clients.values().stream().filter(Client::metadataDocument).count() >= MAX_METADATA_CLIENTS) {
+            clients.values().stream().filter(Client::metadataDocument).map(Client::id).findFirst().ifPresent(clients::remove);
+        }
         clients.put(url, c);
         return c;
+    }
+
+    /** A display name: printable, one line, at most 80 characters (it reaches logs and chat). */
+    static String displayName(String raw, String fallback) {
+        String n = raw == null ? "" : raw.replaceAll("\\p{Cntrl}", " ").strip();
+        if (n.isEmpty()) n = fallback == null ? "an MCP client" : fallback;
+        return n.length() > 80 ? n.substring(0, 80) : n;
+    }
+
+    private static String string(JsonObject o, String key) {
+        JsonElement e = o.get(key);
+        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() ? e.getAsString() : null;
     }
 
     public synchronized Client client(String id) {
@@ -247,10 +278,14 @@ public final class SignIn {
         if (scheme.isEmpty() || BAD_SCHEMES.contains(scheme)) throw new OAuthError(400, "invalid_redirect_uri", "Not allowed: " + redirect);
     }
 
+    /** {@code localhost} or a loopback IP literal; a name such as {@code 127.evil.example} is not. */
     static boolean loopback(String host) {
         if (host == null) return false;
-        String h = host.startsWith("[") ? host.substring(1, host.length() - 1) : host;
-        return h.equals("127.0.0.1") || h.equals("localhost") || h.equals("::1") || h.startsWith("127.");
+        String h = host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
+        if (h.equalsIgnoreCase("localhost")) return true;
+        if (h.equals("::1") || h.equals("0:0:0:0:0:0:0:1")) return true;
+        return h.matches("127\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})")
+                && java.util.Arrays.stream(h.split("\\.")).allMatch(x -> Integer.parseInt(x) <= 255);
     }
 
     /** Exact match, except that a loopback redirect may use any port (RFC 8252 section 7.3). */
@@ -287,6 +322,9 @@ public final class SignIn {
         }
         if (q.containsKey("resource") && !resource.equals(stripSlash(q.get("resource")))) {
             throw new OAuthError(400, "invalid_target", "resource must be " + resource);
+        }
+        if (pending.values().stream().filter(x -> x.client.id().equals(client.id())).count() >= MAX_PENDING_PER_CLIENT) {
+            throw new OAuthError(429, "temporarily_unavailable", "This app already has sign-ins waiting; finish or wait for them");
         }
         if (pending.size() >= MAX_PENDING) {
             throw new OAuthError(429, "temporarily_unavailable", "Too many logins are waiting for the owner; try again in a few minutes");
@@ -325,16 +363,29 @@ public final class SignIn {
                 .orElseThrow(() -> new OAuthError(404, "not_found", "No login is waiting with code " + code + " (codes last 10 minutes)"));
         String agent = name != null ? name : agentName(p.client.name());
         if (agent.equals("gm")) throw new OAuthError(400, "invalid_request", "gm is the default agent; choose another name");
-        if (issuer.exists(agent) && !agents.contains(agent)) {
+        if (!AGENT_NAME.matcher(agent).matches()) {
+            throw new OAuthError(400, "invalid_request", "Agent names are 1-32 characters: lowercase letters, digits, - and _");
+        }
+        if (!free(agent)) {
             if (name != null) throw new OAuthError(400, "invalid_request", "Agent " + agent + " exists and was not made by sign-in; choose another name");
             int n = 2;
-            while (issuer.exists(agent + "-" + n) && !agents.contains(agent + "-" + n)) n++;
+            while (!free(agent + "-" + n)) n++;
             agent = agent + "-" + n;
         }
         p.agent = agent;
         p.authCode = randomHex(32);
         codes.put(p.authCode, new Code(p, clock.getAsLong() + CODE_MS));
         return agent;
+    }
+
+    /** An agent name the sign-in may (re)issue: absent, or still holding the token the sign-in last gave it. */
+    private boolean free(String name) throws IOException {
+        String current = issuer.current(name);
+        if (current == null) {
+            agents.remove(name);
+            return true;
+        }
+        return hash(current).equals(agents.get(name));
     }
 
     public synchronized boolean deny(String code) {
@@ -373,12 +424,14 @@ public final class SignIn {
             throw new OAuthError(400, "invalid_grant", "redirect_uri differs from the authorization request");
         }
         String verifier = form.get("code_verifier");
-        if (verifier == null || !s256(verifier).equals(p.challenge)) throw new OAuthError(400, "invalid_grant", "PKCE verification failed");
+        if (verifier == null || !verifier.matches("[A-Za-z0-9._~-]{43,128}") || !s256(verifier).equals(p.challenge)) throw new OAuthError(400, "invalid_grant", "PKCE verification failed");
         if (form.containsKey("resource") && !p.resource.equals(stripSlash(form.get("resource")))) {
             throw new OAuthError(400, "invalid_target", "resource must be " + p.resource);
         }
+        // Re-checked here: the owner may have made an agent with this name since the approval.
+        if (!free(p.agent)) throw new OAuthError(400, "invalid_grant", "Agent " + p.agent + " was created by hand meanwhile; sign in again");
         String token = issuer.issue(p.agent);
-        agents.add(p.agent);
+        agents.put(p.agent, hash(token));
         // A new login of this agent ends the earlier one: its refresh tokens die with its old access token.
         refresh.values().removeIf(r -> r.agent.equals(p.agent));
         LOG.info("Almighty sign-in: {} connected as agent {} from {}", p.client.name(), p.agent, p.address);
@@ -393,16 +446,21 @@ public final class SignIn {
         if (form.containsKey("client_id") && !form.get("client_id").equals(r.client)) {
             throw new OAuthError(400, "invalid_grant", "The refresh token was issued to another client");
         }
-        if (!agents.contains(r.agent) || !issuer.exists(r.agent)) {
+        String current = issuer.current(r.agent);
+        if (current == null || !hash(current).equals(r.tokenHash) || !hash(current).equals(agents.get(r.agent))) {
+            // Revoked, removed or re-made by hand since: the grant ended with the token it came with.
+            refresh.values().removeIf(x -> x.agent.equals(r.agent));
             save();
-            throw new OAuthError(400, "invalid_grant", "Agent " + r.agent + " was removed; sign in again");
+            throw new OAuthError(400, "invalid_grant", "Agent " + r.agent + " was revoked or removed; sign in again");
         }
-        return tokens(r.agent, r.client, issuer.issue(r.agent));
+        String token = issuer.issue(r.agent);
+        agents.put(r.agent, hash(token));
+        return tokens(r.agent, r.client, token);
     }
 
     private JsonObject tokens(String agent, String client, String access) {
         String refreshToken = randomHex(32);
-        refresh.put(hash(refreshToken), new Refresh(agent, client, clock.getAsLong()));
+        refresh.put(hash(refreshToken), new Refresh(agent, client, clock.getAsLong(), hash(access)));
         save();
         JsonObject out = new JsonObject();
         out.addProperty("access_token", access);
@@ -435,10 +493,11 @@ public final class SignIn {
             Path r = dir.resolve("refresh.json");
             if (Files.isRegularFile(r)) {
                 JsonObject o = JsonParser.parseString(Files.readString(r)).getAsJsonObject();
-                for (JsonElement a : o.getAsJsonArray("agents")) agents.add(a.getAsString());
+                for (Map.Entry<String, JsonElement> e : o.getAsJsonObject("agents").entrySet()) agents.put(e.getKey(), e.getValue().getAsString());
                 for (Map.Entry<String, JsonElement> e : o.getAsJsonObject("tokens").entrySet()) {
                     JsonObject t = e.getValue().getAsJsonObject();
-                    refresh.put(e.getKey(), new Refresh(t.get("agent").getAsString(), t.get("client").getAsString(), t.get("issued").getAsLong()));
+                    refresh.put(e.getKey(), new Refresh(t.get("agent").getAsString(), t.get("client").getAsString(), t.get("issued").getAsLong(),
+                            t.get("token").getAsString()));
                 }
             }
         } catch (IOException | RuntimeException e) {
@@ -461,8 +520,8 @@ public final class SignIn {
                 cs.add(o);
             }
             JsonObject rs = new JsonObject();
-            JsonArray as = new JsonArray();
-            agents.forEach(as::add);
+            JsonObject as = new JsonObject();
+            agents.forEach(as::addProperty);
             rs.add("agents", as);
             JsonObject ts = new JsonObject();
             refresh.forEach((h, r) -> {
@@ -470,6 +529,7 @@ public final class SignIn {
                 t.addProperty("agent", r.agent);
                 t.addProperty("client", r.client);
                 t.addProperty("issued", r.issued);
+                t.addProperty("token", r.tokenHash);
                 ts.add(h, t);
             });
             rs.add("tokens", ts);

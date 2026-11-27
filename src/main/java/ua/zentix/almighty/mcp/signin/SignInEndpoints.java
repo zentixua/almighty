@@ -41,18 +41,29 @@ public final class SignInEndpoints implements HttpHandler {
 
     private final SignIn signIn;
     private final String scheme;
+    private final java.util.Set<String> allowedOrigins;
+    /** Client metadata fetches in flight: at most two bridge threads ever wait on a remote server. */
+    private final java.util.concurrent.Semaphore fetches = new java.util.concurrent.Semaphore(2);
     private final String publicUrl;
     private final String bridgeHost;
     private final int port;
     private final Consumer<SignIn.Pending> notifyOwners;
 
     public SignInEndpoints(SignIn signIn, String publicUrl, String bridgeHost, int port, Consumer<SignIn.Pending> notifyOwners) {
-        this(signIn, publicUrl, bridgeHost, port, false, notifyOwners);
+        this(signIn, publicUrl, bridgeHost, port, java.util.Set.of(), notifyOwners);
+    }
+
+    /** {@code allowedOrigins}: browser origins that may register clients and redeem codes (bridge.allowed_origins). */
+    public SignInEndpoints(SignIn signIn, String publicUrl, String bridgeHost, int port, java.util.Set<String> allowedOrigins,
+                           Consumer<SignIn.Pending> notifyOwners) {
+        this(signIn, publicUrl, bridgeHost, port, false, allowedOrigins, notifyOwners);
     }
 
     /** {@code https}: the bridge itself speaks HTTPS, so its own addresses are https. */
-    public SignInEndpoints(SignIn signIn, String publicUrl, String bridgeHost, int port, boolean https, Consumer<SignIn.Pending> notifyOwners) {
+    public SignInEndpoints(SignIn signIn, String publicUrl, String bridgeHost, int port, boolean https, java.util.Set<String> allowedOrigins,
+                           Consumer<SignIn.Pending> notifyOwners) {
         this.scheme = https ? "https://" : "http://";
+        this.allowedOrigins = java.util.Set.copyOf(allowedOrigins);
         this.signIn = signIn;
         this.publicUrl = publicUrl == null || publicUrl.isBlank() ? null : SignIn.stripSlash(publicUrl.strip());
         this.bridgeHost = bridgeHost;
@@ -88,6 +99,12 @@ public final class SignInEndpoints implements HttpHandler {
                      "/.well-known/oauth-authorization-server/mcp", "/.well-known/openid-configuration/mcp" -> json(exchange, 200, metadata(base));
                 case "/oauth/register" -> {
                     if (!verb.equals("POST")) throw new SignIn.OAuthError(405, "invalid_request", "POST only");
+                    crossSite(exchange);
+                    String type = exchange.getRequestHeaders().getFirst("Content-Type");
+                    // A web page can only send text/plain or forms without asking first: registrations are JSON.
+                    if (type == null || !type.toLowerCase(java.util.Locale.ROOT).startsWith("application/json")) {
+                        throw new SignIn.OAuthError(415, "invalid_client_metadata", "Content-Type must be application/json");
+                    }
                     JsonElement body = parse(read(exchange));
                     if (!body.isJsonObject()) throw new SignIn.OAuthError(400, "invalid_client_metadata", "Expected a JSON object");
                     json(exchange, 201, signIn.register(body.getAsJsonObject()));
@@ -96,6 +113,7 @@ public final class SignInEndpoints implements HttpHandler {
                 case "/oauth/status" -> status(exchange, base);
                 case "/oauth/token" -> {
                     if (!verb.equals("POST")) throw new SignIn.OAuthError(405, "invalid_request", "POST only");
+                    crossSite(exchange);
                     Map<String, String> form = McpEndpoint.query(new String(read(exchange), StandardCharsets.UTF_8));
                     exchange.getResponseHeaders().set("Cache-Control", "no-store");
                     json(exchange, 200, signIn.exchange(form));
@@ -168,14 +186,31 @@ public final class SignInEndpoints implements HttpHandler {
         return m;
     }
 
+    /** A request from a web page of another origin (native clients send no Origin). */
+    private void crossSite(HttpExchange exchange) throws SignIn.OAuthError {
+        String origin = exchange.getRequestHeaders().getFirst("Origin");
+        if (origin != null && !allowedOrigins.contains(origin)) {
+            throw new SignIn.OAuthError(403, "access_denied", "Origin " + origin + " is not allowed (bridge.allowed_origins)");
+        }
+    }
+
     private void authorize(HttpExchange exchange, String base) throws IOException, SignIn.OAuthError {
+        // The sign-in page is opened as a page; loaded as an image, script or frame by another site, it is refused, so
+        // a web page cannot start sign-ins (and fill the waiting list) behind the owner's back.
+        String dest = exchange.getRequestHeaders().getFirst("Sec-Fetch-Dest");
+        if (dest != null && !dest.equals("document")) throw new SignIn.OAuthError(403, "access_denied", "Open the sign-in page as a page");
         Map<String, String> q = McpEndpoint.query(exchange.getRequestURI().getRawQuery());
         String clientId = q.get("client_id");
         if (clientId == null) throw new SignIn.OAuthError(400, "invalid_request", "client_id is required");
         SignIn.Client client = signIn.client(clientId);
         if (client == null) {
             if (!ClientMetadata.isUrl(clientId)) throw new SignIn.OAuthError(400, "invalid_client", "Unknown client; register first");
-            client = signIn.metadataClient(clientId, ClientMetadata.fetch(clientId));
+            if (!fetches.tryAcquire()) throw new SignIn.OAuthError(429, "temporarily_unavailable", "Busy reading other apps' details; try again");
+            try {
+                client = signIn.metadataClient(clientId, ClientMetadata.fetch(clientId));
+            } finally {
+                fetches.release();
+            }
         }
         SignIn.Pending p;
         try {

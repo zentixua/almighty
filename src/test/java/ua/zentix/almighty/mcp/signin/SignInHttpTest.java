@@ -64,6 +64,11 @@ class SignInHttpTest {
             public boolean exists(String name) {
                 return agents.get(name) != null;
             }
+
+            @Override
+            public String current(String name) throws java.io.IOException {
+                return agents.get(name) == null ? null : Files.readString(agents.get(name).file()).strip();
+            }
         }, System::currentTimeMillis);
         SignInEndpoints endpoints = new SignInEndpoints(signIn, "", "127.0.0.1", 0, notified::add);
         bridge.context("/mcp", new McpEndpoint(bridge, Set.of(), "test", endpoints::challenge));
@@ -163,6 +168,15 @@ class SignInHttpTest {
             assertTrue(status.contains(" 400 "), status);
         }
         assertEquals(400, post(base() + "/oauth/register", "application/json", "{\"redirect_uris\":[\"http://evil.example/cb\"]}", null).statusCode());
+        assertEquals(415, post(base() + "/oauth/register", "text/plain", "{\"redirect_uris\":[\"https://x.example/cb\"]}", null).statusCode(),
+                "a web page's no-cors text/plain registration is refused");
+        HttpResponse<String> foreign = http.send(HttpRequest.newBuilder(URI.create(base() + "/oauth/register")).header("Content-Type", "application/json")
+                .header("Origin", "https://evil.example").POST(HttpRequest.BodyPublishers.ofString("{\"redirect_uris\":[\"https://x.example/cb\"]}")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertEquals(403, foreign.statusCode(), "a registration from a foreign web origin is refused");
+        HttpResponse<String> image = http.send(HttpRequest.newBuilder(URI.create(base() + "/oauth/authorize?client_id=x&response_type=code"))
+                .header("Sec-Fetch-Dest", "image").GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(403, image.statusCode(), "the sign-in page loaded as an image by another site is refused");
         assertEquals(400, get(base() + "/oauth/authorize?client_id=nope&response_type=code").statusCode());
         HttpResponse<String> badToken = post(base() + "/oauth/token", "application/x-www-form-urlencoded", "grant_type=authorization_code&code=x", null);
         assertEquals(400, badToken.statusCode());

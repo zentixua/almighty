@@ -108,7 +108,8 @@ public final class GmServer {
                             GmConfig.BRIDGE_HOST.get());
                 }
                 gm.bridge = new Bridge(address, agents, gm.dispatch, Api.LONG, new HashSet<>(GmConfig.BRIDGE_ALLOWED_ORIGINS.get()), tls);
-                gm.mcp = Mcp.mount(server, gm.bridge, configDir, GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PUBLIC_URL.get());
+                gm.mcp = Mcp.mount(server, gm.bridge, configDir, GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PUBLIC_URL.get(),
+                        new HashSet<>(GmConfig.BRIDGE_ALLOWED_ORIGINS.get()));
                 gm.bridge.start();
                 LOG.info("Almighty bridge listening on {}; agents {} (token of {} in {})", gm.bridge.address(), agents.names(),
                         Agents.DEFAULT, configDir.resolve("token").toAbsolutePath());

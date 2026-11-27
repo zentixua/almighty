@@ -36,7 +36,7 @@ public final class Mcp {
         this.publicHttps = publicHttps;
     }
 
-    public static Mcp mount(MinecraftServer server, Bridge bridge, Path configDir, String host, String publicUrl) {
+    public static Mcp mount(MinecraftServer server, Bridge bridge, Path configDir, String host, String publicUrl, java.util.Set<String> allowedOrigins) {
         Agents agents = bridge.agents();
         SignIn signIn = new SignIn(configDir.resolve("oauth"), new SignIn.Issuer() {
             @Override
@@ -49,9 +49,15 @@ public final class Mcp {
             public boolean exists(String name) {
                 return agents.get(name) != null;
             }
+
+            @Override
+            public String current(String name) throws IOException {
+                var a = agents.get(name);
+                return a == null || a.file() == null ? null : Files.readString(a.file(), StandardCharsets.UTF_8).strip();
+            }
         }, System::currentTimeMillis);
         int port = bridge.address().getPort();
-        SignInEndpoints endpoints = new SignInEndpoints(signIn, publicUrl, host, port, bridge.tls(), p -> notifyOwners(server, p));
+        SignInEndpoints endpoints = new SignInEndpoints(signIn, publicUrl, host, port, bridge.tls(), allowedOrigins, p -> notifyOwners(server, p));
         bridge.context("/mcp", new McpEndpoint(bridge, Api.LONG, Almighty.version(), endpoints::challenge));
         bridge.context("/.well-known/", endpoints);
         bridge.context("/oauth/", endpoints);
@@ -78,9 +84,14 @@ public final class Mcp {
      * Tells online operators and the console that a login waits, without its code: the approver must read the code
      * from the browser page, which is what proves the request is theirs.
      */
+    private static final java.util.concurrent.atomic.AtomicLong lastNotice = new java.util.concurrent.atomic.AtomicLong();
+
     static void notifyOwners(MinecraftServer server, SignIn.Pending p) {
         String text = notice(p);
         LOG.info("Almighty sign-in: {}", text);
+        long now = System.currentTimeMillis(), last = lastNotice.get();
+        // At most one in-game notice every 30 s: a flood of sign-in attempts cannot flood the operators' chat.
+        if (now - last < 30_000 || !lastNotice.compareAndSet(last, now)) return;
         server.execute(() -> {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (server.getProfilePermissions(player.getGameProfile()) >= 4) {

@@ -13,6 +13,7 @@ public final class GmConfig {
     public static final ModConfigSpec.ConfigValue<String> BRIDGE_HOST;
     public static final ModConfigSpec.IntValue BRIDGE_PORT;
     public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> BRIDGE_ALLOWED_ORIGINS;
+    public static final ModConfigSpec.ConfigValue<String> BRIDGE_PUBLIC_URL;
     public static final ModConfigSpec.DoubleValue WORK_MS_PER_TICK;
     public static final ModConfigSpec.IntValue BUILD_MAX_BLOCKS;
     public static final ModConfigSpec.IntValue MAX_CHUNKS;
@@ -41,6 +42,10 @@ public final class GmConfig {
         BRIDGE_ALLOWED_ORIGINS = b.comment("Browser origins allowed to call the bridge (for example \"https://example.org\"). Requests from a browser",
                         "page carry an Origin header and are refused unless it is listed here; agents and command-line clients send none.")
                 .defineListAllowEmpty("allowed_origins", java.util.List.of(), () -> "", o -> o instanceof String);
+        BRIDGE_PUBLIC_URL = b.comment("The bridge's public address when a reverse proxy or tunnel puts it on the internet, for example",
+                        "\"https://mc.example.org\" (cloud agents such as claude.ai need public HTTPS). Sign-in links and the address the",
+                        "agent is given use it. Empty: the bridge's own address.")
+                .define("public_url", "");
         b.pop();
         b.push("work");
         WORK_MS_PER_TICK = b.comment("Time per server tick for builds, undos and image views, in ms.")

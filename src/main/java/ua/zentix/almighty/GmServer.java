@@ -16,7 +16,7 @@ import ua.zentix.almighty.audit.Audit;
 import ua.zentix.almighty.audit.Pause;
 import ua.zentix.almighty.feed.Feed;
 import ua.zentix.almighty.feed.Inbox;
-import ua.zentix.almighty.mcp.McpEndpoint;
+import ua.zentix.almighty.mcp.Mcp;
 import ua.zentix.almighty.policy.Gate;
 import ua.zentix.almighty.policy.Nodes;
 import ua.zentix.almighty.policy.Policies;
@@ -73,6 +73,7 @@ public final class GmServer {
     private static final java.util.Set<String> PAUSE_ALLOWS = java.util.Set.of("cancel", "area.release", "rule.remove", "bot.remove");
     private final Audit audit;
     private Bridge bridge;
+    private Mcp mcp;
     private long lastTick;
     /** World calls from bridge threads, run at tick end under the GM budget ({@link #runWorldCalls}). */
     private final Queue<Runnable> worldCalls = new ConcurrentLinkedQueue<>();
@@ -136,7 +137,8 @@ public final class GmServer {
                 InetSocketAddress address = new InetSocketAddress(GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PORT.get());
                 Agents agents = Agents.load(configDir);
                 gm.bridge = new Bridge(address, agents, gm.dispatch, Api.LONG, new HashSet<>(GmConfig.BRIDGE_ALLOWED_ORIGINS.get()));
-                gm.bridge.context("/mcp", new McpEndpoint(gm.bridge, Api.LONG, Almighty.version(), null));
+                gm.mcp = Mcp.mount(server, gm.bridge, configDir, GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PUBLIC_URL.get(),
+                        new HashSet<>(GmConfig.BRIDGE_ALLOWED_ORIGINS.get()));
                 gm.bridge.start();
                 LOG.info("Almighty bridge listening on {}; agents {} (token of {} in {})", gm.bridge.address(), agents.names(),
                         Agents.DEFAULT, configDir.resolve("token").toAbsolutePath());
@@ -306,6 +308,11 @@ public final class GmServer {
     /** The method table behind every transport (the single choke point for checks). */
     public Dispatch dispatch() {
         return dispatch;
+    }
+
+    /** MCP and sign-in on the bridge port; null when the bridge is not running. */
+    public Mcp mcp() {
+        return mcp;
     }
 
     /** The running bridge; null on integrated servers, in GameTest or when disabled. */

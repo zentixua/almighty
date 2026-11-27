@@ -1,0 +1,48 @@
+name: Bug report
+description: Something does not work as the guide says, or the server crashes.
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Read the [troubleshooting page](https://github.com/zentixua/almighty/blob/main/docs/guide/troubleshooting.md)
+        and search existing issues first. Never post token files or the contents of config/almighty/agents or
+        config/almighty/oauth. For security issues, follow [SECURITY.md](https://github.com/zentixua/almighty/blob/main/SECURITY.md).
+  - type: input
+    id: almighty
+    attributes:
+      label: Almighty jar
+      placeholder: almighty-0.4.0+1.21.1-neoforge.jar
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Minecraft, loader and Java versions
+      placeholder: Minecraft 1.21.1, NeoForge 21.1.264, Java 21
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent app and version
+      description: The app connected to the server, if the problem involves one.
+      placeholder: Claude Code 2.1, Codex CLI 0.172, none
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: What you or the agent did (the call, the command, the policy preset), what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: mods
+    attributes:
+      label: Other mods
+      description: List them with versions, and say whether it also happens with only Almighty and the loader.
+  - type: input
+    id: log
+    attributes:
+      label: Server log
+      description: A link to the complete logs/latest.log (and the crash report, if any) on a paste service, or "attached". Remove private data first.
+    validations:
+      required: true

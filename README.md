@@ -1,216 +1,144 @@
-<p align="center"><img src="docs/brand/banner/readme-banner-1280x320.png" alt="Almighty"></p>
+<p align="center"><img src="docs/brand/banner/readme-banner-1280x320.png" alt="Almighty: a pixel-art cloud with a halo, holding a floating island on strings"></p>
 
 <h1 align="center">Almighty</h1>
 
-<p align="center"><b>An AI game master for your Minecraft server.</b><br>
-Connect Claude Code, Codex (also in the ChatGPT desktop app), Cursor, VS Code or a local model, and it plays game
-master on your NeoForge server: it sees the world, talks to players, builds with undo, runs events and drives its own
-bot players.</p>
+<p align="center"><b>An AI game master for your Minecraft server.</b></p>
 
 <p align="center">
-Minecraft 1.21.1 · NeoForge 21.1.264+ · server-side only, players install nothing · GPL-3.0<br>
-English · <a href="README.ru.md">Русский</a>
+<a href="https://github.com/zentixua/almighty/releases/latest">Download</a> ·
+<a href="docs/guide/README.md">Guide</a> ·
+<a href="docs/guide/connect/README.md">Connect your agent</a> ·
+<a href="https://github.com/zentixua/almighty/issues">Issues</a> ·
+<a href="README.ru.md">Русский</a>
 </p>
 
-<p align="center">
-<img src="docs/media/eye.png" width="32%" alt="What a bot sees">
-<img src="docs/media/map.png" width="32%" alt="The map view">
-<img src="docs/media/look.png" width="32%" alt="A side view of a building">
-</p>
+Almighty is a server-side mod that lets an AI agent you already use, such as Claude Code, Codex or the ChatGPT
+desktop app, act as game master on your Minecraft server. The agent sees the world, talks to players, builds with
+undo, runs events and plays with its own bot players. You decide how much of that power it uses, for whom and where;
+every block it changes is recorded and can be put back.
+
+<table>
+<tr>
+<td width="33%"><img src="docs/media/eye.png" alt="A first-person picture from a bot standing above an airfield with an airliner"></td>
+<td width="33%"><img src="docs/media/map.png" alt="A top-down map of the same airfield with a chunk grid"></td>
+<td width="33%"><img src="docs/media/look.png" alt="A side view of the airliner and the hangar behind it"></td>
+</tr>
+<tr>
+<td>What a bot sees</td>
+<td>A map of the area</td>
+<td>A side view of a box</td>
+</tr>
+</table>
+
+## Features
+
+**Three layers of power.**
+
+- **A player's body.** Bots are server players that act only through the packets a real client sends: they walk,
+  mine, build, open chests, chat, ride horses and boats and fly Immersive Aircraft planes. The tab list and chat
+  mark them `[bot]`.
+- **An operator's hands.** Commands and functions, builds of up to millions of blocks placed a few milliseconds per
+  tick, messages and titles, a live feed of chat, joins, deaths and advancements, maps and views of any place.
+- **The engine itself.** Groovy scripts and rules that react to any event of the game or of another mod in the same
+  tick. A rule that runs over its time budget or keeps failing turns itself off.
+
+**It learns any modpack.** The agent reads the running server's mods, blocks, items, recipes, commands and events,
+plus notes that mods, datapacks and you leave for it.
+
+**The owner stays in charge.**
+
+- **One permission system.** `config/almighty/policy.toml` sets who the owners are, how much each agent may do, and
+  what it does unasked. Presets for a private, friends' or public server; roles from guest to owner; zones, hourly
+  quotas and land claims; LuckPerms nodes. Nobody grants more than they hold.
+- **Requests are not orders.** A player's request runs with that player's rights. Anything that touches other
+  players or cannot be undone waits for the requester's own confirmation in chat; above their rights, only the kinds
+  of request you list go to an admin.
+- **Recorded and reversible.** Every block the agent writes is journaled on disk, so a change can be undone even
+  after a crash. Every call with an effect is in the audit log. `/almighty pause` leaves every agent only able to
+  look until you resume it.
+- **Safe defaults.** The bridge listens only on the server machine, every app signs in with a code you type on the
+  server, and commands that crash or freeze servers are refused for every agent.
 
 ## Quick start
 
-1. Put `almighty-<version>.jar` from the [releases](https://github.com/zentixua/almighty/releases) into the server's
-   `mods/` folder and start it. The console says: `Almighty ready - tell your AI agent: "connect to my Minecraft
-   server at http://127.0.0.1:25650/mcp"`.
-2. Tell your agent exactly that. It adds the server itself.
-3. Your agent opens a sign-in page with a four-digit code. Type `/almighty approve <code> <name> owner` in the game
-   (as an operator) or in the console (`owner`: it is your own app and acts with your rights). Done: no tokens, no
-   config files, no extra software.
+1. Put the jar for your Minecraft version and loader ([requirements](#requirements)) into the server's `mods/`
+   folder and start the server. The console says:
+   `Almighty ready - tell your AI agent: "connect to my Minecraft server at http://127.0.0.1:25650/mcp"`.
+2. Tell your agent exactly that, on the same machine as the server. It adds the server to its own settings.
+3. The agent opens a sign-in page with a four-digit code. In the server console type
+   `/almighty approve <code> <name> owner` (`owner` because it is your own app).
+4. Join the server once and make yourself an owner in the console: `/almighty owner add <your name>`.
 
-More: [Getting started](docs/guide/getting-started.md) · [Connect your app](docs/guide/connect/README.md) ·
-[Game master mode](docs/guide/game-master.md) · [Hosting](docs/guide/hosting.md) · [Guide](docs/guide/README.md)
+Then ask it something: "show me a map of spawn", "who is online", "what mods does this server have". The full
+walkthrough, other machines and other apps: [Getting started](docs/guide/getting-started.md).
 
-> **Security.** A connected agent has operator rights and, with scripts on, runs code on the server machine. The
-> bridge listens only on `127.0.0.1` by default, every app signs in with a code you type on the server, and known
-> server-crashing commands are refused for every agent. Read [Security](docs/guide/security.md) before opening the
-> server to people you do not know.
+## Requirements
 
-## What the agent can do
+Almighty runs only on the server. Players join with an unmodified client of the server's Minecraft version.
 
-- See the world: a top-down map like a vanilla map, a view of a box from any side, from above or from below, and
-  the view through the eyes of a player, a bot, any entity or a free camera. These come as PNG pictures with a
-  legend; the eye view also lists what is in sight and under the crosshair. The blocks of a box can also be read as
-  text.
-- Read the server: tick time, players with position, health, inventory and effects, entities in an area, and ships
-  when Sable is installed.
-- Follow the game through an event feed: chat, joins and leaves, deaths with their cause, advancements, dimension
-  changes, player commands, private messages to the game master and server stalls.
-- Talk to players in chat, as a title, subtitle or action bar, to everyone or to chosen players.
-- Run commands and functions with operator rights (level 4), including macro functions without a datapack file.
-- Build with undo: fill, set and layered plans, placed in portions between ticks. Undo restores blocks and the
-  contents of block entities such as chests.
-- Load the chunks of a place where nobody is, without ticking them, to view or build there.
-- Run Groovy scripts on the server thread, with a time limit.
-- Add rules: a reaction to any NeoForge event of the game or of any mod. A rule runs on the server in the same tick,
-  can cancel the event and can be saved with the world. A rule turns itself off when it goes over its time budget,
-  fails 10 times in a row or floods the feed.
-- Below the owner, rules are declarative: conditions on the event's fields and actions (cancel, write to the feed,
-  say, run a command). Such a rule acts for the player who asked for it (or the game master acting on its own),
-  with their rights checked at every event: it cancels only where they may build, stops working when they lose the
-  right, and expires after 7 days at most. Scripts in `config/almighty/scripts/` run by name once the owner
-  approves them with `/almighty script approve <name>`, and only until the file changes.
-- Spawn bots. A bot is a server player that acts only through the packets a client would send: keys and mouse,
-  hotbar, menus, chat and commands, signs, respawning. Bots walk, mine, build, use chests, ride horses, boats, pigs,
-  striders and camels, and fly Immersive Aircraft planes. The tab list and chat show them with a `[bot]` marker.
+| Minecraft | Loader | Java | Jar |
+|---|---|---|---|
+| 1.21.1 | NeoForge 21.1.264 or newer | 21 | `almighty-<version>+1.21.1-neoforge.jar` |
+| 26.1.2 | NeoForge 26.1.2.130 or newer | 25 | `almighty-<version>+26.1.2-neoforge.jar` |
+| 26.1.2 | Fabric Loader 0.20.1 or newer, Fabric API | 25 | `almighty-<version>+26.1.2-fabric.jar` |
+| 26.3 | NeoForge 26.3.0.118 or newer | 25 | `almighty-<version>+26.3-neoforge.jar` |
+| 26.3 | Fabric Loader 0.20.1 or newer, Fabric API | 25 | `almighty-<version>+26.3-fabric.jar` |
 
-## How it works
+No other mods are needed. When installed, Almighty works with LuckPerms, Open Parties and Claims, FTB Chunks,
+Immersive Aircraft and Sable ([compatibility](docs/guide/getting-started.md#optional-mods)).
 
-- On a dedicated server the mod starts an HTTP bridge, by default on `127.0.0.1:25650`. Single-player worlds do not
-  start it. The bridge takes `POST /rpc` with `{"method": ..., "params": {...}}` and the header
-  `Authorization: Bearer <token>`.
-- On first start the mod writes a random token to `config/almighty/token` (32 bytes as hex; on Linux and macOS only
-  the file's owner can read it). The token is not written to the log. It belongs to the agent `gm`; each further agent
-  gets its own token with `/almighty agent add <name>` (in `config/almighty/agents/<name>.token`), and
-  `/almighty agents` shows who called last and from where.
-- Requests from web browsers (with an `Origin` header) are refused unless that origin is listed in
-  `bridge.allowed_origins`. Five wrong tokens within a minute lock the sending address out for a while.
-- The world is read and changed only on the server thread: between ticks, or by jobs that get a fixed time per tick
-  (`work.ms_per_tick`, 3 ms by default). Large builds and pictures do not stall the server.
-- The same port serves MCP at `/mcp` (Streamable HTTP, both the current and the earlier protocol versions), so any
-  MCP app connects by address, with no adapter. Apps sign in with the standard MCP login: the server shows a
-  four-digit code on its sign-in page and the owner types `/almighty approve <code>`. The agent gets 14 tools:
-  `status`, `entities`, `command`, `say`, `script`, `rule`, `events`, `view`, `build`, `area`, `job`, `bot`, `notes`,
-  and `call` for any bridge method by name ([Tools](docs/guide/tools.md)). The bridge methods are listed in
-  [AGENTS.md](AGENTS.md) (in English).
-- Any player can write to the game master privately with `/gm <text>`. Other players and operators do not see the
-  message, and the agent can answer that player alone. If the game master is unavailable, the reply follows the
-  player's language: Russian for `ru_ru`, English otherwise, without a client mod. The server itself decides which
-  chat lines are meant for the game master (its name, an ongoing conversation, or a player alone online), limits each
-  player to 20 such messages an hour, and tells the player when the game master is away. With several agents,
-  `/gm @<agent> <text>` picks one.
-- The [Almighty plugin](plugin/almighty/README.md) (optional, for Claude Code, Codex, Cursor and VS Code) brings the
-  game master skills and the server entry. [`mcp/gm/`](mcp/gm/README.md) adds, for Claude Code only, a chat channel
-  that wakes the session the moment a player writes. Its crash-guard hook and recipe runner are no longer needed:
-  the server refuses crash-prone calls for every app itself.
+The agent is an MCP app on a computer you control: Claude Code, Codex (also inside the ChatGPT desktop app), Cursor,
+VS Code, opencode, Gemini CLI, Antigravity, a local model app, or your own script.
+[One page per app](docs/guide/connect/README.md).
 
-## Notes for other mods
+## About the AI
 
-The agent learns any modpack from the running server: `notes {query: "<mod id>"}` returns the mod's blocks with
-states, items, recipes, commands, events and config values. A mod or datapack can also leave the agent a note on how
-to use its mechanics: a Markdown file `data/<namespace>/almighty/notes/<name>.md`, optionally with Agent Skills front
-matter (`name`, `description`). Agents see an index and read a note when they need it; a datapack overrides a mod's
-note at the same path; an empty file removes it. Without Almighty the file is ignored. Details:
-[For mod and datapack authors](docs/guide/for-mod-authors.md).
+- **Almighty contains no AI model and calls no AI service.** The agent is an app you run under your own account
+  with its maker (Anthropic, OpenAI, or a model on your own computer); its usage and terms are yours.
+- **What the agent reads goes to its model provider.** The agent can read the world, player names, UUIDs, positions
+  and inventories, public chat, commands players type, and `/gm` messages; private messages between players are not
+  in the feed. Tell your players that an AI game master is on the server.
+- **Bots are marked** `[bot]` unless you allow disguise in the config; even then a bot has its own UUID and gives a
+  name up when the player who owns it joins.
+- **Almighty itself contacts nothing on the internet**, except an app's public sign-in description during sign-in
+  and a skin lookup through Mojang when the agent asks for a bot with a player's skin. It sends no telemetry.
 
-## Install
+## Documentation
 
-1. Use a Minecraft 1.21.1 server with NeoForge 21.1.264 or newer. Put `almighty-<version>.jar` from the
-   [releases](https://github.com/zentixua/almighty/releases) into the server's `mods/` folder and start it.
-2. Tell your agent app: `connect to my Minecraft server at http://127.0.0.1:25650/mcp`, or add it yourself as its
-   page says ([Connect your agent](docs/guide/connect/README.md)).
-3. Approve the sign-in with the code from the page: `/almighty approve <code>`.
+| I want to… | Read |
+|---|---|
+| Install it and connect my first agent | [Getting started](docs/guide/getting-started.md) |
+| Connect a particular app | [Connect your agent](docs/guide/connect/README.md) |
+| Have the agent answer players as they write | [Game master mode](docs/guide/game-master.md) |
+| Decide who may make the agent do what | [Permissions and policy](docs/guide/permissions.md) |
+| Know what can go wrong and what protects the server | [Safety and security](docs/guide/security.md) |
+| Run the server on a VPS, a panel or behind HTTPS | [Hosting and remote access](docs/guide/hosting.md) |
+| Look up a command or a setting | [Commands](docs/guide/commands.md) · [Configuration](docs/guide/configuration.md) |
+| See every tool the agent gets | [Tools](docs/guide/tools.md) |
+| Fix a problem | [Troubleshooting](docs/guide/troubleshooting.md) · [FAQ](docs/guide/faq.md) |
+| Teach agents about my mod or datapack | [For mod and datapack authors](docs/guide/for-mod-authors.md) |
 
-For scripts and CI without a browser, give an agent a token (`/almighty agent add <name>`) and pass it from an
-environment variable ([headless](docs/guide/connect/headless.md)). The command line
-[`mcp/almighty.py`](mcp/almighty.py) (`call`, `follow`, and a stdio relay for apps without HTTP) is optional and needs
-[uv](https://docs.astral.sh/uv/):
+## FAQ
 
-```sh
-uv run mcp/almighty.py call status                                      # one call, JSON answer
-uv run mcp/almighty.py call map '{"center": [0, 0], "size": 256}' --png map.png
-uv run mcp/almighty.py follow                                           # event feed, one JSON line per event
-```
+**Do players need to install anything?** No. Almighty adds no blocks, items or packets; vanilla clients join as usual.
 
-## Configuration
+**Single-player or LAN?** The bridge starts on dedicated servers. For a single-player or LAN world set
+`bridge.integrated = true`; it then listens on the local machine only.
 
-`config/almighty-common.toml`:
+**Forge, Paper or Spigot?** No: NeoForge and Fabric only, for the versions above.
 
-| Key | Default | Meaning |
-|---|---|---|
-| `bridge.enabled` | `true` | Start the HTTP bridge on a dedicated server. |
-| `bridge.host` | `"127.0.0.1"` | Address the bridge listens on. |
-| `bridge.port` | `25650` | Bridge port. |
-| `bridge.public_url` | `""` | The public HTTPS address when a reverse proxy or tunnel puts the bridge on the internet (cloud apps). |
-| `bridge.allowed_origins` | `[]` | Browser origins allowed to call the bridge; requests from other web pages are refused. |
-| `bridge.tls_cert`, `bridge.tls_key` | `""` | Your certificate (PEM chain) and key (PKCS#8 PEM): the bridge then speaks only HTTPS. |
-| `bridge.integrated` | `false` | Also start the bridge in single-player and LAN worlds (loopback only). |
-| `work.ms_per_tick` | `3.0` | Time per server tick for builds, undos and pictures, in ms (0.5 to 20). |
-| `work.build_max_blocks` | `2000000` | Maximum number of block positions in one build. |
-| `work.max_chunks` | `1500` | Maximum number of chunks the agent keeps loaded at once: builds and prepared areas, counting a ring of neighbouring chunks. |
-| `feed.lag_ms` | `1000` | A `lag` event is written when more than this many ms pass between two ticks. |
-| `scripts.enabled` | `true` | The `script` method and rules with a script. |
-| `bots.max` | `8` | Maximum number of bots on the server at once. A bot keeps chunks loaded like a player. |
-| `bots.marker` | `"[bot]"` | Marker before a bot's name in the tab list and chat. Empty: no marker. |
-| `bots.allow_disguise` | `false` | Allow a bot without the marker, or with the name or skin of a player the server knows. A bot always has its own UUID and gives the name up when that player joins. |
-| `name` | `"Claude"` | Name the game master uses in chat and as the source of its commands. |
+**Is it safe on a public server?** A fresh install starts as a friends' server; set `preset = "public"` and read
+[Safety and security](docs/guide/security.md) first. A connected agent with owner rights is as powerful as shell
+access to the server machine, so approve only apps you run yourself.
 
-Rules saved with `persist` are stored in `<world>/almighty/rules.json`.
+More: [FAQ](docs/guide/faq.md).
 
-## Security
+## Contributing and building
 
-The bridge gives the agent operator rights. With scripts on, which is the default, it also runs any code in the
-server's JVM with the rights of the operating system user that runs the server: files, processes, network. Treat
-access to the bridge like shell access to the server machine.
-
-- Keep `bridge.host` on loopback (`127.0.0.1`, the default) or on a network that only the server owner can reach, for
-  example the address of a Docker container whose port is not published. The bridge speaks plain HTTP; do not expose
-  its port to the internet.
-- Keep the tokens secret. Anyone who has one controls the server. To replace a token, run `/almighty revoke <agent>`
-  in the console: the old token stops working at once and the new one is in the same file.
-- Who may make the game master do what is set in `config/almighty/policy.toml` (written with comments on first
-  start; `/almighty reload` after editing). `preset = "private"` (the default for existing and new servers in this
-  version) keeps everything as before. `friends` and `public` make the game master act, unasked, as a member or a
-  guest would; a player's request then runs with that player's rights. Owners are listed by UUID (`/almighty whoami`
-  shows yours). Each capability is a permission node `almighty.<capability>`, so LuckPerms can grant them.
-- A new server starts as a friends' server (`preset = "friends"`): anyone may talk to the game master, and unasked
-  it acts as a member would. Servers updating from an earlier version keep `private`, so nothing changes for them.
-  Zones (`[zones.<name>]` in `policy.toml`) protect places (for example no building at spawn) or give the game
-  master its own arena. A zone can deny `build`, `area`, `bots` and `command`; a command is checked where it runs and
-  at every coordinate it names, not by the entities it selects. `/almighty role <player> builder 3h` gives a player a role for a while (without LuckPerms);
-  `[quotas]` limits how many blocks and items one player's requests may take per hour (the game master's own builds
-  share one such budget). With Open Parties and Claims
-  or FTB Chunks installed, the game master never builds in a claim the player may not build in.
-- The owner can also change the policy by asking the game master ("deny building at spawn", "make this a friends'
-  server"). A change you ask for is applied at once; one the game master proposes on its own applies at once only if
-  it restricts, and anything that grants more (a wider preset, a new owner, an arena, larger quotas) waits for the
-  owner to confirm it in game (`/almighty inbox`). Players cannot change the policy. Raising an agent to an owner
-  ceiling is done only by editing the file. Each change keeps the previous file in `config/almighty/policy.history/`;
-  `/almighty policy undo` puts the previous one back.
-- Every game master call that changes something, and every refused call, is written to
-  `logs/almighty/audit-<date>.jsonl` (kept 30 days, `audit.days`). `/almighty log [agent|player] [count]` shows the
-  latest in game or in the console. `/almighty pause [agent]` is the red button: that agent (or every agent) can
-  only look until `/almighty resume`, its builds wait and its bots stop.
-- Some commands and calls are refused for every agent because they crash, freeze or stop the server: `stop`,
-  `reload`, `save-off`, `save-all flush`, `forceload add`, `tick rate` above 100, `/almighty` (agents and tokens are
-  the owner's), and building, loading or teleporting at Sable ship plot coordinates. Scripts that take chunk tickets,
-  load chunks synchronously, start threads, register listeners, sleep, exit the JVM or start processes are refused
-  too. The owner can still run such commands in the console.
-- Game master work shares a fixed time per tick (`work.ms_per_tick`). When the server lags (average tick above 50 ms
-  for 10 seconds, at 20 ticks per second), game master work gets a quarter of its time until the server recovers.
-- To turn scripts off, set `scripts.enabled = false`. The `script` method and rules with a script are then refused,
-  and saved rules with a script do not load. Commands and rules without a script still work.
-- To turn the bridge off, set `bridge.enabled = false`.
-
-## Optional mods
-
-Almighty depends on no other mod. Its support for these mods loads only when they are installed:
-
-- [Immersive Aircraft](https://modrinth.com/mod/immersive-aircraft): bots fly its aircraft with the same controls as a
-  player. Checked with versions 1.5.2, 1.6.0 and 1.7.0 for Minecraft 1.21.1.
-- Sable, the physics mod behind Create Aeronautics: the `ships` method and `gm.ship(name)` in scripts give a ship's
-  position, rotation, velocity and bounds. A build or a prepared area on a ship plot is refused, because Sable
-  manages those chunks.
-
-## Building
-
-With Java 25 (Gradle and Stonecutter; each game version compiles with its own Java toolchain): `./gradlew build`
-compiles the mod for every game version and loader in `versions/` and runs the unit tests; `./gradlew
-runGameTestServer` runs the GameTests on a headless server with Immersive Aircraft and Sable. The `mcp/gm` kit is tested with
-`python3 -m unittest discover -s mcp/gm/tests` and `node --test` in `mcp/gm/almighty-chat`. The developer guide with
-the internals, every bridge method and the known pitfalls is [AGENTS.md](AGENTS.md), in English.
+Bug reports and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Security problems:
+[SECURITY.md](SECURITY.md). The developer guide with the internals and every bridge method is [AGENTS.md](AGENTS.md).
 
 ## License
 
-Almighty is written by ZentixUA and licensed under the GNU General Public License, version 3 only
-([LICENSE](LICENSE)). The jar bundles Groovy 4, which is licensed under the Apache License 2.0.
+Made by ZentixUA. [GPL-3.0-only](LICENSE). The jar bundles Groovy 4 (Apache License 2.0); the Fabric jars also bundle
+NightConfig (LGPL-3.0).

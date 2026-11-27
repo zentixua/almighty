@@ -33,8 +33,25 @@ Behind a proxy or tunnel the server sees every client as the proxy: `/almighty a
 address (usually `127.0.0.1`), and the wrong-token lockout counts all outside clients together (a valid token always
 passes it, so agents keep working).
 
+## The bridge's own HTTPS
+
+When the bridge itself must be reachable from other machines, give it your certificate instead of a proxy:
+
+```toml
+[bridge]
+host = "0.0.0.0"
+tls_cert = "certs/fullchain.pem"
+tls_key = "certs/privkey.pem"
+```
+
+The files are a PEM certificate chain and an unencrypted PKCS#8 private key (`BEGIN PRIVATE KEY`), for example from
+Let's Encrypt; paths are relative to the server folder. The bridge then speaks only HTTPS, and sign-in and
+`/almighty connect` use `https`. Almighty does not create certificates itself. A bridge listening beyond loopback
+without TLS still starts, with a warning in the log: only do that on a network nobody else reaches.
+
 ## Several servers, proxies, Bedrock
 
-- Behind Velocity or BungeeCord, each backend server has its own bridge and its own agents.
-- Bedrock players through Geyser and Floodgate are players like any other; Geyser for modded servers supports only
-  the newest Minecraft version, so on 1.21.1 it is not available.
+- Behind Velocity or BungeeCord, each backend server has its own bridge and its own agents. With Velocity modern
+  forwarding set `identity = "proxy"` in `policy.toml`, so players count as verified.
+- Bedrock players through Geyser and Floodgate are players like any other and count as verified. Geyser for modded
+  servers supports only some Minecraft versions; check its site for yours.

@@ -5,6 +5,7 @@ from pix import Layer, hexc, up
 from fonts import draw_text, SMALL
 from art import c
 from cand import t2_theater_screen, f1_theater_screen_doll, t1_theater_ai
+from cards import card, ALMIGHTY_TAGS
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'docs', 'brand')
 FINALISTS = [
@@ -24,20 +25,25 @@ def caption(i, text):
     return L
 
 
+SUMMARY = {
+    'A': 'An AI agent runs your Minecraft server as a game master, within the permissions you give it.',
+    'B': 'Give an AI a real player body and admin power on your server. You decide what it may do.',
+}
+PAIRS = {'stage-screen': 'A', 'stage-marionette': 'B', 'stage-ai': 'A'}
+
+
 def main():
     out = os.path.join(ROOT, 'finalists')
     os.makedirs(out, exist_ok=True)
     bg = hexc('#0C0B14')
-    cw, pad = 512, 32
-    caps = [caption(i + 1, idea) for i, (_, _, idea) in enumerate(FINALISTS)]
-    capH = max(cp.h for cp in caps) * 2
-    cellw = cw + 16 + 64
-    W = pad + len(FINALISTS) * (cellw + pad)
-    H = 80 + cw + 16 + capH + pad
+    pad, big = 32, 384
+    rowh = big + pad
+    W = pad + big + pad + 760 + pad
+    H = 80 + len(FINALISTS) * rowh
     sheet = Image.new('RGBA', (W, H), bg)
     head = Layer(W // 2, 30, bg)
-    draw_text(head, 'ALMIGHTY - MARK FINALISTS', 0, 4, hexc('#ECEFF4'), bold=True)
-    draw_text(head, 'NATIVE 64X64 AT X8. RIGHT: THE SAME ICON AT 64 AND 32 PX.', 0, 16, hexc('#AEB6C6'))
+    draw_text(head, 'ALMIGHTY - FINALISTS AS LIST CARDS', 0, 4, hexc('#ECEFF4'), bold=True)
+    draw_text(head, 'ICON X6, THE CARD AT REAL SIZE, THE ICON AT 64 AND 32 PX.', 0, 16, hexc('#AEB6C6'))
     sheet.alpha_composite(up(head, 2), (pad, 8))
     for i, (f, n, idea) in enumerate(FINALISTS):
         icon = f()
@@ -45,11 +51,16 @@ def main():
         up(icon, 8).save(f'{out}/{i + 1:02d}-{n}-512.png')
         small = icon.im.resize((32, 32), Image.BOX)
         small.save(f'{out}/{i + 1:02d}-{n}-32.png')
-        x = pad + i * (cellw + pad)
-        sheet.alpha_composite(up(icon, 8), (x, 80))
-        sheet.alpha_composite(icon.im, (x + cw + 16, 80))
-        sheet.alpha_composite(small, (x + cw + 16, 80 + 72))
-        sheet.alpha_composite(up(caps[i], 2), (x, 80 + cw + 16))
+        cd = card(icon.im, 'Almighty', SUMMARY[PAIRS[n]], ALMIGHTY_TAGS, 'new')
+        cd.save(f'{out}/{i + 1:02d}-{n}-card.png')
+        y = 80 + i * rowh
+        sheet.alpha_composite(up(icon, 6), (pad, y))
+        x = pad + big + pad
+        sheet.alpha_composite(cd.convert('RGBA'), (x, y))
+        sheet.alpha_composite(icon.im, (x, y + 124))
+        sheet.alpha_composite(small, (x + 80, y + 124 + 16))
+        cp = caption(i + 1, idea)
+        sheet.alpha_composite(up(cp, 2), (x + 128, y + 124))
     sheet.save(os.path.join(ROOT, 'finalists.png'), optimize=True)
 
 

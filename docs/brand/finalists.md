@@ -1,5 +1,7 @@
 # Mark finalists (round four)
 
+Sheet: each finalist as a store list card with its chosen summary, beside the large icon: [`finalists.png`](finalists.png).
+
 Three finalists from a self-run iteration. 21 candidates were drawn: Puppeteer refinements (#4, #5) and fresh concepts. They were judged blind, and failing ideas were dropped. Sheet: [`finalists.png`](finalists.png). Single icons: `finalists/NN-name-64.png`, `-512.png`, `-32.png`. Source: `scripts/brand/cand.py`, sheet `scripts/brand/finalists.py`.
 
 ## How they were judged
@@ -14,7 +16,75 @@ None of the 21 candidates gets the full meaning ("an AI controls the world and i
 - **Big "AI" letters** are the only cue that reliably reads as AI, but every judge read them as an "AI companion / NPC / chatbot", and most added that "AI" mods feel gimmicky. Treat that as a real market signal.
 - **Look:** all three finalists got "decent" (clean, consistent pixel grid, not AI-made). None got "professional". The repeated critiques are stiff figures and a flat background.
 
-## Finalists
+## Card test (the deciding test)
+
+Artem's clarification: a real user sees the mod's name, icon and one-line summary together, as a store list card. Each judge was a fresh `claude -p` session in an empty directory that saw only a screenshot of a mock list. The list had four cards: Almighty (icon at 80 px, the name, a summary, tags) among three ordinary invented mods, with Almighty's position varied. Prompt: *"You are an ordinary Minecraft player scrolling a list of mods on a mod site … quick glance … what does the mod called Almighty do, would you click it, and why?"* The card frame and text use a plain system font, as a store would; only the icon is ours. Renderer: `scripts/brand/cards.py`.
+
+Summaries tested (plain words, no slogan):
+
+- **A:** "An AI agent runs your Minecraft server as a game master, within the permissions you give it."
+- **B:** "Give an AI a real player body and admin power on your server. You decide what it may do."
+- **C:** "Server-side bridge for AI agents: they see the world, play as bots, build and run events under your rules."
+
+Result: with a summary next to it, every one of the 12 card judges understood the mod and said they would probably click. Several said Almighty was the only card on the list that sounds new. The icon's job is to stop the scroll, and judges named it ("puppet-master icon", "puppet on a stage stands out"). The summary carries the meaning. A carries "the owner is in charge" best. B is the most intriguing ("I'm curious what an AI player would get up to") but draws "admin power sounds risky". C was called "vague" and lost to the utility mods, so it is dropped.
+
+Chosen pairs: **1 + A**, **2 + B**, **3 + A** (cards in `finalists/NN-name-card.png`).
+
+### All nine icon × summary reads (verbatim)
+
+**Icon 1 + summary A**
+
+> Almighty is a server mod where an AI agent acts as a game master for your Minecraft server, working within whatever permissions you give it. I'd probably click it out of curiosity, since the idea is unusual and the art catches the eye. It's brand new, though, with no download count yet, so I'd check the page for how it works and whether it's safe before installing it on a server I care about.
+
+**Icon 1 + summary B**
+
+> Almighty gives an AI a real player body on your server, plus admin powers, and you decide what it's allowed to do. I'd probably click it. The icon of a puppeteer-style robot on a stage stands out, and the idea is new and odd enough that I'd want to see what it can do. I'd also be a bit wary of handing admin power to an AI, and it has no download count yet, so I'd read the description page before installing it.
+
+**Icon 1 + summary C**
+
+> Almighty is a new server-side mod that lets AI agents see the world, play as bots, and build or run events under the server owner's rules. I'd probably click it out of curiosity, since AI bots playing on a server is an unusual idea and the icon looks fun. I'd only stay if I run a server, though, because it's brand new with no download count yet and the others look more immediately useful to me.
+
+**Icon 2 + summary A**
+
+> Almighty is a new mod that puts an AI agent in charge of your Minecraft server as a game master, working within whatever permissions you give it. I'd probably click it, because the icon, a puppet on a stage, is eye-catching and the idea is unusual. I'd read the page before installing, though. It has no download count yet, and I'd want to know how much control I'm handing over.
+
+**Icon 2 + summary B**
+
+> Almighty is a new server mod that gives an AI a real player body plus admin powers on your server, and you set what it's allowed to do. I'd probably click it. It's the only one on the list that's different from the usual utility mods, and I'm curious what an AI player would actually get up to. I'd read the page carefully before installing it, though, because admin power sounds risky.
+
+**Icon 2 + summary C**
+
+> Almighty is a new server-side mod that lets AI agents connect to your world, see it, play as bot players, and build or run events under rules you set. I'd probably give it a quick click out of curiosity, since the puppet-on-a-stage icon and the AI-bots idea are unusual. But I'd only stay if I run a server. It's brand new with no download count yet, so I'd want to see reviews first, and the other mods on the list look more immediately useful.
+
+**Icon 3 + summary A**
+
+> Almighty puts an AI agent in charge of your Minecraft server as a game master, and it only does what the permissions you give it allow. I'd probably click it out of curiosity, since it's new and the puppet-master icon looks fun. I'd want to read more before installing it, though, because it has no download count yet and I'd be wary of handing an AI control of my server.
+
+**Icon 3 + summary B**
+
+> Almighty gives an AI a real player body and admin powers on your server, and you set what it's allowed to do. I'd probably click it out of curiosity, since it's a novel idea and the puppet-on-strings icon is eye-catching. I'd be wary, though: it's brand new with no download count yet, and handing admin power to an AI is risky.
+
+**Icon 3 + summary C**
+
+> Almighty is a server-side mod that lets AI agents see the world, play as bot players, and build and run events under rules you set. It's new, so it has no download count yet.
+> >
+> > I'd probably click it, since "AI bots that play and build on my server" is an unusual idea and I'm curious. I'd still hesitate a bit, because it's brand new and the description is vague. Vein Breaker or Sorted Storage, with their big download numbers, are the safer picks if I just want something useful.
+
+### Second read of the chosen pairs (different list position)
+
+**Icon 1 + summary A**
+
+> Almighty puts an AI agent in charge of your Minecraft server as a game master. It can only act within the permissions you give it. I'd probably click it, since it's the only one on the list that sounds new and different, and I'm curious what an AI game master would actually do. I'd still check the details first, because it's brand new with no download count yet, and I'd want to know how much control it really gets.
+
+**Icon 2 + summary B**
+
+> Almighty gives an AI a real player body and admin powers on your server, and you set what it's allowed to do. I'd probably click it out of curiosity. The puppet-on-strings icon is eye-catching, and an AI player is a novel idea. I'd be wary, though: it's brand new with no download count yet, and "admin power" sounds risky, so I'd read the details before installing it.
+
+**Icon 3 + summary A**
+
+> Almighty is a new server mod where an AI agent acts as a game master and runs your Minecraft server, within whatever permissions you give it. I'd probably click it out of curiosity, since it's the only one on the list that sounds new and different, and the AI-icon art stands out. I wouldn't install it blind, though. It has no download count yet, and I'd want to read what permissions it asks for before trusting an AI with my server.
+
+## Finalists (icon-only glance test)
 
 ### 1. Stage, screen puppeteer
 

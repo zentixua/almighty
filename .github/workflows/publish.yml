@@ -142,9 +142,11 @@ jobs:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
         run: bash .github/scripts/modrinth.sh submit
 
-  # One file per game version and loader, one at a time (Modrinth lists them in upload order).
-  files:
-    name: ${{ matrix.f.game }} ${{ matrix.f.loader }}
+  # One file per game version and loader, one at a time (Modrinth lists them in upload order). Every Modrinth file
+  # first, then CurseForge: a Modrinth failure on any file stops the run before CurseForge gets anything, so a
+  # retry never uploads a file to CurseForge twice (Modrinth itself skips jars it already has, by sha1).
+  modrinth:
+    name: "Modrinth: ${{ matrix.f.game }} ${{ matrix.f.loader }}"
     needs: [plan, page, submit]
     if: >-
       always() && needs.plan.result == 'success' && needs.page.result == 'success'
@@ -158,12 +160,12 @@ jobs:
         f: ${{ fromJSON(needs.plan.outputs.files) }}
     env:
       HAS_MODRINTH: ${{ secrets.MODRINTH_TOKEN != '' }}
-      HAS_CURSEFORGE: ${{ secrets.CURSEFORGE_TOKEN != '' && vars.CURSEFORGE_ID != '' }}
       JAR: dist/${{ matrix.f.file }}
-      # Optional dependencies (absent from the mod's metadata).
+      # Optional mods (absent from the mod's metadata); Fabric files need Fabric API.
       DEPENDENCIES: |
         immersive-aircraft(optional){modrinth:immersive-aircraft}{curseforge:immersive-aircraft}
         sable(optional){modrinth:sable}{curseforge:sable}
+        ${{ matrix.f.loader == 'fabric' && 'fabric-api(required){modrinth:fabric-api}{curseforge:fabric-api}' || '' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -199,9 +201,33 @@ jobs:
           environment: ${{ needs.plan.outputs.environment }}
           dependencies: ${{ env.DEPENDENCIES }}
 
-      # After Modrinth: its failure stops the run before CurseForge, so a retry does not upload the file there twice.
+  curseforge:
+    name: "CurseForge: ${{ matrix.f.game }} ${{ matrix.f.loader }}"
+    needs: [plan, modrinth]
+    if: always() && needs.plan.result == 'success' && needs.modrinth.result == 'success' && inputs.step != 'draft'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      max-parallel: 1
+      fail-fast: true
+      matrix:
+        f: ${{ fromJSON(needs.plan.outputs.files) }}
+    env:
+      HAS_CURSEFORGE: ${{ secrets.CURSEFORGE_TOKEN != '' && vars.CURSEFORGE_ID != '' }}
+      JAR: dist/${{ matrix.f.file }}
+      DEPENDENCIES: |
+        immersive-aircraft(optional){modrinth:immersive-aircraft}{curseforge:immersive-aircraft}
+        sable(optional){modrinth:sable}{curseforge:sable}
+        ${{ matrix.f.loader == 'fabric' && 'fabric-api(required){modrinth:fabric-api}{curseforge:fabric-api}' || '' }}
+    steps:
+      - uses: actions/download-artifact@v7
+        if: env.HAS_CURSEFORGE == 'true'
+        with:
+          name: dist
+          path: dist
+
       - name: CurseForge
-        if: env.HAS_CURSEFORGE == 'true' && inputs.step != 'draft'
+        if: env.HAS_CURSEFORGE == 'true'
         uses: Kira-NT/mc-publish@52307b03863581dec6b652b83e597aec02ebb075 # v3.3.1
         with:
           curseforge-id: ${{ vars.CURSEFORGE_ID }}
@@ -216,4 +242,3 @@ jobs:
           java: ${{ matrix.f.java }}
           environment: ${{ needs.plan.outputs.environment }}
           dependencies: ${{ env.DEPENDENCIES }}
-

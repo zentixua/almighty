@@ -42,8 +42,9 @@ sites rename categories from time to time.
     gallery are code-drawn pixel art and the mod's own renders, with no image generation (`docs/brand/README.md`).
   - *AI functionality*: yes — the mod exists for an external AI agent the owner runs; it contains no model and calls
     no AI service.
-  - *External system interactions*: yes — an HTTP/MCP endpoint (loopback by default), OAuth sign-in, and owner-only
-    code execution (Groovy scripts) on the server machine.
+  - *External system interactions*: yes — an HTTP/MCP endpoint (loopback by default), OAuth sign-in (the server
+    fetches the signing-in app's public HTTPS client metadata), Mojang profile lookups for bot skins, and owner-only
+    code execution (Groovy scripts, on by default; `scripts.enabled`) on the server machine.
   - *Telemetry*: none.
   The same facts are the "AI disclosure" section of [description.md](description.md), so CurseForge (which has no
   such field) shows them too. Modrinth's rule against projects "primarily or entirely a product of AI output"
@@ -114,8 +115,10 @@ the latest GitHub release) and press Run workflow.
 Each uploaded file is named `Almighty <version> (<game version> <loader>)`, has the version number
 `<version>+<game version>-<loader>`, and is marked server-only and lists Immersive Aircraft and Sable as optional dependencies. An image
 removed from `gallery` is removed from the site on the next `draft` or `release`; captions of uploaded images are
-changed on the site. Running `submit` or `release` twice for the same version uploads the files to CurseForge twice (Modrinth skips a jar
-it already has).
+changed on the site. The run uploads every file to Modrinth first, then to CurseForge, so a Modrinth failure
+stops it before CurseForge gets anything. After a failed CurseForge upload, use "Re-run failed jobs" on that run:
+starting `submit` or `release` again uploads to CurseForge again the files it already has (Modrinth skips jars it
+already has).
 
 A CurseForge project can only be created on the site. Create it by hand first with the fields above (title, slug
 `almighty-game-master`, summary, CurseForge categories, license, links, the avatar `docs/brand/social/avatar-400.png`,

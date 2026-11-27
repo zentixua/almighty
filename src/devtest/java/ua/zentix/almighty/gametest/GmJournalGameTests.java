@@ -132,23 +132,33 @@ public final class GmJournalGameTests {
         gm.dispatch().invoke(GM, "build", params("{\"ops\":[{\"op\":\"fill\",\"from\":[%d,%d,%d],\"to\":[%d,%d,%d],\"block\":\"minecraft:stone\"}],\"wait\":0}",
                 a.getX(), a.getY(), a.getZ(), b.getX(), b.getY(), b.getZ()));
         long id = newest(gm);
-        h.runAfterDelay(5, () -> {
-            try {
-                check(gm.journal().describe(id).has("open"), "the build is still running");
-                java.nio.file.Path dir = h.getLevel().getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
-                        .resolve("almighty").resolve("changes");
-                Journal restarted = new Journal(dir);
-                JsonObject meta = restarted.describe(id);
-                check(meta != null && meta.has("interrupted"), "after a restart the change is listed as interrupted: " + meta);
-                var blocks = h.getLevel().registryAccess().lookupOrThrow(Registries.BLOCK);
-                Journal.Records r = restarted.read(id, tag -> NbtUtils.readBlockState(blocks, tag));
-                check(r.size() > 0 && r.size() < 256, "what was written so far is on disk: " + r.size());
-            } catch (java.io.IOException e) {
-                throw new GameTestAssertException(e.toString());
-            } finally {
-                GmServer.clock = clock;
-            }
-            h.succeed();
-        });
+        java.nio.file.Path dir = h.getLevel().getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                .resolve("almighty").resolve("changes");
+        var blocks = h.getLevel().registryAccess().lookupOrThrow(Registries.BLOCK);
+        java.util.concurrent.atomic.AtomicReference<Journal.Records> seen = new java.util.concurrent.atomic.AtomicReference<>();
+        // The clock goes back even if the test times out (other batches share it).
+        h.runAfterDelay(190, () -> GmServer.clock = clock);
+        // Mid-build, once its first writes reached the disk (the job may start a few ticks late on a busy server): a
+        // journal reopened on the directory, as after a crash, lists the change as interrupted and reads those writes.
+        h.startSequence()
+                .thenWaitUntil(() -> {
+                    try {
+                        check(gm.journal().describe(id).has("open"), "the build is still running");
+                        Journal restarted = new Journal(dir);
+                        JsonObject meta = restarted.describe(id);
+                        check(meta != null, "the change is not on disk yet");
+                        check(meta.has("interrupted"), "after a restart the change is listed as interrupted: " + meta);
+                        Journal.Records r = restarted.read(id, tag -> NbtUtils.readBlockState(blocks, tag));
+                        check(r.size() > 0, "no write on disk yet");
+                        seen.set(r);
+                    } catch (java.io.IOException e) {
+                        throw new GameTestAssertException(e.toString());
+                    }
+                })
+                .thenExecute(() -> {
+                    GmServer.clock = clock;
+                    check(seen.get().size() < 256, "what was written so far is on disk, and only that: " + seen.get().size());
+                })
+                .thenSucceed();
     }
 }

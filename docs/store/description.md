@@ -13,8 +13,10 @@ Minecraft 1.21.1, 26.1.2 and 26.3 · NeoForge and Fabric (see each file for its 
 Almighty is **owner-operated remote control of your server by an AI agent**. It opens a small web endpoint on the
 server (by default only on `127.0.0.1`, the machine itself). An app you choose connects to it, signs in with a
 four-digit code that you type on the server, and can then act with the rights you give it: look, talk, build, run
-commands, and — for the owner only — run Groovy code on the server. Nothing connects by itself, nothing reaches the
-internet unless you put it there, and `/almighty pause` stops every agent at once.
+commands, and — for the owner only — run Groovy code on the server. No app gets in without that code, the endpoint is
+reachable from the internet only if you put it there, and `/almighty pause` stops every agent at once. The server
+itself goes online only to read a signing-in app's public metadata (its HTTPS client description) and to look up a
+Minecraft skin when the agent asks for a bot with a player's skin.
 
 ## Quick start
 
@@ -48,11 +50,15 @@ Guides: [getting started](https://github.com/zentixua/almighty/blob/main/docs/gu
 Players can ask the game master for things; the server checks every request against their own rights, so the agent
 can never do more for a player than that player may do. `config/almighty/policy.toml` picks a preset:
 
-- **friends** (new servers): anyone may talk to it; members' everyday requests run at once, anything bigger asks the
-  right person with one click in chat.
-- **public**: anyone may talk to it, unasked it acts as a guest, everything above a guest's rights asks the person whose right it
-  uses. **Use this on a public server.**
+- **friends** (new servers): anyone may talk to it; members' everyday requests run at once; a request beyond the
+  player's rights is refused, and actions that affect others and cannot be undone wait for the player's one-click
+  confirmation in chat.
+- **public**: anyone may talk to it, unasked it acts as a guest, and each request runs with that player's rights.
+  **Use this on a public server.**
 - **private**: only the owners; the agent acts with their rights.
+
+To let requests beyond a player's rights reach an admin instead of being refused, list their kinds under
+`[safety] ask_admin`: an admin then approves each one with one click (a quiet digest, rate-limited).
 
 Zones (no building at spawn, an arena of its own), roles with a duration, hourly quotas, LuckPerms nodes, and claims of
 Open Parties and Claims or FTB Chunks are respected. Command blocks, spawners, barriers and similar blocks are never
@@ -86,8 +92,10 @@ learn how to use your mechanics. Without Almighty the file is ignored.
   behaviour and runs it on a server with friends.
 - **AI functionality:** the mod exists so that an external AI agent, chosen and run by the server owner, can act on
   the server. The mod itself contains no AI model and sends nothing to any AI service.
-- **External system interactions:** an HTTP endpoint on the server (loopback by default), a sign-in flow, and, when
-  the owner enables scripts, code execution on the server machine.
+- **External system interactions:** an HTTP endpoint on the server (loopback by default); a sign-in flow that fetches
+  the signing-in app's public HTTPS metadata; Mojang profile lookups for bot skins given as an account name; and code
+  execution on the server machine through Groovy scripts, which are on by default for the owner's agent
+  (`scripts.enabled = false` turns them off).
 - **Images:** the icon and banners are hand-made pixel art drawn by small programs (no image generation); the gallery
   shows pictures the mod itself renders on a server.
 

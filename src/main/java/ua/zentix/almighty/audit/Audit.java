@@ -1,0 +1,208 @@
+package ua.zentix.almighty.audit;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
+import ua.zentix.almighty.bridge.Caller;
+import ua.zentix.almighty.bridge.RpcException;
+
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Predicate;
+
+/**
+ * Audit log (plan 4.9): one JSON line per GM call with effects, and per refused call, in
+ * {@code logs/almighty/audit-<date>.jsonl}: time, agent, address, method, parameters (clipped), outcome, status,
+ * milliseconds, the requester's ticket and the job it started. Files older than {@code audit.days} are deleted.
+ * Writing happens on its own thread (never the server thread); the last {@value #KEEP} entries stay in memory for
+ * {@code /almighty log} and the {@code audit} method. Read-only calls that succeed are not logged (an agent's long
+ * poll would flood the file).
+ *
+ * <p>Plan 4.9 named a log4j2 appender; a plain appending writer was chosen instead because configuring an appender
+ * programmatically changes the server's global logging configuration, which other mods and panels also own.
+ */
+public final class Audit {
+    static final int KEEP = 1000;
+    static final int MAX_PARAMS = 4096;
+    private static final Logger LOG = LogUtils.getLogger();
+    private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+
+    private final Path dir;
+    private final int days;
+    private final Deque<JsonObject> recent = new ArrayDeque<>();
+    private final BlockingQueue<String> pending = new ArrayBlockingQueue<>(10_000);
+    private final AtomicLong dropped = new AtomicLong();
+    private final AtomicLong seq = new AtomicLong();
+    private final Thread writer;
+    private volatile boolean running = true;
+
+    /** {@code dir} null: memory only (tests). */
+    public Audit(Path dir, int days) {
+        this.dir = dir;
+        this.days = days;
+        this.writer = new Thread(this::write, "almighty audit");
+        writer.setDaemon(true);
+        if (dir != null) {
+            prune();
+            writer.start();
+        }
+    }
+
+    /** Record a finished call; {@code readOnly}: a successful read is not recorded. */
+    public void ended(Caller caller, String method, JsonObject params, JsonElement result, Throwable error, long nanos, boolean readOnly) {
+        if (readOnly && error == null) return;
+        JsonObject e = new JsonObject();
+        e.addProperty("n", seq.incrementAndGet());
+        e.addProperty("time", Instant.now().toString());
+        e.addProperty("agent", caller.name());
+        e.addProperty("address", caller.address());
+        e.addProperty("method", method);
+        String p = GSON.toJson(params);
+        e.addProperty("params", p.length() > MAX_PARAMS ? p.substring(0, MAX_PARAMS) + "…" : p);
+        if (params.has("for") && params.get("for").isJsonPrimitive()) e.addProperty("ticket", params.get("for").getAsString());
+        if (error == null) {
+            e.addProperty("outcome", "ok");
+            if (result instanceof JsonObject o && o.has("id") && o.has("kind")) e.addProperty("job", o.get("id").getAsLong());
+        } else if (error instanceof RpcException r) {
+            e.addProperty("outcome", r.code());
+            e.addProperty("status", r.status());
+            e.addProperty("error", r.getMessage());
+        } else {
+            e.addProperty("outcome", "internal");
+            e.addProperty("error", error.getClass().getSimpleName() + ": " + error.getMessage());
+        }
+        e.addProperty("ms", Math.round(nanos / 1e4) / 100.0);
+        record(e);
+    }
+
+    /** Record an owner action (pause, revoke, undo …) from the console or a command. */
+    public void owner(String who, String action, String detail) {
+        JsonObject e = new JsonObject();
+        e.addProperty("n", seq.incrementAndGet());
+        e.addProperty("time", Instant.now().toString());
+        e.addProperty("agent", "owner");
+        e.addProperty("by", who);
+        e.addProperty("method", action);
+        e.addProperty("params", detail);
+        e.addProperty("outcome", "ok");
+        record(e);
+    }
+
+    private void record(JsonObject e) {
+        synchronized (recent) {
+            recent.addLast(e);
+            while (recent.size() > KEEP) recent.removeFirst();
+        }
+        if (dir != null && !pending.offer(GSON.toJson(e))) dropped.incrementAndGet();
+    }
+
+    /** The last {@code limit} entries passing {@code filter}, oldest first. */
+    public JsonArray recent(int limit, Predicate<JsonObject> filter) {
+        List<JsonObject> out = new ArrayList<>();
+        synchronized (recent) {
+            for (var it = recent.descendingIterator(); it.hasNext() && out.size() < limit; ) {
+                JsonObject e = it.next();
+                if (filter.test(e)) out.add(e);
+            }
+        }
+        JsonArray a = new JsonArray();
+        for (int i = out.size() - 1; i >= 0; i--) a.add(out.get(i).deepCopy());
+        return a;
+    }
+
+    public long dropped() {
+        return dropped.get();
+    }
+
+    public void stop() {
+        running = false;
+        writer.interrupt();
+        try {
+            writer.join(2000);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private Path file(LocalDate day) {
+        return dir.resolve("audit-" + day + ".jsonl");
+    }
+
+    private void write() {
+        LocalDate day = null;
+        BufferedWriter out = null;
+        try {
+            while (running || !pending.isEmpty()) {
+                String line;
+                try {
+                    line = pending.poll(1, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    line = pending.poll();
+                    if (line == null) break;
+                }
+                if (line == null) {
+                    if (out != null) out.flush();
+                    continue;
+                }
+                LocalDate today = LocalDate.now(ZoneId.systemDefault());
+                if (!today.equals(day)) {
+                    if (out != null) out.close();
+                    Files.createDirectories(dir);
+                    out = Files.newBufferedWriter(file(today), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                    if (day != null) prune();
+                    day = today;
+                }
+                out.write(line);
+                out.newLine();
+                if (pending.isEmpty()) out.flush();
+            }
+        } catch (IOException e) {
+            LOG.error("Almighty audit: cannot write to {}; entries stay in memory only", dir, e);
+        } finally {
+            try {
+                if (out != null) out.close();
+            } catch (IOException ignored) {
+                // Closing after a failed write.
+            }
+        }
+    }
+
+    /** Delete audit files older than {@code days}. */
+    private void prune() {
+        if (!Files.isDirectory(dir)) return;
+        LocalDate oldest = LocalDate.now(ZoneId.systemDefault()).minusDays(days);
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(dir, "audit-*.jsonl")) {
+            for (Path f : files) {
+                String name = f.getFileName().toString();
+                try {
+                    LocalDate d = LocalDate.parse(name.substring("audit-".length(), name.length() - ".jsonl".length()));
+                    if (d.isBefore(oldest)) Files.deleteIfExists(f);
+                } catch (RuntimeException ignored) {
+                    // Not ours.
+                }
+            }
+        } catch (IOException e) {
+            LOG.warn("Almighty audit: cannot prune {}: {}", dir, e.toString());
+        }
+    }
+}

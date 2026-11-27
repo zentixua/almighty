@@ -82,7 +82,16 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 - `building/`: plan (`BuildPlan`: fill/set/layers, no world needed for unit tests) and build/undo job (`BuildJob`).
 - `view/`: top-down map (`MapView`, like a vanilla map), side/top/bottom view (`LookView`), blocks as text
   (`BlockText`), PNG without AWT (`Png`).
-- `command/AlmightyCommand`: owner command `/almighty` (permission level 4).
+- `command/AlmightyCommand`: owner command `/almighty` (permission level 4): agents, `pause [agent]`/`resume [agent]`,
+  `log [agent|player] [count]`.
+- `audit/`: `Audit` writes one JSON line per call with effects and per refusal (`Dispatch` listener) to
+  `logs/almighty/audit-<date>.jsonl` on its own thread (never the server thread), keeps the last 1000 in memory
+  (`/almighty log`, `audit {limit, agent?, method?}`), deletes files older than `audit.days` (30); successful reads
+  are not logged. GameTest keeps it in memory. A plain writer instead of a log4j2 appender: configuring an appender
+  changes the server's global logging, which panels and other mods own. `Pause`: a paused agent (or all) gets 423
+  for calls with effects, its jobs freeze in the queue (`Jobs.paused`), its bots stop (`Bot.controller`).
+  `Dispatch.current()` is the caller of the running call; `GmServer.onMain` carries it to the server thread, so jobs
+  (`Job.agent`) and bot programs know which agent acts.
 - `policy/DenyList`: built-in deny list (from `crash_guard.py`), refused for every agent and harness: `stop`, `reload`,
   `save-off`, `save-all flush`, `forceload add`, `tick rate` > 100, `almighty …` (agents and policy are the owner's),
   far commands, builds, areas and bot spawns at Sable plot coordinates (|x| or |z| ≥ 20 000 000), bot chat commands;
@@ -268,6 +277,9 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 ## Checks
 
+- Audit and pause: `AuditTest` (effects and refusals recorded, reads not, JSON lines, pruning, bounds);
+  GameTest `GmAuditGameTests` (a paused agent reads but cannot act, its build freezes and finishes after resume,
+  another agent goes on, the build is audited with its job).
 - Who asked: `AddressingTest` (router fixtures), `TicketsTest`, `IdentityTest`, `FeedTest.agentSeesOnlyItsOwnMessages`;
   GameTest `GmInboxGameTests` (identity and ticket on `/gm`, routing, chat addressing and conversation, flood limit).
 - Deny list: `DenyListTest` (one case per entry and near misses), `DispatchTest` (checks first, idempotency),

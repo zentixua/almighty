@@ -88,6 +88,7 @@ public final class Bot {
     private Program current, last;
     private long programIds;
     private final ArrayDeque<JsonObject> inbox = new ArrayDeque<>();
+    private volatile String controller = "internal";
     private long inboxSeq;
     private final ArrayDeque<Heard> heard = new ArrayDeque<>();
     private int chatAcks, deadTicks;
@@ -180,6 +181,11 @@ public final class Bot {
      * Stop: remove programs and release keys at the next bot tick start (requested from a rule mid-tick,
      * possibly in this same bot's step); emit {@code bot_stopped} to the feed.
      */
+    /** The agent whose call gave this bot its last program ({@code internal} for scripts and rules). */
+    public String controller() {
+        return controller;
+    }
+
     public void stop(String reason) {
         if (stopReason == null) stopReason = reason;
     }
@@ -189,6 +195,7 @@ public final class Bot {
      * this method from a script's {@code act(list, true)}, passing a list of maps instead of steps.
      */
     Program start(List<Steps.Step> steps, boolean replace) {
+        controller = ua.zentix.almighty.bridge.Dispatch.current().name();
         if (replace) cancelAll("replaced by a new program");
         Program program = new Program(++programIds, steps);
         programs.add(program);

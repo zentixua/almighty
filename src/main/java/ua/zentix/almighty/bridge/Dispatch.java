@@ -23,6 +23,38 @@ import java.util.function.LongSupplier;
  * never kept), and a call that failed forgets its key, so a retry runs it afresh.
  */
 public final class Dispatch {
+    /** Told about every call once it ends (audit): result or error, and how long it took. */
+    @FunctionalInterface
+    public interface Listener {
+        void ended(Caller caller, String method, JsonObject params, JsonElement result, Throwable error, long nanos);
+    }
+
+    /** The caller whose call is running on this thread: set while a method parses here, carried to the server thread
+     * by {@code GmServer.onMain}, so jobs, bots and the change journal know which agent acts. */
+    private static final ThreadLocal<Caller> CURRENT = new ThreadLocal<>();
+
+    public static Caller current() {
+        Caller c = CURRENT.get();
+        return c == null ? Caller.INTERNAL : c;
+    }
+
+    /** Run {@code work} as {@code caller}, restoring the previous caller after. */
+    public static <T, E extends Exception> T as(Caller caller, ThrowingSupplier<T, E> work) throws E {
+        Caller previous = CURRENT.get();
+        CURRENT.set(caller);
+        try {
+            return work.get();
+        } finally {
+            if (previous == null) CURRENT.remove();
+            else CURRENT.set(previous);
+        }
+    }
+
+    @FunctionalInterface
+    public interface ThrowingSupplier<T, E extends Exception> {
+        T get() throws E;
+    }
+
     /** A check on every call before it runs; throws to refuse. */
     @FunctionalInterface
     public interface Check {
@@ -36,6 +68,7 @@ public final class Dispatch {
     private final Map<String, Method> methods;
     private final List<Check> checks;
     private final java.util.function.BiPredicate<String, JsonObject> readOnly;
+    private final java.util.concurrent.CopyOnWriteArrayList<Listener> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final LongSupplier clockMillis;
     private final Map<String, Remembered> keys = new LinkedHashMap<>();
 
@@ -63,8 +96,41 @@ public final class Dispatch {
         return invoke(caller, name, params, null);
     }
 
+    public void listen(Listener l) {
+        listeners.add(l);
+    }
+
+    public boolean readOnly(String method, JsonObject params) {
+        return readOnly.test(method, params);
+    }
+
     /** As {@link #invoke(Caller, String, JsonObject)}, with an idempotency key (null: none). */
     public CompletableFuture<JsonElement> invoke(Caller caller, String name, JsonObject params, String key) throws RpcException {
+        long start = System.nanoTime();
+        JsonObject p = params == null ? new JsonObject() : params;
+        CompletableFuture<JsonElement> out;
+        try {
+            out = as(caller, () -> run(caller, name, params, key));
+        } catch (RpcException | RuntimeException e) {
+            tell(caller, name, p, null, e, start);
+            throw e;
+        }
+        out.whenComplete((v, e) -> tell(caller, name, p, v, e, start));
+        return out;
+    }
+
+    private void tell(Caller caller, String name, JsonObject p, JsonElement result, Throwable error, long start) {
+        Throwable cause = error instanceof java.util.concurrent.CompletionException c && c.getCause() != null ? c.getCause() : error;
+        for (Listener l : listeners) {
+            try {
+                l.ended(caller, name, p, result, cause, System.nanoTime() - start);
+            } catch (RuntimeException ignored) {
+                // A listener never breaks a call.
+            }
+        }
+    }
+
+    private CompletableFuture<JsonElement> run(Caller caller, String name, JsonObject params, String key) throws RpcException {
         Method method = methods.get(name);
         if (method == null) {
             throw RpcException.notFound("No method " + name + "; methods: " + String.join(", ", new TreeSet<>(methods.keySet())));

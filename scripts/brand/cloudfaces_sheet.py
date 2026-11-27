@@ -1,4 +1,4 @@
-"""Round seven sheet: python3 scripts/brand/cloudfaces_sheet.py -> docs/brand/cloud-faces.png, cloud-faces/"""
+"""Round seven sheet: python3 scripts/brand/cloudfaces_sheet.py -> docs/brand/exploration/cloud-faces.png, cloud-faces/"""
 import os
 from PIL import Image
 from pix import Layer, hexc, up

@@ -1,4 +1,4 @@
-"""Round four finalists: python3 scripts/brand/finalists.py -> docs/brand/finalists.png + finalists/NN-*.png"""
+"""Round four finalists: python3 scripts/brand/finalists.py -> docs/brand/exploration/finalists.png + finalists/NN-*.png"""
 import os, textwrap
 from PIL import Image
 from pix import Layer, hexc, up

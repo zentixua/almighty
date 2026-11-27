@@ -101,6 +101,8 @@ def build():
     save(up(lv, 4), f'{d}/logo/logo-stacked.png')
     save(up(wm, 4), f'{d}/logo/wordmark.png')
     save(up(lh, 2), f'{d}/logo/modlist-logo.png')
+    # the mod's own logo in the jar (logoFile in neoforge.mods.toml) is the mod-list logo; keep them identical
+    save(up(lh, 2), os.path.join(d, '..', '..', 'src', 'main', 'resources', 'almighty.png'))
     wide = [(0.86, 0.30, 4, 1), (0.95, 0.62, 3, 0), (0.70, 0.70, 3, 0)]
     # ---- banner family: 320 x 80 native
     b = scene(320, 80, wide)

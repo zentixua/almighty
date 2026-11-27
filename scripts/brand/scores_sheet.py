@@ -1,4 +1,4 @@
-"""Round eight: ranked sheet from the blind scoring pool -> docs/brand/scores.png, scores/.
+"""Round eight: ranked sheet from the blind scoring pool -> docs/brand/exploration/scores.png, scores/.
 Needs the scoring results (results.json) and the pool icons produced in the scoring run."""
 import json, os, shutil, sys
 from PIL import Image, ImageDraw, ImageFont

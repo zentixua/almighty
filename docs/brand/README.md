@@ -6,7 +6,7 @@ strings, not loose.
 
 ![Presentation](final.png)
 
-Everything is hand-made pixel art on a grid. The images are drawn in code (`scripts/brand/`: Python + Pillow,
+All artwork is hand-made pixel art on a grid (the presentation sheet's page chrome and captions are a plain system-font mock). The images are drawn in code (`scripts/brand/`: Python + Pillow,
 rectangles, lines and pixel lists) and enlarged only by whole nearest-neighbour factors, with no image generation,
 filters or blur. Rebuild the package with `python3 scripts/brand/final_kit.py`, then `python3 scripts/brand/final_sheet.py`.
 How the mark was chosen (nine rounds of blind tests) is in [`exploration/`](exploration/).

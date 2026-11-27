@@ -1,4 +1,4 @@
-"""Round three: Puppeteer variants. python3 scripts/brand/puppets.py -> docs/brand/puppeteer.png + puppeteer/NN-*.png"""
+"""Round three: Puppeteer variants. python3 scripts/brand/puppets.py -> docs/brand/exploration/puppeteer.png + puppeteer/NN-*.png"""
 import os, textwrap
 from PIL import Image
 from pix import Layer, hexc, up, T

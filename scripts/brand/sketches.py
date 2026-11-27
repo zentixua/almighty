@@ -1,4 +1,4 @@
-"""Round-two sketch sheet: python3 scripts/brand/sketches.py -> docs/brand/sketches.png (+ sketches/NN-name.png)."""
+"""Round-two sketch sheet: python3 scripts/brand/sketches.py -> docs/brand/exploration/sketches.png (+ sketches/NN-name.png)."""
 import os, textwrap
 from PIL import Image
 from pix import Layer, hexc, up

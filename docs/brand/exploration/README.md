@@ -48,7 +48,7 @@ Grasp; tagline accent gold `#E9AE36`.
 
 | File | Size | Native grid x factor | Where it goes |
 |---|---|---|---|
-| `icon-64.png` | 64x64 | 64x64 x1 | pixel source; the in-game mod list (`src/main/resources/almighty.png`) |
+| `icon-64.png` | 64x64 | 64x64 x1 | pixel source (round one; the shipped mod logo is now `../logo/modlist-logo.png`) |
 | `icon-128.png` | 128x128 | x2 | small store icon |
 | `icon-512.png` | 512x512 | x8 | Modrinth and CurseForge project icon |
 | `logo.png`, `logo-native.png` | 4x / 1x | mark + wordmark on transparency, ink edge so it sits on dark and light | README top, docs, store descriptions |

@@ -1,4 +1,4 @@
-"""Render the whole brand kit: python3 scripts/brand/build.py (needs Pillow). Output: docs/brand/."""
+"""Render the whole brand kit: python3 scripts/brand/build.py (needs Pillow). Output: docs/brand/exploration/."""
 import os
 from PIL import Image
 from pix import Layer, hexc, up
@@ -10,7 +10,7 @@ TAGLINE = 'INFINITE POWER. CONTROLLED USE.'
 SUB = 'AN AI GAME MASTER FOR YOUR SERVER'
 
 DIRS = {
-    'grasp': GRASP, 'sovereign': SOVEREIGN,  # regent and prompt were dropped (docs/brand/blind-check.md)
+    'grasp': GRASP, 'sovereign': SOVEREIGN,  # regent and prompt were dropped (docs/brand/exploration/blind-check.md)
 }
 ACCENT = {'regent': hexc('#E9AE36'), 'grasp': hexc('#43D9C2'), 'sovereign': hexc('#E9AE36'), 'prompt': hexc('#43D9C2')}
 FACE, SHADE, MUTED = hexc('#ECEFF4'), hexc('#9AA3B5'), hexc('#AEB6C6')

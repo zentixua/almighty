@@ -1,4 +1,4 @@
-"""Round six sheet: python3 scripts/brand/finalists3.py -> docs/brand/finalists3.png, finalists3/, clouds32.png"""
+"""Round six sheet: python3 scripts/brand/finalists3.py -> docs/brand/exploration/finalists3.png, finalists3/, clouds32.png"""
 import os
 from PIL import Image
 from pix import Layer, hexc, up

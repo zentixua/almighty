@@ -20,4 +20,12 @@ stonecutter.parameters {
     files.disable(!node.project.findProperty('compat_sable'), 'ua/zentix/almighty/gametest/GmSableGameTests.java')
     files.disable(loader != 'neoforge', 'ua/zentix/almighty/neoforge/')
     files.disable(loader != 'fabric', 'ua/zentix/almighty/fabric/')
+    // Plain renames (a replacement runs in reverse when switching back, so each new name is absent from the 1.21.1
+    // source). Anything less mechanical goes through platform/Mc or a version condition.
+    boolean v26 = current.parsed.matches('>=26.1')
+    replacements.string(v26) { replace 'ResourceLocation', 'Identifier' }
+    replacements.string(v26) { replace 'absMoveTo', 'absSnapTo' }
+    replacements.string(v26) { replace 'absRotateTo', 'absSnapRotationTo' }
+    replacements.string(v26) { replace 'ClickType', 'ContainerInput' }
+    replacements.string(v26) { replace 'GameProfileCache', 'CachedUserNameToIdResolver' }
 }

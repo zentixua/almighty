@@ -3,6 +3,7 @@ package ua.zentix.almighty.compat;
 import ua.zentix.almighty.platform.Platform;
 import ua.zentix.almighty.bot.VehicleDriver;
 import ua.zentix.almighty.compat.immersiveaircraft.ImmersiveAircraftDriver;
+//? if sable
 import ua.zentix.almighty.compat.sable.SableShips;
 import ua.zentix.almighty.world.Ships;
 
@@ -31,8 +32,12 @@ public final class Compat {
         return new ua.zentix.almighty.world.Claims(s);
     }
 
-    /** Physics-mod ships: Sable (Create Aeronautics); null without the mod. */
+    /** Physics-mod ships: Sable (Create Aeronautics); null without the mod (or on a game version Sable has no build for). */
     public static Ships.Source ships() {
+        //? if sable {
         return Platform.get().isModLoaded(SableShips.MOD_ID) ? new SableShips() : null;
+        //?} else {
+        /*return null;
+        *///?}
     }
 }

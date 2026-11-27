@@ -20,13 +20,13 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.player.ChatVisiblity;
 import net.minecraft.world.level.GameType;
-import net.minecraft.world.level.block.entity.SkullBlockEntity;
 import org.slf4j.Logger;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.GmConfig;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.world.Areas;
 import ua.zentix.almighty.world.Dims;
 
@@ -117,9 +117,9 @@ public final class Bots {
             return spec;
         }).thenCompose(s -> s.skinOf() == null
                 ? CompletableFuture.completedFuture(Optional.ofNullable(s.textures()))
-                : SkullBlockEntity.fetchGameProfile(s.skinOf())
+                : Mc.fetchProfile(gm.server(), s.skinOf())
                         .handle((profile, e) -> profile == null ? Optional.<Property>empty()
-                                : profile.flatMap(p -> p.getProperties().get("textures").stream().findFirst())))
+                                : profile.flatMap(p -> Mc.properties(p).get("textures").stream().findFirst())))
                 .thenCompose(textures -> gm.onMain(() -> {
                     check(spec);
                     return prepare(spec);
@@ -150,8 +150,8 @@ public final class Bots {
         MinecraftServer server = gm.server();
         ServerLevel level = spec.dimension() != null ? Dims.level(server, spec.dimension()) : server.overworld();
         if (spec.pos() == null && level == server.overworld()) return CompletableFuture.completedFuture(null);
-        int x = spec.pos() != null ? Mth.floor(spec.pos()[0]) : level.getSharedSpawnPos().getX();
-        int z = spec.pos() != null ? Mth.floor(spec.pos()[2]) : level.getSharedSpawnPos().getZ();
+        int x = spec.pos() != null ? Mth.floor(spec.pos()[0]) : Mc.spawnPos(level).getX();
+        int z = spec.pos() != null ? Mth.floor(spec.pos()[2]) : Mc.spawnPos(level).getZ();
         Areas.Lease lease = gm.areas().acquire(level, "bot " + spec.name(), x, z, x, z, PLACE_WAIT + 200);
         if (lease.isReady()) return CompletableFuture.completedFuture(lease);
         CompletableFuture<Areas.Lease> ready = new CompletableFuture<>();
@@ -170,7 +170,7 @@ public final class Bots {
         if (!disguise && spec.skinOf() != null && known(spec.skinOf())) throw RpcException.badRequest("The skin of a player of this server needs bots.allow_disguise = true (the server owner decides)");
         if (!disguise && spec.textures() != null) {
             GameProfile owner = texturesOwner(spec.textures());
-            if (known(owner.getName()) || knownId(owner.getId())) throw RpcException.badRequest("The skin of a player of this server needs bots.allow_disguise = true (the server owner decides)");
+            if (known(Mc.name(owner)) || knownId(Mc.id(owner))) throw RpcException.badRequest("The skin of a player of this server needs bots.allow_disguise = true (the server owner decides)");
         }
         if (spec.dimension() != null) Dims.level(server, spec.dimension());
     }
@@ -179,12 +179,12 @@ public final class Bots {
     private boolean known(String name) {
         MinecraftServer server = gm.server();
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
-            if (!byUuid.containsKey(p.getUUID()) && p.getGameProfile().getName().equalsIgnoreCase(name)) return true;
+            if (!byUuid.containsKey(p.getUUID()) && Mc.name(p.getGameProfile()).equalsIgnoreCase(name)) return true;
         }
         for (String n : server.getPlayerList().getWhiteListNames()) if (n.equalsIgnoreCase(name)) return true;
         for (String n : server.getPlayerList().getOpNames()) if (n.equalsIgnoreCase(name)) return true;
-        GameProfile cached = ProfileCache.byName(server.getProfileCache(), name);
-        return cached != null && !cached.getId().equals(uuid(name));
+        GameProfile cached = ProfileCache.byName(Mc.profileCache(server), name);
+        return cached != null && !Mc.id(cached).equals(uuid(name));
     }
 
     /** UUID known to the server: online player (not a bot), whitelist, operators, profile cache. */
@@ -192,9 +192,13 @@ public final class Bots {
         if (id == null || byUuid.containsKey(id)) return false;
         MinecraftServer server = gm.server();
         if (server.getPlayerList().getPlayer(id) != null) return true;
+        //? if >=26.1 {
+        /*var probe = new net.minecraft.server.players.NameAndId(id, "");
+        *///?} else {
         GameProfile probe = new GameProfile(id, "");
+        //?}
         if (server.getPlayerList().getWhiteList().get(probe) != null || server.getPlayerList().getOps().get(probe) != null) return true;
-        return server.getProfileCache() != null && server.getProfileCache().get(id).isPresent();
+        return Mc.profileCache(server) != null && Mc.profileCache(server).get(id).isPresent();
     }
 
     /**
@@ -214,10 +218,14 @@ public final class Bots {
 
     private Bot place(Spec spec, Property textures) throws RpcException {
         MinecraftServer server = gm.server();
-        GameProfile profile = new GameProfile(uuid(spec.name()), spec.name());
-        if (textures != null) profile.getProperties().put("textures", textures);
+        GameProfile profile = Mc.profile(uuid(spec.name()), spec.name(), textures);
         // Like an ordinary client: all skin layers, right hand, listed among server players.
+        //? if >=26.1 {
+        /*ClientInformation info = new ClientInformation("en_us", 8, ChatVisiblity.FULL, true, 0x7F, HumanoidArm.RIGHT, false, true,
+                net.minecraft.server.level.ParticleStatus.ALL);
+        *///?} else {
         ClientInformation info = new ClientInformation("en_us", 8, ChatVisiblity.FULL, true, 0x7F, HumanoidArm.RIGHT, false, true);
+        //?}
         CommonListenerCookie cookie = ua.zentix.almighty.platform.Platform.get().cookie(profile, info);
         ServerLevel level = spec.dimension() != null ? Dims.level(server, spec.dimension()) : server.overworld();
         // Like player login (getPlayerForLogin): use the Overworld; the constructor searches near spawn, while in another
@@ -227,8 +235,8 @@ public final class Bots {
         // Before login: the tab name is computed during login, and the event must already know the bot.
         byName.put(key(spec.name()), bot);
         names.add(key(spec.name()));
-        byUuid.put(profile.getId(), bot);
-        ProfileCache.Snapshot cache = ProfileCache.snapshot(server.getProfileCache(), spec.name(), profile.getId());
+        byUuid.put(Mc.id(profile), bot);
+        ProfileCache.Snapshot cache = ProfileCache.snapshot(Mc.profileCache(server), spec.name(), Mc.id(profile));
         try {
             server.getPlayerList().placeNewPlayer(bot.connection(), player, cookie);
         } catch (RuntimeException e) {
@@ -242,14 +250,14 @@ public final class Bots {
         ServerPlayer p = bot.player();
         if (spec.gamemode() != null) p.setGameMode(spec.gamemode());
         if (spec.pos() != null) {
-            p.teleportTo(level, spec.pos()[0], spec.pos()[1], spec.pos()[2], spec.yaw(), spec.pitch());
+            Mc.teleport(p, level, spec.pos()[0], spec.pos()[1], spec.pos()[2], spec.yaw(), spec.pitch());
         } else if (spec.dimension() != null && p.level() != level) {
-            p.teleportTo(level, level.getSharedSpawnPos().getX() + 0.5, level.getSharedSpawnPos().getY(), level.getSharedSpawnPos().getZ() + 0.5, spec.yaw(), spec.pitch());
+            Mc.teleport(p, level, Mc.spawnPos(level).getX() + 0.5, Mc.spawnPos(level).getY(), Mc.spawnPos(level).getZ() + 0.5, spec.yaw(), spec.pitch());
         }
         // Head faces with the body: vision (getViewYRot) uses head rotation, which its tick sets only later.
         p.setYHeadRot(p.getYRot());
         // Move the player ticket to the new location immediately: chunks start loading in the background while the bot waits (Controls.move).
-        p.serverLevel().getChunkSource().move(p);
+        Mc.level(p).getChunkSource().move(p);
         bot.settle();
         LOG.info("GM: bot {} joined{}", spec.name(), spec.marker() ? "" : " without the marker");
         return bot;
@@ -428,7 +436,7 @@ public final class Bots {
 
     private static Bot botOf(net.minecraft.world.entity.player.Player player) {
         if (!(player instanceof ServerPlayer sp)) return null;
-        GmServer gm = GmServer.of(sp.server);
+        GmServer gm = GmServer.of(Mc.server(sp));
         return gm == null ? null : gm.bots().of(sp);
     }
 
@@ -452,10 +460,10 @@ public final class Bots {
 
     /** A real player logged in with a bot's name: the bot leaves; no two players on the server share a name. */
     public static void onLogin(ServerPlayer player) {
-        GmServer gm = GmServer.of(player.server);
+        GmServer gm = GmServer.of(Mc.server(player));
         if (gm == null || gm.bots().of(player) != null) return;
-        Bot bot = gm.bots().find(player.getGameProfile().getName());
-        if (bot != null) gm.bots().remove(bot, "gave the name up to player " + player.getGameProfile().getName());
+        Bot bot = gm.bots().find(Mc.name(player.getGameProfile()));
+        if (bot != null) gm.bots().remove(bot, "gave the name up to player " + Mc.name(player.getGameProfile()));
     }
 
     /**
@@ -493,7 +501,11 @@ public final class Bots {
                 byNameField = ua.zentix.almighty.platform.Reflect.field(GameProfileCache.class, "profilesByName");
                 byUuidField = ua.zentix.almighty.platform.Reflect.field(GameProfileCache.class, "profilesByUUID");
                 Class<?> info = Class.forName(GameProfileCache.class.getName() + "$GameProfileInfo");
+                //? if >=26.1 {
+                /*profileField = ua.zentix.almighty.platform.Reflect.field(info, "nameAndId");
+                *///?} else {
                 profileField = ua.zentix.almighty.platform.Reflect.field(info, "profile");
+                //?}
                 return true;
             } catch (ReflectiveOperationException | RuntimeException e) {
                 broken = true;
@@ -522,7 +534,13 @@ public final class Bots {
             if (cache == null || !ready()) return null;
             try {
                 Object info = ((Map<String, Object>) byNameField.get(cache)).get(name.toLowerCase(Locale.ROOT));
+                //? if >=26.1 {
+                /*if (info == null) return null;
+                var known = (net.minecraft.server.players.NameAndId) profileField.get(info);
+                return new GameProfile(known.id(), known.name());
+                *///?} else {
                 return info == null ? null : (GameProfile) profileField.get(info);
+                //?}
             } catch (ReflectiveOperationException | RuntimeException e) {
                 return null;
             }

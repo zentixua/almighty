@@ -13,6 +13,7 @@ import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.Agent;
 import ua.zentix.almighty.bridge.Agents;
 import ua.zentix.almighty.bridge.Bridge;
+import ua.zentix.almighty.platform.Mc;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -93,7 +94,7 @@ public final class AlmightyCommand {
 
     /** An owner subcommand: permission level 4. */
     private static LiteralArgumentBuilder<CommandSourceStack> owner(String name) {
-        return Commands.literal(name).requires(s -> s.hasPermission(4));
+        return Commands.literal(name).requires(s -> Mc.has(s, 4));
     }
 
     /**
@@ -101,7 +102,7 @@ public final class AlmightyCommand {
      * policy.toml. An operator who is not an owner is an admin on the ladder and cannot make themselves owner.
      */
     private static LiteralArgumentBuilder<CommandSourceStack> trueOwner(String name) {
-        return Commands.literal(name).requires(s -> s.hasPermission(4) && (!(s.getEntity() instanceof net.minecraft.server.level.ServerPlayer p)
+        return Commands.literal(name).requires(s -> Mc.has(s, 4) && (!(s.getEntity() instanceof net.minecraft.server.level.ServerPlayer p)
                 ? s.getEntity() == null && (s.source == s.getServer() || s.source instanceof net.minecraft.server.rcon.RconConsoleSource)
                 : ua.zentix.almighty.policy.Identity.verified(p.getUUID()) && ua.zentix.almighty.policy.Nodes.role(p.getUUID())
                         == ua.zentix.almighty.policy.Role.OWNER));
@@ -233,7 +234,7 @@ public final class AlmightyCommand {
         GmServer gm = GmServer.of(source.getServer());
         if (gm == null) return 0;
         net.minecraft.server.level.ServerPlayer by = source.getEntity() instanceof net.minecraft.server.level.ServerPlayer p ? p : null;
-        if (by == null && !source.hasPermission(4)) {
+        if (by == null && !Mc.has(source, 4)) {
             source.sendFailure(Component.literal("Only a player or the console can answer"));
             return 0;
         }
@@ -250,7 +251,7 @@ public final class AlmightyCommand {
         java.util.UUID id = source.getEntity() instanceof net.minecraft.server.level.ServerPlayer p ? p.getUUID() : null;
         int n = 0;
         for (var p : gm.decisions().confirmations().waitingForAdmins()) {
-            if (id == null ? !source.hasPermission(4) : !(ua.zentix.almighty.policy.Identity.verified(id) && ua.zentix.almighty.policy.Nodes.holds(id, p.node))) continue;
+            if (id == null ? !Mc.has(source, 4) : !(ua.zentix.almighty.policy.Identity.verified(id) && ua.zentix.almighty.policy.Nodes.holds(id, p.node))) continue;
             Component line = ua.zentix.almighty.policy.Prompts.inboxLine(p);
             source.sendSuccess(() -> line, false);
             n++;
@@ -270,7 +271,7 @@ public final class AlmightyCommand {
         }
         boolean mine = source.source instanceof net.minecraft.server.level.ServerPlayer p && meta.has("requester")
                 && p.getUUID().toString().equals(meta.get("requester").getAsString()) && !meta.get("method").getAsString().equals("undo");
-        if (!mine && !source.hasPermission(4)) {
+        if (!mine && !Mc.has(source, 4)) {
             source.sendFailure(Component.literal("Change " + id + " was not made for you"));
             return 0;
         }
@@ -290,8 +291,7 @@ public final class AlmightyCommand {
     private static com.mojang.authlib.GameProfile profile(CommandSourceStack source, String name) {
         var online = source.getServer().getPlayerList().getPlayerByName(name);
         if (online != null) return online.getGameProfile();
-        var cache = source.getServer().getProfileCache();
-        return cache == null ? null : cache.get(name).orElse(null);
+        return Mc.cachedProfile(source.getServer(), name);
     }
 
     private static int role(CommandSourceStack source, String name, String roleName, String durationText) {
@@ -302,8 +302,8 @@ public final class AlmightyCommand {
         if (source.source instanceof net.minecraft.server.level.ServerPlayer p) {
             granter = ua.zentix.almighty.policy.Identity.verified(p.getUUID()) ? ua.zentix.almighty.policy.Nodes.role(p.getUUID())
                     : ua.zentix.almighty.policy.Role.GUEST;
-            by = p.getGameProfile().getName();
-        } else if (source.hasPermission(4) && source.getEntity() == null) {
+            by = Mc.name(p.getGameProfile());
+        } else if (Mc.has(source, 4) && source.getEntity() == null) {
             granter = ua.zentix.almighty.policy.Role.OWNER;
             by = source.getTextName();
         } else {
@@ -332,13 +332,13 @@ public final class AlmightyCommand {
                 return 0;
             }
         }
-        String why = gm.roles().set(profile.getId(), profile.getName(), role, d, granter, by);
+        String why = gm.roles().set(Mc.id(profile), Mc.name(profile), role, d, granter, by);
         if (why != null) {
             source.sendFailure(Component.literal(why));
             return 0;
         }
-        String text = role == null ? profile.getName() + " no longer has a granted role"
-                : profile.getName() + " is " + role.id() + (d == null ? "" : " for " + durationText);
+        String text = role == null ? Mc.name(profile) + " no longer has a granted role"
+                : Mc.name(profile) + " is " + role.id() + (d == null ? "" : " for " + durationText);
         gm.audit().owner(by, "role", text);
         source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line(text), true);
         return 1;
@@ -354,8 +354,8 @@ public final class AlmightyCommand {
             return 0;
         }
         java.util.Set<java.util.UUID> owners = new java.util.LinkedHashSet<>(gm.policies().current().owners());
-        if (add) owners.add(profile.getId());
-        else owners.remove(profile.getId());
+        if (add) owners.add(Mc.id(profile));
+        else owners.remove(Mc.id(profile));
         try {
             String why = ua.zentix.almighty.policy.PolicyFile.owners(gm.policies().file(), owners);
             if (why == null) why = gm.policies().reload();
@@ -367,9 +367,9 @@ public final class AlmightyCommand {
             source.sendFailure(Component.literal("Cannot write policy.toml: " + e.getMessage()));
             return 0;
         }
-        boolean verified = ua.zentix.almighty.policy.Identity.verified(profile.getId());
-        gm.audit().owner(source.getTextName(), add ? "owner add" : "owner remove", profile.getName() + " " + profile.getId());
-        source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line((add ? "Owner added: " : "Owner removed: ") + profile.getName()
+        boolean verified = ua.zentix.almighty.policy.Identity.verified(Mc.id(profile));
+        gm.audit().owner(source.getTextName(), add ? "owner add" : "owner remove", Mc.name(profile) + " " + Mc.id(profile));
+        source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line((add ? "Owner added: " : "Owner removed: ") + Mc.name(profile)
                 + (add && !verified ? " (their UUID is not verified on this server, so they act as a guest until it is)" : "")), true);
         return 1;
     }
@@ -426,7 +426,7 @@ public final class AlmightyCommand {
         boolean verified = ua.zentix.almighty.policy.Identity.verified(id);
         String role = ua.zentix.almighty.policy.Nodes.role(id).id();
         Component line = Component.literal("UUID ").append(Component.literal(id.toString()).withStyle(s -> s
-                        .withClickEvent(new net.minecraft.network.chat.ClickEvent(net.minecraft.network.chat.ClickEvent.Action.COPY_TO_CLIPBOARD, id.toString()))
+                        .withClickEvent(Mc.copyToClipboard(id.toString()))
                         .withUnderlined(true)))
                 .append(Component.literal((verified ? ", verified" : ", not verified (offline UUID)") + ", role " + role));
         source.sendSuccess(() -> line, false);

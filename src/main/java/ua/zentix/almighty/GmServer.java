@@ -17,6 +17,7 @@ import ua.zentix.almighty.audit.Pause;
 import ua.zentix.almighty.feed.Feed;
 import ua.zentix.almighty.feed.Inbox;
 import ua.zentix.almighty.mcp.Mcp;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.policy.Confirmations;
 import ua.zentix.almighty.policy.Decisions;
 import ua.zentix.almighty.policy.Gate;
@@ -449,7 +450,7 @@ public final class GmServer {
             public void command(ua.zentix.almighty.rules.Declarative.Creator c, Object e, String command) throws RpcException {
                 Object[] at = place(e);
                 net.minecraft.server.level.ServerLevel level = at == null ? server.overworld() : (net.minecraft.server.level.ServerLevel) at[0];
-                net.minecraft.world.phys.Vec3 pos = net.minecraft.world.phys.Vec3.atBottomCenterOf(at == null ? level.getSharedSpawnPos() : (net.minecraft.core.BlockPos) at[1]);
+                net.minecraft.world.phys.Vec3 pos = net.minecraft.world.phys.Vec3.atBottomCenterOf(at == null ? Mc.spawnPos(level) : (net.minecraft.core.BlockPos) at[1]);
                 ua.zentix.almighty.act.CommandRunner.As as;
                 ua.zentix.almighty.policy.Role role = c.agent() == null ? ua.zentix.almighty.policy.Role.OWNER : gate.role(c.agent(), c.player());
                 if (role == ua.zentix.almighty.policy.Role.OWNER) {
@@ -460,7 +461,7 @@ public final class GmServer {
                     // The creator's own source, at their level under the agent's ceiling.
                     net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(c.player());
                     if (p == null) throw RpcException.conflict(c.name() + " is offline: the rule's command runs as them");
-                    int lvl = Math.max(server.getProfilePermissions(p.getGameProfile()), Nodes.role(p.getUUID()).commandLevel());
+                    int lvl = Math.max(Mc.opLevel(server, p.getGameProfile()), Nodes.role(p.getUUID()).commandLevel());
                     as = new ua.zentix.almighty.act.CommandRunner.As(Math.min(lvl, policies.current().ceiling(c.agent()).commandLevel()), p);
                 } else {
                     as = new ua.zentix.almighty.act.CommandRunner.As(role.commandLevel(), null);
@@ -490,12 +491,12 @@ public final class GmServer {
             net.minecraft.server.level.ServerPlayer asker = server.getPlayerList().getPlayer(approved.requester);
             net.minecraft.server.level.ServerPlayer admin = server.getPlayerList().getPlayer(approved.decider);
             if (asker == null) throw RpcException.conflict(approved.requesterName + " is offline");
-            int level = Math.max(admin == null ? 0 : server.getProfilePermissions(admin.getGameProfile()), Nodes.role(approved.decider).commandLevel());
+            int level = Math.max(admin == null ? 0 : Mc.opLevel(server, admin.getGameProfile()), Nodes.role(approved.decider).commandLevel());
             return new ua.zentix.almighty.act.CommandRunner.As(Math.min(level, r.ceiling().commandLevel()), asker);
         }
         net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(r.ticket().player());
         if (p == null) throw RpcException.conflict(r.ticket().name() + " is offline: a request runs as its player, who must be online");
-        int level = Math.max(server.getProfilePermissions(p.getGameProfile()), Nodes.role(p.getUUID()).commandLevel());
+        int level = Math.max(Mc.opLevel(server, p.getGameProfile()), Nodes.role(p.getUUID()).commandLevel());
         return new ua.zentix.almighty.act.CommandRunner.As(Math.min(level, r.ceiling().commandLevel()), p);
     }
 
@@ -539,7 +540,7 @@ public final class GmServer {
         java.util.Set<String> listed = policies.current().safety().askAdmin();
         if (listed.isEmpty()) return;
         var dispatcher = server.getCommands().getDispatcher();
-        net.minecraft.commands.CommandSourceStack mine = as.player().createCommandSourceStack().withPermission(as.level());
+        net.minecraft.commands.CommandSourceStack mine = Mc.withLevel(as.player().createCommandSourceStack(), as.level());
         for (String c : Confirmations.commands(method, params)) {
             String text = c.strip().replaceFirst("^[/$]+", "");
             boolean asked = false;

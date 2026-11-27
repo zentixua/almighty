@@ -17,6 +17,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import ua.zentix.almighty.bot.Eye;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.work.Budget;
 import ua.zentix.almighty.world.Rays;
 
@@ -64,7 +65,7 @@ public final class EyeView extends View {
         this.chunks = new Rays.Chunks(level);
         this.darken = level.getSkyDarken();
         this.ambient = level.dimensionType().ambientLight();
-        if (!level.dimensionType().hasSkyLight()) sky = level.dimensionType().ultraWarm() ? 0x3A0E0A : 0x140F1E;
+        if (!level.dimensionType().hasSkyLight()) sky = Mc.ultraWarm(level) ? 0x3A0E0A : 0x140F1E;
         else sky = lerp(0x0B1020, 0x7BA4FF, 1.0 - darken / 11.0);
         collect(self);
     }
@@ -151,7 +152,7 @@ public final class EyeView extends View {
         double tx = (dir.x > 0 ? x + 1 - eye.x : eye.x - x) * dx;
         double ty = (dir.y > 0 ? y + 1 - eye.y : eye.y - y) * dy;
         double tz = (dir.z > 0 ? z + 1 - eye.z : eye.z - z) * dz;
-        int minY = level.getMinBuildHeight(), maxY = level.getMaxBuildHeight() - 1;
+        int minY = Mc.minBuildHeight(level), maxY = Mc.maxBuildHeight(level) - 1;
         double t = 0, waterFrom = -1, water = 0;
         int axis = -1;
         boolean glass = false;

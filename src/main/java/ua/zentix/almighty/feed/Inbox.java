@@ -9,6 +9,7 @@ import net.minecraft.server.level.ServerPlayer;
 import ua.zentix.almighty.GmConfig;
 import ua.zentix.almighty.bridge.Agent;
 import ua.zentix.almighty.bridge.Agents;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.policy.Identity;
 import ua.zentix.almighty.policy.Tickets;
 
@@ -118,7 +119,7 @@ public final class Inbox {
         d.addProperty("agent", agentName);
         d.addProperty("ticket", id);
         long seq = feed.add(type, d);
-        tickets.mint(id, player.getUUID(), player.getGameProfile().getName(), agentName, seq, verified);
+        tickets.mint(id, player.getUUID(), Mc.name(player.getGameProfile()), agentName, seq, verified);
         Agents known = agents.get();
         // Away replies only for messages the player clearly meant for the GM (/gm or its name).
         if (known == null || (via != Addressing.Via.GM && via != Addressing.Via.NAME)) return;

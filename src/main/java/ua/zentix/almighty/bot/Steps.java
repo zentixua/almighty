@@ -41,6 +41,7 @@ import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.world.Observe;
 
 import java.time.Instant;
@@ -230,9 +231,9 @@ final class Steps {
             if (point != null) return point;
             Entity target = null;
             try {
-                target = p.serverLevel().getEntity(UUID.fromString(entity));
+                target = Mc.level(p).getEntity(UUID.fromString(entity));
             } catch (IllegalArgumentException notUuid) {
-                ServerPlayer named = p.server.getPlayerList().getPlayerByName(entity);
+                ServerPlayer named = Mc.server(p).getPlayerList().getPlayerByName(entity);
                 if (named != null && named.level() == p.level()) target = named;
             }
             if (target == null) throw new Failed("no entity \"" + entity + "\" in the bot's dimension");
@@ -320,7 +321,7 @@ final class Steps {
         public boolean tick(Bot bot, ServerPlayer p, JsonObject out) {
             out.addProperty("do", "payload");
             out.addProperty("id", id.toString());
-            RegistryFriendlyByteBuf buf = ua.zentix.almighty.platform.Platform.get().registryBuffer(Unpooled.buffer(data.length + 64), p.server.registryAccess());
+            RegistryFriendlyByteBuf buf = ua.zentix.almighty.platform.Platform.get().registryBuffer(Unpooled.buffer(data.length + 64), Mc.server(p).registryAccess());
             ServerboundCustomPayloadPacket packet;
             int left;
             try {
@@ -394,7 +395,13 @@ final class Steps {
             if (slot != -999 && (slot < 0 || slot >= menu.slots.size())) {
                 throw new Failed("the menu has " + menu.slots.size() + " slots (0.." + (menu.slots.size() - 1) + ", -999 for outside the window)");
             }
+            // No predicted slots: the server performs the click and sends the true contents back.
+            //? if >=26.1 {
+            /*bot.send(new ServerboundContainerClickPacket(menu.containerId, menu.getStateId(), (short) slot, (byte) button, mode,
+                    new Int2ObjectOpenHashMap<>(), net.minecraft.network.HashedStack.EMPTY));
+            *///?} else {
             bot.send(new ServerboundContainerClickPacket(menu.containerId, menu.getStateId(), slot, button, mode, ItemStack.EMPTY, new Int2ObjectOpenHashMap<>()));
+            //?}
             if (slot >= 0) out.add("slot", item(p.containerMenu.getSlot(slot).getItem()));
             out.add("carried", item(p.containerMenu.getCarried()));
             return true;
@@ -429,7 +436,7 @@ final class Steps {
         @Override
         public boolean tick(Bot bot, ServerPlayer p, JsonObject out) {
             out.addProperty("do", "chat");
-            MinecraftServer server = p.server;
+            MinecraftServer server = Mc.server(p);
             boolean unsigned = server.enforceSecureProfile() && p.getChatSession() == null;
             if (text.startsWith("/")) {
                 String command = text.substring(1);
@@ -445,7 +452,12 @@ final class Steps {
                 Component decorated = ua.zentix.almighty.platform.Platform.get().decorateChat(p, Component.literal(text));
                 if (decorated != null) server.getPlayerList().broadcastChatMessage(PlayerChatMessage.system(text).withUnsignedContent(decorated), p, ChatType.bind(ChatType.CHAT, p));
             } else {
+                //? if >=26.1 {
+                /*bot.send(new ServerboundChatPacket(text, bot.chatTime(), 0L, null,
+                        new LastSeenMessages.Update(bot.takeChatAcks(), new BitSet(), LastSeenMessages.Update.IGNORE_CHECKSUM)));
+                *///?} else {
                 bot.send(new ServerboundChatPacket(text, bot.chatTime(), 0L, null, new LastSeenMessages.Update(bot.takeChatAcks(), new BitSet())));
+                //?}
             }
             return true;
         }

@@ -1,5 +1,6 @@
 package ua.zentix.almighty.world;
 
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.script.Json;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -55,7 +56,7 @@ public final class Observe {
         out.addProperty("mspt_max", round(max / 1e6, 2));
         out.addProperty("tps", round(Math.min(rate, 1000.0 / Math.max(mspt, 1e-3)), 2));
         JsonArray players = new JsonArray();
-        for (ServerPlayer p : server.getPlayerList().getPlayers()) players.add(p.getGameProfile().getName());
+        for (ServerPlayer p : server.getPlayerList().getPlayers()) players.add(Mc.name(p.getGameProfile()));
         out.add("players", players);
         JsonArray levels = new JsonArray();
         for (ServerLevel level : server.getAllLevels()) {
@@ -70,7 +71,7 @@ public final class Observe {
             }
             l.addProperty("entities", entities);
             l.add("top_entities", top(types, 10));
-            l.addProperty("day_time", level.getDayTime());
+            l.addProperty("day_time", Mc.dayTime(level));
             l.addProperty("raining", level.isRaining());
             l.addProperty("thundering", level.isThundering());
             levels.add(l);
@@ -104,7 +105,7 @@ public final class Observe {
     public static JsonObject details(MinecraftServer server, ServerPlayer p) {
         JsonObject out = brief(server, p);
         out.addProperty("xp_level", p.experienceLevel);
-        out.addProperty("selected_slot", p.getInventory().selected);
+        out.addProperty("selected_slot", Mc.selectedSlot(p.getInventory()));
         JsonArray items = new JsonArray();
         Inventory inv = p.getInventory();
         for (int slot = 0; slot < inv.getContainerSize(); slot++) {
@@ -129,16 +130,16 @@ public final class Observe {
             effects.add(e);
         }
         out.add("effects", effects);
-        BlockPos respawn = p.getRespawnPosition();
+        BlockPos respawn = Mc.respawnPos(p);
         if (respawn != null) {
             JsonObject r = new JsonObject();
-            r.addProperty("dimension", p.getRespawnDimension().location().toString());
+            r.addProperty("dimension", Mc.id(Mc.respawnDimension(p)).toString());
             r.add("pos", pos(respawn));
             out.add("respawn", r);
         }
         // Use ready chunks: a newly teleported player (bot, /tp) does not yet retain the surrounding chunks.
         Vec3 eye = p.getEyePosition();
-        Rays.Hit ray = Rays.clip(p.serverLevel(), eye, eye.add(p.getViewVector(1.0F).scale(20)), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, p);
+        Rays.Hit ray = Rays.clip(Mc.level(p), eye, eye.add(p.getViewVector(1.0F).scale(20)), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, p);
         if (ray.hit()) {
             BlockHitResult block = ray.block();
             JsonObject look = new JsonObject();
@@ -188,16 +189,16 @@ public final class Observe {
 
     private static JsonObject brief(MinecraftServer server, ServerPlayer p) {
         JsonObject out = new JsonObject();
-        out.addProperty("name", p.getGameProfile().getName());
+        out.addProperty("name", Mc.name(p.getGameProfile()));
         out.addProperty("uuid", p.getUUID().toString());
-        out.addProperty("dimension", Dims.id(p.serverLevel()));
+        out.addProperty("dimension", Dims.id(Mc.level(p)));
         out.add("pos", vec(p.position()));
         out.addProperty("yaw", round(p.getYRot(), 1));
         out.addProperty("pitch", round(p.getXRot(), 1));
         out.addProperty("health", round(p.getHealth(), 1));
         out.addProperty("food", p.getFoodData().getFoodLevel());
         out.addProperty("gamemode", p.gameMode.getGameModeForPlayer().getName());
-        out.addProperty("op_level", server.getProfilePermissions(p.getGameProfile()));
+        out.addProperty("op_level", Mc.opLevel(server, p.getGameProfile()));
         out.addProperty("ping_ms", p.connection.latency());
         if (p.isDeadOrDying()) out.addProperty("dead", true);
         if (p.getVehicle() != null) out.addProperty("vehicle", EntityType.getKey(p.getVehicle().getType()).toString());
@@ -211,9 +212,9 @@ public final class Observe {
         out.addProperty("uuid", e.getUUID().toString());
         out.add("pos", vec(e.position()));
         if (e instanceof LivingEntity living) out.addProperty("health", round(living.getHealth(), 1));
-        if (!e.getTags().isEmpty()) {
+        if (!Mc.tags(e).isEmpty()) {
             JsonArray tags = new JsonArray();
-            e.getTags().forEach(tags::add);
+            Mc.tags(e).forEach(tags::add);
             out.add("tags", tags);
         }
         return out;

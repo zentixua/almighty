@@ -39,6 +39,7 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.script.Json;
 import ua.zentix.almighty.world.Observe;
 
@@ -109,8 +110,8 @@ public final class Bot {
 
     Bot(Bots bots, GameProfile profile, boolean marked, boolean autoRespawn) {
         this.bots = bots;
-        this.name = profile.getName();
-        this.uuid = profile.getId();
+        this.name = Mc.name(profile);
+        this.uuid = Mc.id(profile);
         this.marked = marked;
         this.autoRespawn = autoRespawn;
         this.connection = new Connection(PacketFlow.SERVERBOUND);
@@ -265,6 +266,15 @@ public final class Bot {
         static void decay(ServerGamePacketListenerImpl listener) {
             if (broken) return;
             try {
+                //? if >=26.1 {
+                /*// 26.x: the counters are TickThrottlers; their tick() is the same decrement.
+                if (chat == null) {
+                    chat = ua.zentix.almighty.platform.Reflect.field(ServerGamePacketListenerImpl.class, "chatSpamThrottler");
+                    drop = ua.zentix.almighty.platform.Reflect.field(ServerGamePacketListenerImpl.class, "dropSpamThrottler");
+                }
+                ((net.minecraft.util.TickThrottler) chat.get(listener)).tick();
+                ((net.minecraft.util.TickThrottler) drop.get(listener)).tick();
+                *///?} else {
                 if (chat == null) {
                     chat = ua.zentix.almighty.platform.Reflect.field(ServerGamePacketListenerImpl.class, "chatSpamTickCount");
                     drop = ua.zentix.almighty.platform.Reflect.field(ServerGamePacketListenerImpl.class, "dropSpamTickCount");
@@ -272,6 +282,7 @@ public final class Bot {
                 int c = chat.getInt(listener), d = drop.getInt(listener);
                 if (c > 0) chat.setInt(listener, c - 1);
                 if (d > 0) drop.setInt(listener, d - 1);
+                //?}
             } catch (RuntimeException | IllegalAccessException e) {
                 broken = true;
                 LOG.warn("Bots: spam counters of the packet listener are unavailable ({}): frequent chat from a bot will get it kicked for spamming", e.toString());
@@ -345,7 +356,11 @@ public final class Bot {
             case BundlePacket<?> bundle -> bundle.subPackets().forEach(this::receive);
             case ClientboundPlayerPositionPacket pos -> {
                 // The server waits only for the last id.
+                //? if >=26.1 {
+                /*teleportId = pos.id();
+                *///?} else {
                 teleportId = pos.getId();
+                //?}
                 teleportPending = true;
                 acceptTeleport();
             }
@@ -395,13 +410,13 @@ public final class Bot {
     private void acceptTeleport() {
         if (!teleportPending) return;
         ServerPlayer p = player();
-        if (p.serverLevel().getChunkSource().getChunkNow(p.getBlockX() >> 4, p.getBlockZ() >> 4) == null) return;
+        if (Mc.level(p).getChunkSource().getChunkNow(p.getBlockX() >> 4, p.getBlockZ() >> 4) == null) return;
         teleportPending = false;
         send(new ServerboundAcceptTeleportationPacket(teleportId));
     }
 
     private void chat(ChatType.Bound type, String text) {
-        String kind = type.chatType().unwrapKey().map(k -> k.location().getPath()).orElse("chat");
+        String kind = type.chatType().unwrapKey().map(k -> Mc.id(k).getPath()).orElse("chat");
         JsonObject m = mail(kind.startsWith("msg_command") || kind.startsWith("team_msg") ? "whisper" : "chat", text, type.name().getString());
         m.addProperty("chat_type", kind);
         // A whisper to the bot goes to the GM: otherwise the feed hides private messages.
@@ -462,7 +477,7 @@ public final class Bot {
         o.addProperty("online", channel.isOpen());
         if (channel.isOpen()) {
             ServerPlayer p = player();
-            o.addProperty("dimension", p.level().dimension().location().toString());
+            o.addProperty("dimension", Mc.id(p.level().dimension()).toString());
             o.add("pos", Observe.vec(p.position()));
             o.addProperty("health", Math.round(p.getHealth() * 10) / 10.0);
             if (p.isDeadOrDying()) o.addProperty("dead", true);
@@ -477,7 +492,7 @@ public final class Bot {
 
     /** Details: body (like {@code player}), open menu, keys, programs and inbox after {@code after}. */
     public JsonObject describe(long after) {
-        JsonObject o = Observe.details(player().server, player());
+        JsonObject o = Observe.details(Mc.server(player()), player());
         o.addProperty("bot", true);
         o.addProperty("marked", marked);
         o.addProperty("auto_respawn", autoRespawn);

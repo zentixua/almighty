@@ -12,6 +12,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.work.Budget;
 import ua.zentix.almighty.work.Job;
 import ua.zentix.almighty.world.Areas;
@@ -28,11 +29,20 @@ import java.util.Arrays;
  * fresh chunk's pending block entity (otherwise replacement would leave its data under the new block), snapshot
  * the old block and block entity data, {@code Clearable.tryClear} (chest contents do not spill),
  * {@code BlockInput.place} with {@code UPDATE_CLIENTS}; after the portion, call {@code blockUpdated} for its
- * positions. The snapshot of all changed positions enables undo ({@code undo}), which is itself the same kind
+ * positions (26.x, as its {@code /fill}: also {@code UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS}, then
+ * {@code updateNeighboursOnBlockSet} with the old state, which also runs the old block's removal updates).
+ * The snapshot of all changed positions enables undo ({@code undo}), which is itself the same kind
  * of job with its own snapshot. Undo does not restore changes outside the box (a torch detached when its wall
  * is removed becomes an item), or entities.
  */
 public final class BuildJob extends Job {
+    /** Placement flags, as {@code /fill}. */
+    //? if >=26.1 {
+    /*private static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS;
+    *///?} else {
+    private static final int FLAGS = Block.UPDATE_CLIENTS;
+    //?}
+
     @Override
     public boolean effects() {
         return true;
@@ -62,6 +72,8 @@ public final class BuildJob extends Job {
     }
 
     private final ServerLevel level;
+    //? if >=26.1
+    /*private BlockState lastOld;*/
     private final Areas areas;
     private final int[] bounds;
     private final long timeoutTicks;
@@ -174,17 +186,27 @@ public final class BuildJob extends Job {
             running();
         }
         long[] updated = new long[UNIT];
+        //? if >=26.1
+        /*BlockState[] before = new BlockState[UNIT];*/
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         do {
             // A portion is UNIT positions, including unchanged ones (air over air, keep); otherwise an empty box would run in one portion.
             int n = 0;
             boolean more = true;
             for (int k = 0; k < UNIT && (more = advance(pos)); k++) {
-                if (put(pos)) updated[n++] = pos.asLong();
+                if (put(pos)) {
+                    //? if >=26.1
+                    /*before[n] = lastOld;*/
+                    updated[n++] = pos.asLong();
+                }
             }
             for (int i = 0; i < n; i++) {
                 pos.set(updated[i]);
+                //? if >=26.1 {
+                /*level.updateNeighboursOnBlockSet(pos, before[i]);
+                *///?} else {
                 level.blockUpdated(pos, level.getBlockState(pos).getBlock());
+                //?}
             }
             if (!more) {
                 finish();
@@ -212,6 +234,8 @@ public final class BuildJob extends Job {
             throw new IllegalStateException("chunk " + (pos.getX() >> 4) + ", " + (pos.getZ() >> 4) + " unloaded during the build");
         }
         BlockState old = level.getBlockState(pos);
+        //? if >=26.1
+        /*lastOld = old;*/
         if (plan != null && cursor.keep && !old.isAir()) {
             kept++;
             return false;
@@ -227,17 +251,17 @@ public final class BuildJob extends Job {
         // Initialize the fresh chunk's pending block entity so its data does not survive under the new block.
         BlockEntity be = level.getBlockEntity(pos);
         CompoundTag oldTag = be != null ? be.saveWithFullMetadata(level.registryAccess()) : null;
-        Clearable.tryClear(be);
+        if (be instanceof Clearable container) container.clearContent();
         boolean changed;
         if (plan != null) {
-            changed = cursor.block.place(level, pos, Block.UPDATE_CLIENTS);
+            changed = cursor.block.place(level, pos, FLAGS);
         } else {
             BlockState target = Block.stateById(restore.state[restoreAt]);
-            changed = level.setBlock(pos, target, Block.UPDATE_CLIENTS);
+            changed = level.setBlock(pos, target, FLAGS);
             CompoundTag tag = restore.nbt.get(restoreAt);
             BlockEntity restored = tag != null ? level.getBlockEntity(pos) : null;
             if (restored != null) {
-                restored.loadWithComponents(tag, level.registryAccess());
+                Mc.loadBlockEntity(restored, tag, level.registryAccess());
                 restored.setChanged();
                 level.sendBlockUpdated(pos, target, target, Block.UPDATE_CLIENTS);
                 changed = true;

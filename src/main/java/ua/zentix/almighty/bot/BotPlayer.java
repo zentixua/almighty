@@ -24,4 +24,11 @@ public final class BotPlayer extends ServerPlayer {
     public boolean isLocalPlayer() {
         return Vehicles.local(this);
     }
+    //? if >=26.1 {
+    /*// 26.x: the server moves a vehicle whose driver is not client-authoritative (isLocalInstanceAuthoritative).
+    @Override
+    public boolean isClientAuthoritative() {
+        return !Vehicles.local(this);
+    }
+    *///?}
 }

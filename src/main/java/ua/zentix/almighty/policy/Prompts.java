@@ -8,6 +8,7 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import ua.zentix.almighty.GmConfig;
+import ua.zentix.almighty.platform.Mc;
 
 import java.util.List;
 
@@ -28,8 +29,8 @@ public final class Prompts {
 
     private static Component button(String label, String command, ChatFormatting color) {
         return Component.literal("[" + label + "]").withStyle(s -> s.withColor(color).withBold(true)
-                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, command))
-                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(command))));
+                .withClickEvent(Mc.runCommand(command))
+                .withHoverEvent(Mc.showText(Component.literal(command))));
     }
 
     /** The question to the player who must decide a requester confirmation. */
@@ -69,7 +70,7 @@ public final class Prompts {
     public static Component digest(List<Confirmations.Pending> waiting) {
         return prefix().append(Component.literal(waiting.size() + " request(s) waiting for an admin — ").withStyle(ChatFormatting.GRAY))
                 .append(Component.literal("/almighty inbox").withStyle(s -> s.withColor(ChatFormatting.AQUA).withUnderlined(true)
-                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/almighty inbox"))));
+                        .withClickEvent(Mc.runCommand("/almighty inbox"))));
     }
 
     /** A plain server line to a player (receipts, outcomes). */
@@ -81,7 +82,7 @@ public final class Prompts {
     public static Component receipt(String text, Long job) {
         MutableComponent c = prefix().append(Component.literal("Done for you: " + text + " ").withStyle(ChatFormatting.GRAY));
         if (job != null) c.append(Component.literal("[Undo]").withStyle(s -> s.withColor(ChatFormatting.GOLD)
-                .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/almighty undo " + job))));
+                .withClickEvent(Mc.suggestCommand("/almighty undo " + job))));
         return c;
     }
 }

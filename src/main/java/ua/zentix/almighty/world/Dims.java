@@ -8,6 +8,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,13 +33,13 @@ public final class Dims {
         ServerLevel level = server.getLevel(ResourceKey.create(Registries.DIMENSION, location));
         if (level == null) {
             List<String> known = new ArrayList<>();
-            for (ServerLevel l : server.getAllLevels()) known.add(l.dimension().location().toString());
+            for (ServerLevel l : server.getAllLevels()) known.add(Mc.id(l.dimension()).toString());
             throw RpcException.notFound("No dimension " + id + "; dimensions: " + String.join(", ", known));
         }
         return level;
     }
 
     public static String id(ServerLevel level) {
-        return level.dimension().location().toString();
+        return Mc.id(level.dimension()).toString();
     }
 }

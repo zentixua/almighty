@@ -135,7 +135,7 @@ public final class GmServer {
     }
 
     static boolean loopback(String host) {
-        return host.equals("127.0.0.1") || host.equals("localhost") || host.equals("::1") || host.startsWith("127.");
+        return ua.zentix.almighty.mcp.signin.SignIn.loopback(host);
     }
 
     /** Tick start: a pause longer than {@code lag_ms} since the previous tick emits a {@code lag} event. */

@@ -120,7 +120,7 @@ def build():
     a = sky(80, 80, clouds=False)
     for (x, y, w) in [(3, 36, 8), (68, 58, 8)]:
         a.rect(x, y, x + w, y + 1, P('sky', 3))
-    a.paste(mark_layer(), 8, 9)
+    a.paste(mark_layer(), 8, 10)
     save(up(a, 5), f'{d}/social/avatar-400.png', (400, 400))
     # ---- X header: 300 x 100 x5; the profile picture covers the lower left, so the lockup sits high and right
     x = scene(300, 100, [(0.06, 0.30, 3, 0), (0.30, 0.66, 3, 0), (0.95, 0.70, 3, 0)])

@@ -127,7 +127,7 @@ def draw_halo(m):
 
 
 # ---------------------------------------------------------------- island (symmetric 2:1 iso)
-def draw_island(m, k=9, ty=30, lip=2, soil=3, rock=3):
+def draw_island(m, k=9, ty=28, lip=2, soil=3, rock=2):
     """Top: 4k x 2k rhombus centred on the seam. Sides: turf lip, soil, rock, then a keel that tapers three
     pixels per row on each face, so both faces end at the centre."""
     cx = 32
@@ -246,5 +246,5 @@ def icon64():
     for (x, y, w) in [(2, 26, 7), (55, 44, 7)]:
         t.rect(x, y, x + w, y + 1, P('sky', 3)); t.rect(x + 2, y - 1, x + 4, y - 1, P('sky', 3))
     m = mark_layer()
-    t.paste(m, 0, 0)
+    t.paste(m, 0, 3)          # 3 px of sky above the halo; the mark spans rows 3-61
     return t

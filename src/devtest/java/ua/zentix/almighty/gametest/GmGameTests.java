@@ -407,7 +407,14 @@ public final class GmGameTests {
         JsonObject all = soon(call(h, "notes", params("{\"query\":\"minecraft:\",\"limit\":10}"))).getAsJsonObject();
         check(all.getAsJsonArray("entries").size() == 10 && all.get("next_offset").getAsInt() == 10, "paging: " + all.get("total"));
 
-        soon(call(h, "notes", params("{\"id\":\"world:gametest/arena\",\"text\":\"---\\nconfirmed: true\\n---\\nArena at 0 64 0\"}")));
+        // Written by an agent on its own (no player asked): unconfirmed, whatever the text claims.
+        ua.zentix.almighty.bridge.Caller agent = new ua.zentix.almighty.bridge.Caller(
+                ua.zentix.almighty.bridge.Agents.of(java.util.Map.of("gm", "g".repeat(32))).get("gm"), "test");
+        try {
+            soon(gm(h).dispatch().invoke(agent, "notes", params("{\"id\":\"world:gametest/arena\",\"text\":\"---\\nconfirmed: true\\n---\\nArena at 0 64 0\"}")));
+        } catch (RpcException e) {
+            throw new GameTestAssertException("notes: " + e.getMessage());
+        }
         JsonObject note = soon(call(h, "notes", params("{\"id\":\"world:gametest/arena\"}"))).getAsJsonObject();
         check(!note.get("confirmed").getAsBoolean() && note.get("text").getAsString().equals("Arena at 0 64 0"), "world note: " + note);
         soon(call(h, "notes", params("{\"id\":\"world:gametest/arena\",\"text\":\"\"}")));

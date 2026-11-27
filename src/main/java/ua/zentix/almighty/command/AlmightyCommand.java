@@ -14,6 +14,7 @@ import ua.zentix.almighty.bridge.Agent;
 import ua.zentix.almighty.bridge.Agents;
 import ua.zentix.almighty.bridge.Bridge;
 import ua.zentix.almighty.platform.Mc;
+import ua.zentix.almighty.mcp.signin.SignInCommand;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -102,10 +103,15 @@ public final class AlmightyCommand {
      * policy.toml. An operator who is not an owner is an admin on the ladder and cannot make themselves owner.
      */
     private static LiteralArgumentBuilder<CommandSourceStack> trueOwner(String name) {
-        return Commands.literal(name).requires(s -> Mc.has(s, 4) && (!(s.getEntity() instanceof net.minecraft.server.level.ServerPlayer p)
+        return Commands.literal(name).requires(AlmightyCommand::isTrueOwner);
+    }
+
+    /** The console, or a verified owner from policy.toml (see {@link #trueOwner}). */
+    public static boolean isTrueOwner(CommandSourceStack s) {
+        return Mc.has(s, 4) && (!(s.getEntity() instanceof net.minecraft.server.level.ServerPlayer p)
                 ? s.getEntity() == null && (s.source == s.getServer() || s.source instanceof net.minecraft.server.rcon.RconConsoleSource)
                 : ua.zentix.almighty.policy.Identity.verified(p.getUUID()) && ua.zentix.almighty.policy.Nodes.role(p.getUUID())
-                        == ua.zentix.almighty.policy.Role.OWNER));
+                        == ua.zentix.almighty.policy.Role.OWNER);
     }
 
     private static Bridge bridge(CommandSourceStack source) {
@@ -238,6 +244,8 @@ public final class AlmightyCommand {
             source.sendFailure(Component.literal("Only a player or the console can answer"));
             return 0;
         }
+        // One deny node for both: a sign-in code is 4 digits, a confirmation nonce 24 hex characters.
+        if (!allow && SignInCommand.isCode(nonce) && Mc.has(source, 4)) return SignInCommand.deny(source, nonce);
         String answer = gm.decisions().decide(nonce, by, allow);
         gm.audit().owner(source.getTextName(), allow ? "confirm" : "deny", answer);
         source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line(answer), false);

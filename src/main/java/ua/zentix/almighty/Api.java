@@ -93,8 +93,17 @@ public final class Api {
                 return s;
             });
         });
-        // World notes are unconfirmed until the gate knows when an agent acts with the owner's authority.
-        m.put("notes", a -> Knowledge.notes(gm, a, new Notes.Author(a.caller().name(), null, false)));
+        // Provenance set by the server (plan 5.4): the requester of the call, and confirmed when the owner asked
+        // (an in-process call, or a request whose player is an owner), the same origin rule as policy edits.
+        m.put("notes", a -> {
+            java.util.UUID requester = a.caller().requester();
+            boolean confirmed = a.caller().agent() == null;
+            if (!confirmed && requester != null) {
+                ua.zentix.almighty.policy.Gate.Rights r = gm.gate().rights(a.caller(), a.raw());
+                confirmed = r.ticket() != null && r.effective() == ua.zentix.almighty.policy.Role.OWNER;
+            }
+            return Knowledge.notes(gm, a, new Notes.Author(a.caller().name(), requester == null ? null : requester.toString(), confirmed));
+        });
         m.put("players", a -> gm.onMain(() -> Observe.players(server)));
         m.put("player", a -> gm.onMain(() -> Observe.player(server, a)));
         m.put("entities", a -> gm.onMain(() -> Observe.entities(server, a)));

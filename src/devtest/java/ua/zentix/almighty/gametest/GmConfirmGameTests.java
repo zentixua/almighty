@@ -54,6 +54,12 @@ public final class GmConfirmGameTests {
         throw new GameTestAssertException("no /gm event");
     }
 
+    /** Whether the player may run the whole command line (parsed to its end, to a node that executes). */
+    private static boolean runs(com.mojang.brigadier.CommandDispatcher<net.minecraft.commands.CommandSourceStack> dispatcher, String cmd, ServerPlayer p) {
+        var parse = dispatcher.parse(cmd, p.createCommandSourceStack());
+        return parse.getExceptions().isEmpty() && !parse.getReader().canRead() && parse.getContext().getCommand() != null;
+    }
+
     private static void op(GameTestHelper h, ServerPlayer p, int level) {
         Gt.op(h.getLevel().getServer(), p.getGameProfile(), level);
         Nodes.refresh(h.getLevel().getServer());
@@ -112,8 +118,21 @@ public final class GmConfirmGameTests {
             }
             Confirmations.Pending p = gm.decisions().confirmations().get(id);
             check(!e2s(gm.decisions().decide(p.nonce(), null, true)).startsWith("Allowed"), "the console cannot answer for the requester");
-            String answer = gm.decisions().decide(p.nonce(), alex, true);
-            check(answer.startsWith("Allowed"), answer);
+            // Typed by the player as the prompt's [Allow] button does: /almighty is reachable below level 4 (the
+            // sign-in subcommands share the node and must not put their level on it).
+            var server = h.getLevel().getServer();
+            var dispatcher = server.getCommands().getDispatcher();
+            for (String cmd : new String[] {"almighty whoami", "almighty confirm " + p.nonce(), "almighty deny " + p.nonce()}) {
+                check(runs(dispatcher, cmd, alex), "a level-2 player cannot type /" + cmd);
+            }
+            for (String cmd : new String[] {"almighty approve", "almighty connect", "almighty pause"}) {
+                check(!runs(dispatcher, cmd, alex), "a level-2 player can run /" + cmd);
+            }
+            server.getCommands().performPrefixedCommand(alex.createCommandSourceStack(), "almighty confirm " + p.nonce());
+            // A level-4 operator who is not an owner approves sign-ins, but never an app with the owner's rights.
+            op(h, alex, 4);
+            check(runs(dispatcher, "almighty approve 1234 app", alex), "a level-4 operator cannot approve a sign-in");
+            check(!runs(dispatcher, "almighty approve 1234 app owner", alex), "a level-4 operator who is not an owner can approve an owner app");
             JsonObject state = gm.decisions().pending("gm", id, 0).join();
             check(state.get("state").getAsString().equals("done"), "ran after confirmation: " + state);
         } finally {

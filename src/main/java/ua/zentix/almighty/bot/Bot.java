@@ -37,8 +37,6 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.fml.util.ObfuscationReflectionHelper;
-import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import org.slf4j.Logger;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.script.Json;
@@ -118,8 +116,8 @@ public final class Bot {
         this.connection = new Connection(PacketFlow.SERVERBOUND);
         // Register the channel immediately: Connection receives channelActive with the "embedded" address.
         this.channel = new EmbeddedChannel(sink, connection);
-        // Like NeoForge GameTest: both ends are NeoForge with all mod channels; otherwise the bot cannot receive mod packets.
-        NetworkRegistry.configureMockConnection(connection);
+        // Like the loader's GameTest: both ends speak the loader with all mod channels; otherwise the bot cannot receive mod packets.
+        ua.zentix.almighty.platform.Platform.get().configureMockConnection(connection);
     }
 
     Connection connection() {
@@ -268,8 +266,8 @@ public final class Bot {
             if (broken) return;
             try {
                 if (chat == null) {
-                    chat = ObfuscationReflectionHelper.findField(ServerGamePacketListenerImpl.class, "chatSpamTickCount");
-                    drop = ObfuscationReflectionHelper.findField(ServerGamePacketListenerImpl.class, "dropSpamTickCount");
+                    chat = ua.zentix.almighty.platform.Reflect.field(ServerGamePacketListenerImpl.class, "chatSpamTickCount");
+                    drop = ua.zentix.almighty.platform.Reflect.field(ServerGamePacketListenerImpl.class, "dropSpamTickCount");
                 }
                 int c = chat.getInt(listener), d = drop.getInt(listener);
                 if (c > 0) chat.setInt(listener, c - 1);

@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
-import net.neoforged.fml.loading.FMLPaths;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
@@ -38,7 +37,7 @@ public final class Knowledge {
 
     /** The owner's server-wide notes. */
     public static Path serverNotes() {
-        return FMLPaths.CONFIGDIR.get().resolve("almighty").resolve("notes");
+        return ua.zentix.almighty.platform.Platform.get().configDir().resolve("almighty").resolve("notes");
     }
 
     /** World notes: they follow the world into backups and restores. */

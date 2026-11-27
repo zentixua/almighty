@@ -7,8 +7,6 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import ua.zentix.almighty.GmConfig;
 import ua.zentix.almighty.GmServer;
 
@@ -23,12 +21,8 @@ public final class GmCommand {
 
     private GmCommand() {}
 
-    public static void register(IEventBus bus) {
-        bus.addListener(GmCommand::onRegister);
-    }
-
-    private static void onRegister(RegisterCommandsEvent e) {
-        e.getDispatcher().register(Commands.literal(NAME)
+    public static void register(com.mojang.brigadier.CommandDispatcher<CommandSourceStack> dispatcher) {
+        dispatcher.register(Commands.literal(NAME)
                 .then(Commands.argument("text", StringArgumentType.greedyString())
                         .executes(c -> send(c.getSource(), StringArgumentType.getString(c, "text")))));
     }

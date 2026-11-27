@@ -9,8 +9,6 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.Agent;
 import ua.zentix.almighty.bridge.Agents;
@@ -30,16 +28,12 @@ import java.util.List;
 public final class AlmightyCommand {
     private AlmightyCommand() {}
 
-    public static void register(IEventBus bus) {
-        bus.addListener(AlmightyCommand::onRegister);
-    }
-
     private static final SuggestionProvider<CommandSourceStack> AGENTS = (c, b) -> {
         Bridge bridge = bridge(c.getSource());
         return SharedSuggestionProvider.suggest(bridge == null ? List.of() : bridge.agents().names(), b);
     };
 
-    private static void onRegister(RegisterCommandsEvent e) {
+    public static void register(com.mojang.brigadier.CommandDispatcher<CommandSourceStack> dispatcher) {
         // Owner subcommands need permission level 4 (the console, level-4 operators); whoami is for everyone.
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("almighty");
         root.then(Commands.literal("whoami").executes(c -> whoami(c.getSource())));
@@ -94,7 +88,7 @@ public final class AlmightyCommand {
                         .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
                                 .executes(c -> log(c.getSource(), StringArgumentType.getString(c, "who"),
                                         IntegerArgumentType.getInteger(c, "count"))))));
-        e.getDispatcher().register(root);
+        dispatcher.register(root);
     }
 
     /** An owner subcommand: permission level 4. */

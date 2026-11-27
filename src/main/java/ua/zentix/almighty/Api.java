@@ -27,7 +27,6 @@ import ua.zentix.almighty.building.BuildJob;
 import ua.zentix.almighty.building.BuildPlan;
 import ua.zentix.almighty.knowledge.Knowledge;
 import ua.zentix.almighty.knowledge.Notes;
-import ua.zentix.almighty.rules.EventTypes;
 import ua.zentix.almighty.rules.Rules;
 import ua.zentix.almighty.script.Json;
 import ua.zentix.almighty.script.ScriptApi;
@@ -322,7 +321,7 @@ public final class Api {
         m.put("event.types", a -> {
             String query = a.string("query", "");
             int limit = a.integer("limit", 50, 1, 500);
-            return CompletableFuture.completedFuture(Json.from(EventTypes.search(query, limit)));
+            return CompletableFuture.completedFuture(Json.from(ua.zentix.almighty.platform.Platform.get().events().search(query, limit)));
         });
         m.put("audit", a -> {
             int limit = a.integer("limit", 50, 1, 1000);

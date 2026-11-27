@@ -11,8 +11,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.mcp.Connect;
 import ua.zentix.almighty.mcp.Mcp;
@@ -30,11 +28,7 @@ import java.util.List;
 public final class SignInCommand {
     private SignInCommand() {}
 
-    public static void register(IEventBus bus) {
-        bus.addListener(SignInCommand::onRegister);
-    }
-
-    private static void onRegister(RegisterCommandsEvent e) {
+    public static void register(com.mojang.brigadier.CommandDispatcher<CommandSourceStack> dispatcher) {
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("almighty").requires(s -> s.hasPermission(4));
         root.then(Commands.literal("approve").executes(c -> waiting(c.getSource()))
                 .then(Commands.argument("code", StringArgumentType.word()).executes(c -> approve(c, null, false))
@@ -42,7 +36,7 @@ public final class SignInCommand {
                                 .then(Commands.literal("owner").executes(c -> approve(c, StringArgumentType.getString(c, "name"), true))))));
         root.then(Commands.literal("deny").then(Commands.argument("code", StringArgumentType.word()).executes(SignInCommand::deny)));
         root.then(Commands.literal("connect").executes(c -> connect(c.getSource())));
-        e.getDispatcher().register(root);
+        dispatcher.register(root);
     }
 
     private static Mcp mcp(CommandSourceStack source) {

@@ -26,7 +26,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.bus.api.Event;
+import ua.zentix.almighty.platform.Platform;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
@@ -92,7 +92,7 @@ public final class Json {
         if (v instanceof Class<?> c) return text(c.getName());
         if (v instanceof Throwable t) return text(t.toString());
         if (depth <= 0) return text(String.valueOf(v));
-        if (v instanceof Event e) return fields(e, Math.min(depth, EVENT_DEPTH));
+        if (Platform.present() && Platform.get().events().isEvent(v)) return fields(v, Math.min(depth, EVENT_DEPTH));
         if (v instanceof Map<?, ?> m) {
             JsonObject out = new JsonObject();
             int n = 0;
@@ -142,7 +142,7 @@ public final class Json {
 
     /**
      * Event properties: public parameterless {@code getX()}/{@code isX()} methods declared by the event and its
-     * ancestors (excluding {@link Event} and {@link Object}), alphabetically. Skip methods that throw.
+     * ancestors (excluding the loader's event base class and {@link Object}), alphabetically. Skip methods that throw.
      */
     public static JsonObject fields(Object event) {
         return fields(event, EVENT_DEPTH);
@@ -168,7 +168,7 @@ public final class Json {
     private static String property(Method m) {
         if (m.getParameterCount() != 0 || Modifier.isStatic(m.getModifiers()) || m.getReturnType() == void.class) return null;
         Class<?> owner = m.getDeclaringClass();
-        if (owner == Object.class || owner == Event.class) return null;
+        if (owner == Object.class || Platform.present() && owner == Platform.get().events().base()) return null;
         String n = m.getName();
         String bare = n.startsWith("get") && n.length() > 3 ? n.substring(3)
                 : n.startsWith("is") && n.length() > 2 && m.getReturnType() == boolean.class ? n.substring(2) : null;

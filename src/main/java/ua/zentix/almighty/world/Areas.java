@@ -14,7 +14,6 @@ import net.minecraft.server.level.Ticket;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.util.SortedArraySet;
 import net.minecraft.world.level.ChunkPos;
-import net.neoforged.fml.util.ObfuscationReflectionHelper;
 import org.slf4j.Logger;
 import ua.zentix.almighty.bridge.RpcException;
 
@@ -227,7 +226,7 @@ public final class Areas {
 
     private static Field ticketsField() {
         try {
-            return ObfuscationReflectionHelper.findField(DistanceManager.class, "tickets");
+            return ua.zentix.almighty.platform.Reflect.field(DistanceManager.class, "tickets");
         } catch (RuntimeException | LinkageError e) {
             LOG.error("GM: DistanceManager.tickets not found; leases cannot see where a mod refused a ticket (Sable ship plots)"
                     + " and remove tickets there too", e);

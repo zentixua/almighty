@@ -12,7 +12,6 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.animal.Pig;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.storage.LevelResource;
-import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import ua.zentix.almighty.Almighty;
@@ -271,7 +270,7 @@ public final class GmScriptGameTests {
             every = rule(h, "tick", "gm-test-every", "(state.gmTicks = state.gmTicks ?: []) << server.tickCount",
                     "every", 5, "limit", 3, "persist", true);
             check(read(store).contains("gm-test-every"), "rule was not saved: " + read(store));
-            Rules copy = new Rules(h.getLevel().getServer(), NeoForge.EVENT_BUS, gm.feed(), new HashMap<>(), store);
+            Rules copy = new Rules(h.getLevel().getServer(), ua.zentix.almighty.platform.Platform.get().events(), gm.feed(), new HashMap<>(), store);
             copy.load();
             JsonArray loaded = copy.describe();
             copy.stop();
@@ -356,7 +355,7 @@ public final class GmScriptGameTests {
         Path dir = h.getLevel().getServer().getWorldPath(LevelResource.ROOT).resolve("almighty");
         Path store = dir.resolve("rules-store-test.json"), broken = dir.resolve("rules-broken-test.json");
         GmServer gm = gm(h);
-        Rules rules = new Rules(h.getLevel().getServer(), NeoForge.EVENT_BUS, gm.feed(), new HashMap<>(), store);
+        Rules rules = new Rules(h.getLevel().getServer(), ua.zentix.almighty.platform.Platform.get().events(), gm.feed(), new HashMap<>(), store);
         try {
             Files.createDirectories(dir);
             Files.writeString(store, "{\"rules\": [{\"event\": \"NoSuchGmTestEvent\", \"name\": \"gm-test-lost\", \"persist\": true}]}");
@@ -376,11 +375,11 @@ public final class GmScriptGameTests {
             check(!read(store).contains("gm-test-lost") && rules.describe().size() == 1, "removed: " + read(store));
 
             Files.writeString(broken, "{\"rules\": [");
-            Rules other = new Rules(h.getLevel().getServer(), NeoForge.EVENT_BUS, gm.feed(), new HashMap<>(), broken);
+            Rules other = new Rules(h.getLevel().getServer(), ua.zentix.almighty.platform.Platform.get().events(), gm.feed(), new HashMap<>(), broken);
             other.load();
             check(!Files.exists(broken) && read(dir.resolve("rules-broken-test.json.bad")).equals("{\"rules\": ["), "corrupt file was not moved aside");
             Files.writeString(broken, "{}");
-            new Rules(h.getLevel().getServer(), NeoForge.EVENT_BUS, gm.feed(), new HashMap<>(), broken).load();
+            new Rules(h.getLevel().getServer(), ua.zentix.almighty.platform.Platform.get().events(), gm.feed(), new HashMap<>(), broken).load();
             check(!Files.exists(broken) && read(dir.resolve("rules-broken-test.json.bad")).equals("{}"), "file without rules list was not moved aside");
         } catch (IOException | RpcException e) {
             throw new GameTestAssertException(e.toString());

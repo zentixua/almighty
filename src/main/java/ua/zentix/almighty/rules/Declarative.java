@@ -90,8 +90,7 @@ public final class Declarative {
 
     /** Whether events of this type have a place in the world (a block's, or an entity's): cancels can be zone-limited. */
     public static boolean placed(Class<?> type) {
-        return net.neoforged.neoforge.event.level.BlockEvent.class.isAssignableFrom(type)
-                || net.neoforged.neoforge.event.entity.EntityEvent.class.isAssignableFrom(type);
+        return ua.zentix.almighty.platform.Platform.get().events().placed(type);
     }
 
     /** Null when neither is given (a rule that writes event fields to the feed, as before). */

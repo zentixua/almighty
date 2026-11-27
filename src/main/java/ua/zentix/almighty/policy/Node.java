@@ -50,7 +50,7 @@ public enum Node {
     }
 
     /** NeoForge node names allow lowercase letters, digits, {@code _} and dots. */
-    String nodeName() {
+    public String nodeName() {
         return id.toLowerCase(Locale.ROOT);
     }
 

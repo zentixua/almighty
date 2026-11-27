@@ -279,7 +279,7 @@ public final class SignIn {
     }
 
     /** {@code localhost} or a loopback IP literal; a name such as {@code 127.evil.example} is not. */
-    static boolean loopback(String host) {
+    public static boolean loopback(String host) {
         if (host == null) return false;
         String h = host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
         if (h.equalsIgnoreCase("localhost")) return true;

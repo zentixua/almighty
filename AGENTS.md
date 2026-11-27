@@ -72,6 +72,13 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   agent's token, `config/almighty/agents/<name>.token`); sign-in only ever rotates agents it created. State:
   `config/almighty/oauth/` (clients, hashed refresh tokens). `/almighty connect`: address, per-product lines and
   secret-free links (`mcp/Connect`). The issuer is `bridge.public_url` or the request's loopback/bridge host.
+  `/almighty approve <code> <name> owner` (`OwnerApp`): the owner's own app, `[agents.<name>] ceiling = "owner"` added
+  to `policy.toml` (validated, then `Policies.reload`); without it the gate's default ceiling applies (`admin`).
+- TLS (`bridge/Tls`): with `bridge.tls_cert` + `bridge.tls_key` (owner's PEM chain and PKCS#8 key, JDK only) the bridge
+  is HTTPS only; sign-in and `/almighty connect` then use https. A non-loopback bind without TLS logs a warning but
+  still starts (plan 7.2 said refuse: that would stop setups binding a private container address, as Open Skies may).
+  No self-signed generation: owners put a reverse proxy or tunnel in front, or bring a certificate.
+  `bridge.integrated` starts the bridge on single-player/LAN worlds, loopback only.
 - `bridge/`: Java's own HTTP (`com.sun.net.httpserver`): `POST /rpc` `{"method", "params"}` → `{"ok": true, "result"}`
   or `{"ok": false, "error": {code, message}}`. Threads: a 4-thread accept pool checks the request and hands it to a
   bounded call pool (8 threads) or long-poll pool (16 threads, methods in `Api.LONG`); a full queue (64) → 503.

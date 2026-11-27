@@ -40,6 +40,7 @@ public final class SignInEndpoints implements HttpHandler {
     private static final int MAX_BODY = 64 * 1024;
 
     private final SignIn signIn;
+    private final String scheme;
     private final java.util.Set<String> allowedOrigins;
     /** Client metadata fetches in flight: at most two bridge threads ever wait on a remote server. */
     private final java.util.concurrent.Semaphore fetches = new java.util.concurrent.Semaphore(2);
@@ -55,6 +56,13 @@ public final class SignInEndpoints implements HttpHandler {
     /** {@code allowedOrigins}: browser origins that may register clients and redeem codes (bridge.allowed_origins). */
     public SignInEndpoints(SignIn signIn, String publicUrl, String bridgeHost, int port, java.util.Set<String> allowedOrigins,
                            Consumer<SignIn.Pending> notifyOwners) {
+        this(signIn, publicUrl, bridgeHost, port, false, allowedOrigins, notifyOwners);
+    }
+
+    /** {@code https}: the bridge itself speaks HTTPS, so its own addresses are https. */
+    public SignInEndpoints(SignIn signIn, String publicUrl, String bridgeHost, int port, boolean https, java.util.Set<String> allowedOrigins,
+                           Consumer<SignIn.Pending> notifyOwners) {
+        this.scheme = https ? "https://" : "http://";
         this.allowedOrigins = java.util.Set.copyOf(allowedOrigins);
         this.signIn = signIn;
         this.publicUrl = publicUrl == null || publicUrl.isBlank() ? null : SignIn.stripSlash(publicUrl.strip());
@@ -140,10 +148,10 @@ public final class SignInEndpoints implements HttpHandler {
             if (host == null || !loopbackHost(host)) return publicUrl;
         }
         String host = exchange.getRequestHeaders().getFirst("Host");
-        if (host == null) return "http://127.0.0.1:" + port;
+        if (host == null) return scheme + "127.0.0.1:" + port;
         String name = host.startsWith("[") ? host.substring(0, host.indexOf(']') + 1) : host.contains(":") ? host.substring(0, host.lastIndexOf(':')) : host;
         if (!SignIn.loopback(name) && !name.equalsIgnoreCase(bridgeHost)) return null;
-        return "http://" + host;
+        return scheme + host;
     }
 
     private static boolean loopbackHost(String host) {

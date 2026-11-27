@@ -17,6 +17,10 @@ import ua.zentix.almighty.audit.Pause;
 import ua.zentix.almighty.feed.Feed;
 import ua.zentix.almighty.feed.Inbox;
 import ua.zentix.almighty.mcp.McpEndpoint;
+import ua.zentix.almighty.policy.Gate;
+import ua.zentix.almighty.policy.Nodes;
+import ua.zentix.almighty.policy.Policies;
+import ua.zentix.almighty.policy.Policy;
 import ua.zentix.almighty.policy.Tickets;
 import ua.zentix.almighty.policy.DenyList;
 import ua.zentix.almighty.rules.Rules;
@@ -49,6 +53,8 @@ public final class GmServer {
 
     /** GameTest jobs measure time with their own clock: ticks run without pauses, so wall-clock time is unsuitable. */
     public static LongSupplier clock = System::nanoTime;
+    /** {@code config/almighty} of the running server (policy, agents). */
+    private static Path configDir;
 
     private final MinecraftServer server;
     private final Feed feed = new Feed();
@@ -62,6 +68,8 @@ public final class GmServer {
     private final Tickets tickets = new Tickets(System::currentTimeMillis);
     private final Inbox inbox;
     private final Pause pause = new Pause();
+    private final Policies policies;
+    private final Gate gate;
     private static final java.util.Set<String> PAUSE_ALLOWS = java.util.Set.of("cancel", "area.release", "rule.remove", "bot.remove");
     private final Audit audit;
     private Bridge bridge;
@@ -89,6 +97,11 @@ public final class GmServer {
         jobs.paused(pause::paused);
         rules.paused(pause::all);
         this.inbox = new Inbox(server, feed, tickets, () -> bridge == null ? null : bridge.agents());
+        this.policies = new Policies(GmServer.configDir == null ? null : GmServer.configDir.resolve("policy.toml"));
+        this.gate = new Gate(policies, tickets, Nodes::holds, name -> {
+            net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayerByName(name);
+            return p != null && bots.of(p) != null;
+        });
         this.dispatch = new Dispatch(Api.methods(this), List.of(
                 (caller, method, params) -> DenyList.check(method, params),
                 (caller, method, params) -> {
@@ -96,7 +109,8 @@ public final class GmServer {
                     if (!Api.readOnly(method, params) && !PAUSE_ALLOWS.contains(method) && pause.paused(caller.name())) {
                         throw new RpcException(423, "paused", "Paused by the owner (/almighty resume): only reading is allowed");
                     }
-                }),
+                },
+                gate),
                 Api::readOnly);
         dispatch.listen((caller, method, params, text, result, error, nanos) ->
                 audit.ended(caller, method, params, text, result, error, nanos, Api.readOnly(method, params)));
@@ -109,9 +123,13 @@ public final class GmServer {
     }
 
     static GmServer start(MinecraftServer server, Path configDir) {
-        ua.zentix.almighty.policy.Identity.mode(ua.zentix.almighty.policy.Identity.Mode.parse(GmConfig.FEED_IDENTITY.get()));
+        // An existing install (its token predates this start) keeps the behaviour it had: preset private.
+        boolean existing = java.nio.file.Files.exists(configDir.resolve("token"));
+        GmServer.configDir = configDir;
         GmServer gm = new GmServer(server);
         current = gm;
+        gm.policies.load(existing ? Policy.Preset.PRIVATE : Policy.Preset.PRIVATE);
+        Nodes.start(server, gm.policies::current);
         gm.rules.load();
         if (server.isDedicatedServer() && GmConfig.BRIDGE_ENABLED.get()) {
             try {
@@ -218,6 +236,7 @@ public final class GmServer {
     }
 
     static void stopped(MinecraftServer server) {
+        Nodes.stop(server);
         if (current != null && current.server == server) current = null;
     }
 
@@ -243,6 +262,14 @@ public final class GmServer {
 
     public Bots bots() {
         return bots;
+    }
+
+    public Policies policies() {
+        return policies;
+    }
+
+    public Gate gate() {
+        return gate;
     }
 
     public Audit audit() {

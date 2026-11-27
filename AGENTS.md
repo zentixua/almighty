@@ -98,6 +98,20 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   `Dispatch.current()` is the caller of the running call; `GmServer.onMain` carries it to the server thread, so jobs
   (`Job.agent`) and bot programs know which agent acts; the future completes inside the caller's scope, so
   continuations on the server thread act as the same caller.
+- `policy/` gate (step 5): `config/almighty/policy.toml` (`Policy`, `Policies`: written with comments on first start,
+  `/almighty reload`, a bad file keeps the last good policy with the exact error): `preset` (private | friends |
+  public), `owners` (UUIDs), `identity`, `[agents.<name>]` `ceiling`/`floor`. `Node`: capabilities `almighty.<id>`
+  registered with the NeoForge permission API (`Nodes`; LuckPerms decides when installed; default resolver = role
+  ladder `Role`: policy owners (verified) → owner, op level ≥ 3 → admin, 2 → builder, verified → member on friends
+  and guest otherwise, unverified → guest whatever a plugin says). `Gate` (a `Dispatch` check after the deny list
+  and pause): every method maps to a node (`Gate.node`, parameters refine it: `see` a player, `rule.add` with
+  script, creative bots, payloads, `notes` with text); none → refused. Rights: no `for` → the agent's trust floor
+  (private: = ceiling; friends: member; public: guest; or `floor`); `for: <ticket>` → that player's rights, capped
+  by the ceiling (a ticket only narrows). Refusal 403 `policy` with `node` and `allowed`; `status` gives `rights`
+  (with `for`: that request's). `command`/`function` need owner until step 6 runs them as the requester.
+  In-process calls (`Caller.INTERNAL`: GameTest, the server) are not gated. Preset `private` with `gm` at ceiling
+  owner is today's behaviour; unlisted agents default to ceiling admin. `/almighty whoami` (anyone) shows UUID,
+  verification and role.
 - `policy/DenyList`: built-in deny list (from `crash_guard.py`), refused for every agent and harness: `stop`, `reload`,
   `save-off`, `save-all flush`, `forceload add`, `tick rate` > 100, `almighty …` (agents and policy are the owner's),
   far commands, builds, areas and bot spawns at Sable plot coordinates (|x| or |z| ≥ 20 000 000), bot chat commands;
@@ -125,8 +139,8 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   `ticket`; other chat has `addressed: false`. `events {mine: true}` leaves out messages routed to other agents; a
   read records the agent's cursor. Away: the target agent made no call for 60 s, or has not read the message after
   `feed.away_seconds` (30) → the server tells the player (translated; only for `/gm` and named lines, at most once
-  per player in 5 minutes); no bridge (GameTest) → no away replies. `feed.identity` (auto, mojang, proxy, offline)
-  sets which UUIDs count as verified.
+  per player in 5 minutes); no bridge (GameTest) → no away replies. `identity` in `policy.toml` (auto, mojang,
+  proxy, offline) sets which UUIDs count as verified.
 - `script/`: Groovy scripts (`Scripts`: compilation with a deadline, execution), scripts' `gm` variable (`ScriptApi`),
   values ↔ JSON (`Json`: position `[x, y, z]`, block string as in `/setblock`, NBT as SNBT, event via its `getX()`).
 - `rules/`: rules (`Rules`), subscribing to any game-bus event, budgets, persistence with the world
@@ -291,6 +305,10 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 ## Checks
 
+- Gate: `PolicyTest` (template = today's behaviour, floors, UUID owners, named mistakes, bad file keeps the last
+  good one), `GateTest` (every method has a node, private allows all, no ticket never exceeds the floor, tickets
+  narrow to the requester and the ceiling, parameter-dependent nodes); GameTest `GmGateGameTests` (live method
+  table, friends floor, owner and offline tickets from real `/gm` messages, `status` rights).
 - Audit and pause: `AuditTest` (effects and refusals recorded, reads not, JSON lines, pruning, bounds);
   GameTest `GmAuditGameTests` (a paused agent reads but cannot act, its build freezes and finishes after resume,
   another agent goes on, the build is audited with its job).

@@ -252,7 +252,7 @@ public final class Bridge {
 
     private static void trySend(HttpExchange exchange, RpcException e) {
         try {
-            send(exchange, e.status(), error(e.code(), e.getMessage()));
+            send(exchange, e.status(), error(e));
         } catch (IOException ignored) {
             // The client disconnected before receiving a response.
         }
@@ -268,6 +268,15 @@ public final class Bridge {
         JsonObject out = new JsonObject();
         out.addProperty("ok", true);
         out.add("result", result);
+        return out;
+    }
+
+    /** The error object of a refusal, with its extra fields ({@code allowed}, {@code node} …). */
+    public static JsonObject error(RpcException e) {
+        JsonObject out = error(e.code(), e.getMessage());
+        if (e.details() != null) {
+            for (var d : e.details().entrySet()) out.getAsJsonObject("error").add(d.getKey(), d.getValue());
+        }
         return out;
     }
 

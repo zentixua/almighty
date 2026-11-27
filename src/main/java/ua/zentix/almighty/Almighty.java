@@ -29,6 +29,7 @@ public final class Almighty {
         FeedListeners.register(bus);
         GmCommand.register(bus);
         AlmightyCommand.register(bus);
+        ua.zentix.almighty.policy.Nodes.register(bus);
         Bots.register(bus);
         bus.addListener(Almighty::onStarted);
         bus.addListener(Almighty::onTickStart);

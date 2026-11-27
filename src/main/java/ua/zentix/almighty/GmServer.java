@@ -13,9 +13,11 @@ import ua.zentix.almighty.bridge.Bridge;
 import ua.zentix.almighty.bridge.Dispatch;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.feed.Feed;
+import ua.zentix.almighty.policy.DenyList;
 import ua.zentix.almighty.rules.Rules;
 import ua.zentix.almighty.work.Job;
 import ua.zentix.almighty.work.Jobs;
+import ua.zentix.almighty.work.LagGuard;
 import ua.zentix.almighty.world.Areas;
 
 import java.io.IOException;
@@ -23,6 +25,9 @@ import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -51,6 +56,10 @@ public final class GmServer {
     private final Dispatch dispatch;
     private Bridge bridge;
     private long lastTick;
+    /** World calls from bridge threads, run at tick end under the GM budget ({@link #runWorldCalls}). */
+    private final Queue<Runnable> worldCalls = new ConcurrentLinkedQueue<>();
+    private final LagGuard lagGuard = new LagGuard();
+    private volatile boolean stopped;
 
     private GmServer(MinecraftServer server) {
         this.server = server;
@@ -59,7 +68,7 @@ public final class GmServer {
         this.rules = new Rules(server, NeoForge.EVENT_BUS, feed, state,
                 server.getWorldPath(LevelResource.ROOT).resolve("almighty").resolve("rules.json"));
         this.bots = new Bots(this);
-        this.dispatch = new Dispatch(Api.methods(this));
+        this.dispatch = new Dispatch(Api.methods(this), List.of((caller, method, params) -> DenyList.check(method, params)));
     }
 
     /** This server's game master; null if the server has not started yet or has already stopped. */
@@ -102,11 +111,41 @@ public final class GmServer {
         lastTick = now;
     }
 
-    /** Tick end: bots (where the server ticks player connections), jobs within budget, then chunk expiry and release. */
+    /**
+     * Tick end: bots (where the server ticks player connections), world calls and jobs within one shared budget
+     * (the minimum while the lag guard holds), then chunk expiry and release.
+     */
     void tickEnd() {
         bots.tick();
-        jobs.tick(GmConfig.workNanosPerTick());
+        if (lagGuard.update(server.getAverageTickTimeNanos() / 1e6, System.currentTimeMillis())) {
+            JsonObject d = new JsonObject();
+            d.addProperty("on", lagGuard.lagging());
+            d.addProperty("mspt", Math.round(server.getAverageTickTimeNanos() / 1e4) / 100.0);
+            feed.add("lag_guard", d);
+            LOG.info("Almighty: lag guard {} (average tick {} ms)", lagGuard.lagging() ? "on: GM work at its minimum" : "off",
+                    d.get("mspt"));
+        }
+        long budget = lagGuard.lagging() ? 0 : GmConfig.workNanosPerTick();
+        long used = runWorldCalls(budget);
+        jobs.tick(used == 0 ? budget : Math.max(0, budget - used));
         areas.tick(server.getTickCount());
+    }
+
+    /** Run queued world calls, at least one, while the budget lasts; returns the nanoseconds used. */
+    private long runWorldCalls(long budget) {
+        if (worldCalls.isEmpty()) return 0;
+        long start = System.nanoTime();
+        Runnable call;
+        while ((call = worldCalls.poll()) != null) {
+            call.run();
+            if (System.nanoTime() - start >= budget) break;
+        }
+        return System.nanoTime() - start;
+    }
+
+    /** Whether the lag guard holds GM work at its minimum. */
+    public boolean lagging() {
+        return lagGuard.lagging();
     }
 
     /**
@@ -114,8 +153,10 @@ public final class GmServer {
      * all tickets immediately (before Incoming's {@code StopDrain}).
      */
     void stop() {
+        stopped = true;
         if (bridge != null) bridge.stop();
         bridge = null;
+        for (Runnable call; (call = worldCalls.poll()) != null; ) call.run();
         bots.stop();
         rules.stop();
         jobs.cancelAll();
@@ -165,16 +206,27 @@ public final class GmServer {
         return state;
     }
 
-    /** Call on the server thread between ticks; errors complete the future exceptionally. */
+    /**
+     * Call on the server thread; errors complete the future exceptionally. From another thread the call is queued and
+     * runs at tick end under the per-tick GM budget shared with jobs (at least one call per tick); on the server
+     * thread itself (GameTest, rules, commands) it runs at once.
+     */
     public <T> CompletableFuture<T> onMain(MainCall<T> call) {
         CompletableFuture<T> out = new CompletableFuture<>();
-        server.execute(() -> {
+        Runnable run = () -> {
+            if (stopped) {
+                out.completeExceptionally(RpcException.unavailable("The server is stopping"));
+                return;
+            }
             try {
                 out.complete(call.run());
             } catch (RpcException | RuntimeException e) {
                 out.completeExceptionally(e);
             }
-        });
+        };
+        if (server.isSameThread()) run.run();
+        else if (stopped) out.completeExceptionally(RpcException.unavailable("The server is stopping"));
+        else worldCalls.add(run);
         return out;
     }
 

@@ -70,7 +70,7 @@ public final class GmScriptGameTests {
     /** The message from a method parameter-parse error (before the server thread). */
     private static String rejected(GameTestHelper h, String method, JsonObject params) {
         try {
-            Api.methods(gm(h)).get(method).call(new Args(params));
+            gm(h).dispatch().invoke(ua.zentix.almighty.bridge.Caller.INTERNAL, method, params);
         } catch (RpcException e) {
             return e.getMessage();
         }

@@ -19,6 +19,8 @@ import org.codehaus.groovy.control.customizers.ImportCustomizer;
 import org.codehaus.groovy.runtime.InvokerHelper;
 import org.codehaus.groovy.runtime.InvokerInvocationException;
 
+import ua.zentix.almighty.policy.DenyList;
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Writer;
@@ -91,6 +93,9 @@ public final class Scripts {
 
     /** {@code name} is the name in error stacks (letters and digits). */
     public static Compiled compile(String name, String code, long timeoutMs) throws CompileError {
+        // Accident guard (plan 4.11): calls known to crash or freeze the server are refused before compiling.
+        String denied = DenyList.script(code);
+        if (denied != null) throw new CompileError("denied: " + denied);
         CompilerConfiguration config = new CompilerConfiguration();
         ImportCustomizer imports = new ImportCustomizer();
         imports.addImports(IMPORTS);

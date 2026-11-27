@@ -117,6 +117,13 @@ access to the bridge like shell access to the server machine.
   its port to the internet.
 - Keep the tokens secret. Anyone who has one controls the server. To replace a token, run `/almighty revoke <agent>`
   in the console: the old token stops working at once and the new one is in the same file.
+- Some commands and calls are refused for every agent because they crash, freeze or stop the server: `stop`,
+  `reload`, `save-off`, `save-all flush`, `forceload add`, `tick rate` above 100, `/almighty` (agents and tokens are
+  the owner's), and building, loading or teleporting at Sable ship plot coordinates. Scripts that take chunk tickets,
+  load chunks synchronously, start threads, register listeners, sleep, exit the JVM or start processes are refused
+  too. The owner can still run such commands in the console.
+- Game master work shares a fixed time per tick (`work.ms_per_tick`). When the server lags (average tick above 50 ms
+  for 10 seconds), game master work drops to its minimum until the server recovers.
 - To turn scripts off, set `scripts.enabled = false`. The `script` method and rules with a script are then refused,
   and saved rules with a script do not load. Commands and rules without a script still work.
 - To turn the bridge off, set `bridge.enabled = false`.

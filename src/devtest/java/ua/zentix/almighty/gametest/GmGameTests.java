@@ -71,6 +71,15 @@ public final class GmGameTests {
 
     static CompletableFuture<JsonElement> call(GameTestHelper h, String method, JsonObject params) {
         try {
+            return gm(h).dispatch().invoke(ua.zentix.almighty.bridge.Caller.INTERNAL, method, params);
+        } catch (RpcException e) {
+            throw new GameTestAssertException(method + ": " + e.getMessage());
+        }
+    }
+
+    /** A method called past the choke point (no deny list): for tests of the layers underneath it. */
+    static CompletableFuture<JsonElement> direct(GameTestHelper h, String method, JsonObject params) {
+        try {
             return Api.methods(gm(h)).get(method).call(new Args(params));
         } catch (RpcException e) {
             throw new GameTestAssertException(method + ": " + e.getMessage());

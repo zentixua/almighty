@@ -1,6 +1,6 @@
 # Almighty brand kit: pixel-art directions
 
-**Round nine (current):** combos against controls: [`scores2.png`](scores2.png), ranking and reads in [`scores2.md`](scores2.md).
+**Round nine (current):** clean rerun of the top four: [`scores3.png`](scores3.png), [`scores3.md`](scores3.md). The first round-nine pool ([`scores2.md`](scores2.md)) is contaminated and superseded.
 
 **Round eight:** blind scoring pool, name + icon only: [`scores.png`](scores.png), ranking and reads in [`scores.md`](scores.md).
 

@@ -1,5 +1,7 @@
 # Combos against controls (round nine)
 
+> **Contaminated, superseded by [`scores3.md`](scores3.md).** Judges confused three near-identical cloud marks on one sheet: some described the haloless control as "with a halo", and the scores were copied between look-alike marks. The tie at the top is an artifact.
+
 Sheet: [`scores2.png`](scores2.png). Marks are ranked by average score, each shown as icon + "Almighty". Single icons: `scores2/`. Source: `scripts/brand/round9.py`, `scores_sheet.py`.
 
 ## Method

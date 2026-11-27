@@ -5,6 +5,20 @@ pluginManagement {
     }
 }
 plugins {
-    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+    id 'dev.kikugie.stonecutter' version '0.10'
 }
 rootProject.name = 'almighty'
+
+// One source (src/), one node per game version and loader (versions/<node>/gradle.properties); Stonecutter
+// comments (//? if >=26.1 { ... }) select the code for each node. The committed source is the vcsVersion's.
+stonecutter {
+    centralScript = 'build.gradle'
+    create(getRootProject()) {
+        mapBuilds { branch, node ->
+            ("build." + node.project.substring(node.project.lastIndexOf("-") + 1) + ".gradle") as String
+        }
+        versions(['1.21.1-neoforge': '1.21.1'])
+        vcsVersion = '1.21.1-neoforge'
+    }
+}

@@ -45,15 +45,25 @@ The normal agent workflow: task → branch → code → build and tests → PR �
 ## Workflow
 
 ```sh
-./gradlew build                          # compile (-Xlint:all, no warnings) and run unit tests
-./gradlew runGameTestServer              # GameTest: headless server, only this mod
-./gradlew runServer                      # trial dedicated server with the bridge (run/server)
+./gradlew build                          # every node: compile (-Xlint:all, no warnings) and run unit tests
+./gradlew :1.21.1-neoforge:build         # one node (versions/<node>)
+./gradlew runGameTestServer              # GameTest: headless server, only this mod (run/<node>/gametest)
+./gradlew :1.21.1-neoforge:runServer     # trial dedicated server with the bridge (run/<node>/server)
 uv run mcp/almighty.py call status       # one bridge call (address and token at the top of the script)
 ```
 
-CI (GitHub Actions) checks every PR and push to `main`: GM toolkit, build, unit tests, GameTest; the jar is the
-`almighty-jar` artifact. Release: bump `mod_version` (`gradle.properties`) and both `plugin/almighty` manifests (CI checks), write `docs/releases/<version>.md`, merge
-into `main` and manually run `build` on `main` with `release=true`; the workflow releases `v<version>` with the jar.
+Versions and loaders (Stonecutter 0.10, `settings.gradle`, `stonecutter.gradle`): one source in `src/`, one node per
+game version and loader in `versions/<version>-<loader>/gradle.properties` (Minecraft, loader, Java, Groovy and
+compat versions), built by `build.<loader>.gradle`. Code that differs by version sits in Stonecutter conditions
+(`//? if >=26.1 {` … `//?} else {` … `//?}`); the loader is a constant (`//? if neoforge`). The committed source is
+written for `vcsVersion` (`1.21.1-neoforge`); switch the active node with Stonecutter's `Set active project to …`
+tasks and switch back to `vcsVersion` before committing (`"Reset active project"`). Gradle runs on Java 25 (Stonecutter
+0.10 needs it, Gradle 9.9); nodes compile with their own toolchain. Jars: `almighty-<mod_version>+<version>-<loader>.jar`.
+
+CI (GitHub Actions) checks every PR and push to `main`: GM toolkit once, then build, unit tests and GameTest for every
+node in parallel (`versions/*`); each node's jar is the `almighty-<node>` artifact; the required check is "Сборка и
+тесты", which waits for all of them. Release: bump `mod_version` (`gradle.properties`) and both `plugin/almighty` manifests (CI checks), write `docs/releases/<version>.md`, merge
+into `main` and manually run `build` on `main` with `release=true`; the workflow releases `v<version>` with every node's jar.
 open-skies-friends picks the jar up by itself (its `update` workflow, every 3 hours; run it manually to get it at once).
 Immersive Aircraft and Sable are pinned there: change them in an open-skies-friends PR together with the pins here.
 Modrinth and CurseForge pages use the manually triggered `publish` workflow: `draft` (hidden Modrinth draft),
@@ -485,7 +495,7 @@ Before planning or changing bot or vision behavior (including compatibility driv
   it, so floor stone is at y=1 and standing height at 2.
 - Script/rule GameTest: `GmScriptGameTests`; remove rules in `finally` (the server shares the bus). GameTest does
   not check the nested Groovy jar: after build changes, use a dedicated NeoForge server from the installer
-  (`java -jar neoforge-<version>-installer.jar --installServer`, directory under `run/`), put the `build/libs` jar
+  (`java -jar neoforge-<version>-installer.jar --installServer`, directory under `run/`), put the node's `versions/<node>/build/libs` jar
   in `mods/`, set `server-ip=127.0.0.1`, call `script` through `mcp/almighty.py call`.
 - GameTest runs include Immersive Aircraft and Sable (`devtestRuntimeOnly` from Modrinth Maven, using the `devtest`
   set; Sable compile types also use sable-companion from maven.ryanhcode.dev). Mods send custom packets on player
@@ -502,5 +512,6 @@ Before planning or changing bot or vision behavior (including compatibility driv
   response (and its `job` response) is completed off the server thread (`thenApplyAsync`, PNG): GameTest runs
   through the tick timeout before it finishes (CI: 200 ticks in 0.3 s). Await job completion by ticks, the response
   with timed `get`.
-- Trial server: `./gradlew runServer` (directory `run/server`, `eula.txt`, `server.properties` with
-  `server-ip=127.0.0.1`), then `ALMIGHTY_TOKEN_FILE=run/server/config/almighty/token uv run mcp/almighty.py call status`.
+- Trial server: `./gradlew :1.21.1-neoforge:runServer` (directory `run/1.21.1-neoforge/server`, `eula.txt`,
+  `server.properties` with `server-ip=127.0.0.1`), then
+  `ALMIGHTY_TOKEN_FILE=run/1.21.1-neoforge/server/config/almighty/token uv run mcp/almighty.py call status`.

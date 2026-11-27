@@ -14,6 +14,7 @@ import ua.zentix.almighty.bridge.Dispatch;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.feed.Feed;
 import ua.zentix.almighty.feed.Inbox;
+import ua.zentix.almighty.mcp.McpEndpoint;
 import ua.zentix.almighty.policy.Tickets;
 import ua.zentix.almighty.policy.DenyList;
 import ua.zentix.almighty.rules.Rules;
@@ -97,6 +98,7 @@ public final class GmServer {
                 InetSocketAddress address = new InetSocketAddress(GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PORT.get());
                 Agents agents = Agents.load(configDir);
                 gm.bridge = new Bridge(address, agents, gm.dispatch, Api.LONG, new HashSet<>(GmConfig.BRIDGE_ALLOWED_ORIGINS.get()));
+                gm.bridge.context("/mcp", new McpEndpoint(gm.bridge, Api.LONG, Almighty.version(), null));
                 gm.bridge.start();
                 LOG.info("Almighty bridge listening on {}; agents {} (token of {} in {})", gm.bridge.address(), agents.names(),
                         Agents.DEFAULT, configDir.resolve("token").toAbsolutePath());

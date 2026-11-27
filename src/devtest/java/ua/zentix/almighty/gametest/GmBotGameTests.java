@@ -737,11 +737,17 @@ public final class GmBotGameTests {
         }
         check(zombieSeen, "zombie in front of wall is hidden: " + quick.get("entities"));
         check(pigHidden, "pig behind wall is visible: " + quick.get("entities"));
-        CompletableFuture<JsonElement> picture = call(h, "see", params("{\"name\":\"GmTestWatcher\",\"width\":64,\"height\":36}"));
+        // The picture is lit by the world's light: wait until the light engine has lit the air in front of the wall (26.x
+        // places tests in freshly generated chunks, where light can lag the structure by a few ticks).
+        BlockPos face = h.absolutePos(new BlockPos(15, GROUND + 2, 10));
+        AtomicReference<CompletableFuture<JsonElement>> shot = new AtomicReference<>();
         h.startSequence()
+                .thenWaitUntil(() -> check(h.getLevel().getBrightness(net.minecraft.world.level.LightLayer.SKY, face) == 15,
+                        "sky light in front of the wall: " + h.getLevel().getBrightness(net.minecraft.world.level.LightLayer.SKY, face)))
+                .thenExecute(() -> shot.set(call(h, "see", params("{\"name\":\"GmTestWatcher\",\"width\":64,\"height\":36}"))))
                 .thenWaitUntil(() -> eyeEnded(h))
                 .thenExecute(() -> {
-                    JsonObject r = settled(picture);
+                    JsonObject r = settled(shot.get());
                     check(r.get("state").getAsString().equals("done"), "snapshot: " + r);
                     BufferedImage img = decode(r.get("png_base64").getAsString());
                     int k = r.getAsJsonObject("legend").get("pixels_per_cell").getAsInt();

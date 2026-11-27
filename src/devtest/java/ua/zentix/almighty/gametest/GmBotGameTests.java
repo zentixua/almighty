@@ -724,10 +724,14 @@ public final class GmBotGameTests {
      */
     @GameTest(template = "floor", batch = "gm_see", timeoutTicks = 200, skyAccess = true)
     public static void botSeesWallAndMobs(GameTestHelper h) {
-        // The picture is lit by the time of day, and the world clock runs through the whole GameTest run (26.x batch
-        // order varies from run to run): take it at noon, sky brightness updated at once.
+        // The picture is lit by the time of day and the weather, and both run through the whole GameTest run (26.x batch
+        // order varies from run to run): take it at clear noon, sky brightness updated at once (rain and thunder fade
+        // out over ticks, so their levels are cleared too).
         MinecraftServer server = h.getLevel().getServer();
         server.getCommands().performPrefixedCommand(server.createCommandSourceStack().withSuppressedOutput(), "time set 6000");
+        server.getCommands().performPrefixedCommand(server.createCommandSourceStack().withSuppressedOutput(), "weather clear");
+        h.getLevel().setRainLevel(0);
+        h.getLevel().setThunderLevel(0);
         h.getLevel().updateSkyBrightness();
         check(h.getLevel().getSkyDarken() == 0, "noon: sky darkening " + h.getLevel().getSkyDarken());
         for (int y = GROUND; y <= GROUND + 4; y++) for (int z = 4; z <= 16; z++) h.setBlock(new BlockPos(16, y, z), Blocks.GOLD_BLOCK);

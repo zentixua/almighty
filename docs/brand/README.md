@@ -1,6 +1,8 @@
 # Almighty brand kit: pixel-art directions
 
-**Round two (current):** six quick mark sketches for Artem to choose from: [`sketches.png`](sketches.png), notes and blind reads in [`sketches.md`](sketches.md). The round-one kits below stay as they are until he picks one.
+**Round three (current):** Puppeteer variants: [`puppeteer.png`](puppeteer.png), reads in [`puppeteer.md`](puppeteer.md).
+
+**Round two:** six quick mark sketches for Artem to choose from: [`sketches.png`](sketches.png), notes and blind reads in [`sketches.md`](sketches.md). The round-one kits below stay as they are until he picks one.
 
 Every image here is pixel art drawn on a grid in code (`scripts/brand/`, Python + Pillow: rectangles, 1-px lines and
 hand-typed sprites on a 64x64 mark grid) and enlarged only by whole nearest-neighbour factors. No image generation,

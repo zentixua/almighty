@@ -1,6 +1,5 @@
 package ua.zentix.almighty.feed;
 
-import com.google.gson.JsonObject;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.minecraft.ChatFormatting;
@@ -17,6 +16,7 @@ import ua.zentix.almighty.GmServer;
  * A player's private channel to the game master: any player can use {@code /gm <text>}. The text enters the feed
  * as a {@code gm} event (player, location, text), hidden from other players and operators; the sender sees a gray
  * line "-> game master: ...". The game master can reply privately with {@code say} and {@code to}.
+ * {@code /gm @<agent> <text>} addresses another agent ({@link Inbox}).
  */
 public final class GmCommand {
     static final String NAME = "gm";
@@ -40,12 +40,9 @@ public final class GmCommand {
             source.sendFailure(GmMessages.unavailable(player.clientInformation().language()));
             return 0;
         }
-        JsonObject d = FeedListeners.where(player);
-        d.addProperty("text", text);
-        gm.feed().add(NAME, d);
-        // false: only the sender, never broadcast to operators.
+        // false: only the sender, never broadcast to operators. Shown first: it is the "received" acknowledgement.
         source.sendSuccess(() -> Component.literal("→ " + GmConfig.NAME.get() + ": " + text)
                 .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC), false);
-        return 1;
+        return gm.inbox().gm(player, text) ? 1 : 0;
     }
 }

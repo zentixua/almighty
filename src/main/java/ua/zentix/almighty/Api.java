@@ -183,8 +183,14 @@ public final class Api {
             long after = a.longValue("after", 0, 0, Long.MAX_VALUE);
             int wait = a.integer("wait", 0, 0, 25);
             int limit = a.integer("limit", 200, 1, 1000);
+            // mine: messages routed to other agents are left out (each message reaches one agent).
+            boolean mine = a.bool("mine", false);
+            String me = a.caller().agent() == null ? null : a.caller().agent().name();
             try {
-                return CompletableFuture.completedFuture(gm.feed().read(after, limit, wait * 1000L));
+                JsonObject page = gm.feed().read(after, limit, wait * 1000L, e -> !mine || me == null
+                        || !e.has("agent") || e.get("agent").getAsString().equals(me));
+                if (a.caller().agent() != null) a.caller().agent().read(page.get("next").getAsLong());
+                return CompletableFuture.completedFuture(page);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw RpcException.unavailable("The bridge is stopping");

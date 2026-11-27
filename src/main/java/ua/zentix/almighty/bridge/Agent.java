@@ -13,6 +13,8 @@ public final class Agent {
     private final Path file;
     private volatile long lastSeenMillis;
     private volatile String lastAddress;
+    /** The last feed event this agent has read ({@code events}), for "the game master is away" replies. */
+    private volatile long readUpTo;
 
     Agent(String name, Token token, Path file) {
         this.name = name;
@@ -39,6 +41,20 @@ public final class Agent {
 
     public String lastAddress() {
         return lastAddress;
+    }
+
+    public long readUpTo() {
+        return readUpTo;
+    }
+
+    /** The agent read the feed up to {@code seq}. */
+    public void read(long seq) {
+        if (seq > readUpTo) readUpTo = seq;
+    }
+
+    /** Whether the agent made a call within the last {@code ms} milliseconds. */
+    public boolean present(long ms) {
+        return lastSeenMillis != 0 && System.currentTimeMillis() - lastSeenMillis < ms;
     }
 
     void seen(String address) {

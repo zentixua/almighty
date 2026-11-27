@@ -105,9 +105,17 @@ public final class GmTestRegistry {
             Holder<TestEnvironmentDefinition<?>> batch = batches.computeIfAbsent(entry.namespace() + ":" + t.batch(),
                     k -> e.registerEnvironment(Identifier.fromNamespaceAndPath(entry.namespace(), "batch/" + t.batch().toLowerCase(Locale.ROOT))));
             String template = t.template().contains(":") ? t.template() : entry.namespace() + ":" + t.template();
-            TestData<Holder<TestEnvironmentDefinition<?>>> data = new TestData<>(batch, Identifier.parse(template), t.timeoutTicks(),
+            // 26.3 adds the test's dimension (the Overworld, as before).
+*///?}
+//? if >=26.3 {
+/*            TestData<Holder<TestEnvironmentDefinition<?>>> data = new TestData<>(batch, net.minecraft.world.level.Level.OVERWORLD, Identifier.parse(template),
+                    t.timeoutTicks(), (int) t.setupTicks(), t.required(), Rotation.NONE, false, 1, 1, t.skyAccess(), 0);
+*///?} else if >=26.1 {
+/*            TestData<Holder<TestEnvironmentDefinition<?>>> data = new TestData<>(batch, Identifier.parse(template), t.timeoutTicks(),
                     (int) t.setupTicks(), t.required(), Rotation.NONE, false, 1, 1, t.skyAccess(), 0);
-            e.registerTest(entry.id(), new FunctionGameTestInstance(ResourceKey.create(Registries.TEST_FUNCTION, entry.id()), data));
+*///?}
+//? if >=26.1 {
+/*            e.registerTest(entry.id(), new FunctionGameTestInstance(ResourceKey.create(Registries.TEST_FUNCTION, entry.id()), data));
         }
     }
 

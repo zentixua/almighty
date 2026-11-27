@@ -300,6 +300,25 @@ public final class Mc {
         //?}
     }
 
+    /**
+     * The block id of a block state saved by {@code NbtUtils.writeBlockState} (26.3 names its fields {@code id} and
+     * {@code properties}, before {@code Name} and {@code Properties}). On 26.3 a state saved by an earlier version is
+     * renamed in place first, so it reads back as what it was.
+     */
+    public static String blockStateName(net.minecraft.nbt.CompoundTag tag) {
+        //? if >=26.3 {
+        /*if (!tag.contains("id") && tag.contains("Name")) {
+            tag.putString("id", string(tag, "Name"));
+            tag.remove("Name");
+            if (tag.contains("Properties")) tag.put("properties", tag.get("Properties"));
+            tag.remove("Properties");
+        }
+        return string(tag, "id");
+        *///?} else {
+        return string(tag, "Name");
+        //?}
+    }
+
     /** Load saved data (with components) into a block entity, as {@code /data merge block}. */
     public static void loadBlockEntity(net.minecraft.world.level.block.entity.BlockEntity be, net.minecraft.nbt.CompoundTag tag,
                                        net.minecraft.core.HolderLookup.Provider registries) {

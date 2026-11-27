@@ -384,7 +384,12 @@ public final class Bot {
                 acceptTeleport();
             }
             case ClientboundPlayerChatPacket chat -> {
-                if (chat.signature() != null && ++chatAcks > CHAT_ACK_AFTER) {
+                // Only signed messages enter the server's last-seen window (26.3: the signature is optional).
+                //? if >=26.3 {
+                /*boolean signed = chat.signature().isPresent();
+                *///?} else
+                boolean signed = chat.signature() != null;
+                if (signed && ++chatAcks > CHAT_ACK_AFTER) {
                     send(new ServerboundChatAckPacket(chatAcks));
                     chatAcks = 0;
                 }
@@ -444,7 +449,11 @@ public final class Bot {
         if (Mc.level(p).getChunkSource().getChunkNow(p.getBlockX() >> 4, p.getBlockZ() >> 4) == null) return;
         teleportPending = false;
         //? if >=26.3 {
-        /*// 26.3: the client confirms with the position it now has (the server's teleport target).
+        /*// 26.3: the client confirms with the position it now has (the server's teleport target), and the server moves the
+        // player there as a movement packet, checked against the position at its listener's last tick start. The bot's
+        // listener does not tick: start from where the player is now, as a client's reply in a later tick would, or the
+        // check would compare with a stale position (moved too quickly), teleport back and the bot would confirm again.
+        ((ServerGamePacketListenerImpl) connection.getPacketListener()).resetPosition();
         send(new ServerboundAcceptTeleportationPacket(teleportId, p.getX(), p.getY(), p.getZ(), p.getYRot(), p.getXRot()));
         *///?} else
         send(new ServerboundAcceptTeleportationPacket(teleportId));

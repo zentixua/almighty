@@ -8,7 +8,6 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
 //? if >=26.1 {
 /*import net.minecraft.world.entity.animal.pig.Pig;
 *///?} else {
@@ -193,27 +192,27 @@ public final class GmScriptGameTests {
             String near = String.format(Locale.ROOT, "event.entity.blockPosition().closerThan(new BlockPos(%d, %d, %d), 32)",
                     base.getX(), base.getY(), base.getZ());
             JsonObject guard = rule(h, "EntityJoinLevelEvent", "gm-test-guard",
-                    "if (event.entity.type == EntityType.ZOMBIE && " + near + ") { event.canceled = true; gm.emit([blocked: event.entity]) }",
+                    "if (EntityType.getKey(event.entity.type).path == 'zombie' && " + near + ") { event.canceled = true; gm.emit([blocked: event.entity]) }",
                     "priority", "highest");
             rule(h, "EntityJoinLevelEvent", "gm-test-tag",
-                    "if (event.entity.type == EntityType.PIG && " + near + ") gm.commandAs(event.entity, 'tag @s add gm_seen')");
-            h.spawn(EntityType.ZOMBIE, 4, 2, 4);
-            Pig pig = h.spawn(EntityType.PIG, 6, 2, 6);
+                    "if (EntityType.getKey(event.entity.type).path == 'pig' && " + near + ") gm.commandAs(event.entity, 'tag @s add gm_seen')");
+            h.spawn(Gt.ZOMBIE, 4, 2, 4);
+            Pig pig = h.spawn(Gt.PIG, 6, 2, 6);
             check(Mc.tags(pig).contains("gm_seen"), "pig is missing tag: " + Mc.tags(pig));
-            h.assertEntityNotPresent(EntityType.ZOMBIE);
+            h.assertEntityNotPresent(Gt.ZOMBIE);
             JsonObject blocked = find(gm, after, "emit", e -> of(e, guard));
             check(blocked != null && blocked.getAsJsonObject("data").getAsJsonObject("blocked").get("type").getAsString().equals("minecraft:zombie"),
                     "guard did not record zombie: " + blocked);
 
             JsonObject replaced = rule(h, "EntityJoinLevelEvent", "gm-test-tag",
-                    "if (event.entity.type == EntityType.PIG && " + near + ") gm.commandAs(event.entity, 'tag @s add gm_second')");
+                    "if (EntityType.getKey(event.entity.type).path == 'pig' && " + near + ") gm.commandAs(event.entity, 'tag @s add gm_second')");
             long named = gm.rules().describe().asList().stream()
                     .filter(e -> e.getAsJsonObject().has("name") && e.getAsJsonObject().get("name").getAsString().equals("gm-test-tag")).count();
             check(named == 1 && described(gm, "gm-test-tag").get("rule").getAsLong() == replaced.get("rule").getAsLong(), "replacement by name: " + gm.rules().describe());
-            Pig second = h.spawn(EntityType.PIG, 8, 2, 8);
+            Pig second = h.spawn(Gt.PIG, 8, 2, 8);
             check(Mc.tags(second).contains("gm_second") && !Mc.tags(second).contains("gm_seen"), "replaced rule: " + Mc.tags(second));
             drop(h, "gm-test-tag");
-            Pig third = h.spawn(EntityType.PIG, 10, 2, 10);
+            Pig third = h.spawn(Gt.PIG, 10, 2, 10);
             check(Mc.tags(third).isEmpty(), "removed rule fired: " + Mc.tags(third));
 
             JsonObject query = new JsonObject();
@@ -250,12 +249,12 @@ public final class GmScriptGameTests {
             commands.add(String.format(Locale.ROOT, "summon marker %d %d %d {Tags:[\"gm_nested\"]}", spot.getX(), spot.getY(), spot.getZ()));
             summon.add("commands", commands);
             now(call(h, "command", summon));
-            int markers = h.getLevel().getEntities(EntityType.MARKER, e -> Mc.tags(e).contains("gm_nested")).size();
+            int markers = h.getLevel().getEntities(Gt.MARKER, e -> Mc.tags(e).contains("gm_nested")).size();
             check(Integer.valueOf(1).equals(gm.state().get("gmNested")) && Boolean.TRUE.equals(gm.state().get("gmGold")) && markers == 2,
                     "rule inside command: runs " + gm.state().get("gmNested") + ", gold " + gm.state().get("gmGold") + ", tags " + markers);
         } finally {
             drop(h, "gm-test-guard", "gm-test-tag", "gm-test-nested", "gm-test-full");
-            h.getLevel().getEntities(EntityType.MARKER, e -> Mc.tags(e).contains("gm_nested")).forEach(Entity::discard);
+            h.getLevel().getEntities(Gt.MARKER, e -> Mc.tags(e).contains("gm_nested")).forEach(Entity::discard);
         }
         h.succeed();
     }

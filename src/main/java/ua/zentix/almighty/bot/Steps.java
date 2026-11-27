@@ -456,7 +456,10 @@ final class Steps {
                 Component decorated = ua.zentix.almighty.platform.Platform.get().decorateChat(p, Component.literal(text));
                 if (decorated != null) server.getPlayerList().broadcastChatMessage(PlayerChatMessage.system(text).withUnsignedContent(decorated), p, ChatType.bind(ChatType.CHAT, p));
             } else {
-                //? if >=26.1 {
+                //? if >=26.3 {
+                /*bot.send(new ServerboundChatPacket(text, bot.chatTime(), 0L, java.util.Optional.empty(),
+                        new LastSeenMessages.Update(bot.takeChatAcks(), new BitSet(), LastSeenMessages.Update.IGNORE_CHECKSUM)));
+                *///?} else if >=26.1 {
                 /*bot.send(new ServerboundChatPacket(text, bot.chatTime(), 0L, null,
                         new LastSeenMessages.Update(bot.takeChatAcks(), new BitSet(), LastSeenMessages.Update.IGNORE_CHECKSUM)));
                 *///?} else {

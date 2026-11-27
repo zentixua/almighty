@@ -28,11 +28,25 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 final class Gt {
     private Gt() {}
 
-    /** An oak boat (26.x: one entity type per wood). */
-    //? if >=26.1 {
+    /** Entity types the tests spawn: an oak boat (26.x: one entity type per wood); 26.3 keeps the constants in EntityTypes. */
+    //? if >=26.3 {
+    /*static final EntityType<Boat> BOAT = net.minecraft.world.entity.EntityTypes.OAK_BOAT;
+    static final EntityType<net.minecraft.world.entity.animal.equine.Horse> HORSE = net.minecraft.world.entity.EntityTypes.HORSE;
+    static final EntityType<net.minecraft.world.entity.animal.pig.Pig> PIG = net.minecraft.world.entity.EntityTypes.PIG;
+    static final EntityType<net.minecraft.world.entity.monster.zombie.Zombie> ZOMBIE = net.minecraft.world.entity.EntityTypes.ZOMBIE;
+    static final EntityType<net.minecraft.world.entity.Marker> MARKER = net.minecraft.world.entity.EntityTypes.MARKER;
+    *///?} else if >=26.1 {
     /*static final EntityType<Boat> BOAT = EntityType.OAK_BOAT;
+    static final EntityType<net.minecraft.world.entity.animal.equine.Horse> HORSE = EntityType.HORSE;
+    static final EntityType<net.minecraft.world.entity.animal.pig.Pig> PIG = EntityType.PIG;
+    static final EntityType<net.minecraft.world.entity.monster.zombie.Zombie> ZOMBIE = EntityType.ZOMBIE;
+    static final EntityType<net.minecraft.world.entity.Marker> MARKER = EntityType.MARKER;
     *///?} else {
     static final EntityType<Boat> BOAT = EntityType.BOAT;
+    static final EntityType<net.minecraft.world.entity.animal.horse.Horse> HORSE = EntityType.HORSE;
+    static final EntityType<net.minecraft.world.entity.animal.Pig> PIG = EntityType.PIG;
+    static final EntityType<net.minecraft.world.entity.monster.Zombie> ZOMBIE = EntityType.ZOMBIE;
+    static final EntityType<net.minecraft.world.entity.Marker> MARKER = EntityType.MARKER;
     //?}
 
     /** An entity's scoreboard tags as a Groovy script reads them ({@code entity.tags}; 26.x: {@code entityTags()}). */

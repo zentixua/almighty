@@ -5,8 +5,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
 import com.mojang.util.UndashedUuid;
+//? if ia {
 import immersive_aircraft.entity.EngineVehicle;
 import immersive_aircraft.network.c2s.CommandMessage;
+//?}
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.core.BlockPos;
@@ -408,7 +410,7 @@ public final class GmBotGameTests {
     @GameTest(template = "floor", batch = "gm_bot_horse", timeoutTicks = 300, skyAccess = true)
     public static void botRidesHorse(GameTestHelper h) {
         Bot bot = spawn(h, "GmTestRider", 10.5, 10.5, ",\"gamemode\":\"survival\"");
-        Horse horse = h.spawn(EntityType.HORSE, new Vec3(10.5, GROUND, 10.5));
+        Horse horse = h.spawn(Gt.HORSE, new Vec3(10.5, GROUND, 10.5));
         horse.setTamed(true);
         Gt.saddle(horse);
         horse.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.3);
@@ -486,6 +488,8 @@ public final class GmBotGameTests {
                 .thenSucceed();
     }
 
+    // Immersive Aircraft (a node with its build, compat_ia): planes, airship, its client packet.
+    //? if ia {
     /**
      * A bot that leaves while riding comes back in its vehicle (saved with its player data), as a player does: the
      * vehicle leaves with the bot and returns with it; it is never lost.
@@ -655,20 +659,6 @@ public final class GmBotGameTests {
         return null;
     }
 
-    //? if >=26.1 {
-    /*// IA 26.x messages are not payloads themselves: its NeoForge network handler wraps each one (createPayload), as its client does.
-    // (Object: test classes are also on the unit-test mod classpath, where Immersive Aircraft is absent.)
-    private static net.minecraft.network.protocol.common.custom.CustomPacketPayload iaPayload(Object message) {
-        try {
-            Object handler = ua.zentix.almighty.platform.Reflect.field(immersive_aircraft.cobalt.network.NetworkHandler.class, "INSTANCE").get(null);
-            return (net.minecraft.network.protocol.common.custom.CustomPacketPayload) ua.zentix.almighty.platform.Reflect
-                    .method(handler.getClass(), "createPayload", immersive_aircraft.cobalt.network.Message.class).invoke(handler, message);
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Immersive Aircraft payload: " + e, e);
-        }
-    }
-
-    *///?}
     /**
      * Client mod packet: the bot sends Immersive Aircraft dismount bytes like the IA client; the mod dismounts it
      * through its own handler. Unknown packets and trailing bytes are step errors.
@@ -679,11 +669,7 @@ public final class GmBotGameTests {
         check(type != null, "GameTest run is missing Immersive Aircraft");
         // Bytes as written by the IA client: serverbound packet codec, id supplied separately.
         RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), h.getLevel().registryAccess(), ConnectionType.NEOFORGE);
-        //? if >=26.1 {
-        /*ServerboundCustomPayloadPacket.STREAM_CODEC.encode(buf, new ServerboundCustomPayloadPacket(iaPayload(new CommandMessage(CommandMessage.Key.DISMOUNT, Vec3.ZERO))));
-        *///?} else {
-        ServerboundCustomPayloadPacket.STREAM_CODEC.encode(buf, new ServerboundCustomPayloadPacket(new CommandMessage(CommandMessage.Key.DISMOUNT, Vec3.ZERO)));
-        //?}
+        ServerboundCustomPayloadPacket.STREAM_CODEC.encode(buf, new ServerboundCustomPayloadPacket(iaDismount()));
         String id = buf.readResourceLocation().toString();
         byte[] body = new byte[buf.readableBytes()];
         buf.readBytes(body);
@@ -714,6 +700,25 @@ public final class GmBotGameTests {
                 .thenExecute(() -> leave(h, "GmTestCourier"))
                 .thenSucceed();
     }
+    //?}
+
+    //? if ia && >=26.1 {
+    /*// IA 26.x messages are not payloads themselves: its NeoForge network handler wraps each one (createPayload), as its client does.
+    private static net.minecraft.network.protocol.common.custom.CustomPacketPayload iaDismount() {
+        Object message = new CommandMessage(CommandMessage.Key.DISMOUNT, Vec3.ZERO);
+        try {
+            Object handler = ua.zentix.almighty.platform.Reflect.field(immersive_aircraft.cobalt.network.NetworkHandler.class, "INSTANCE").get(null);
+            return (net.minecraft.network.protocol.common.custom.CustomPacketPayload) ua.zentix.almighty.platform.Reflect
+                    .method(handler.getClass(), "createPayload", immersive_aircraft.cobalt.network.Message.class).invoke(handler, message);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Immersive Aircraft payload: " + e, e);
+        }
+    }
+    *///?} else if ia {
+    private static net.minecraft.network.protocol.common.custom.CustomPacketPayload iaDismount() {
+        return new CommandMessage(CommandMessage.Key.DISMOUNT, Vec3.ZERO);
+    }
+    //?}
 
     /**
      * Vision: distant crosshair hits a gold wall, zombie to the right in front of the wall is visible and in
@@ -722,9 +727,9 @@ public final class GmBotGameTests {
     @GameTest(template = "floor", batch = "gm_see", timeoutTicks = 200, skyAccess = true)
     public static void botSeesWallAndMobs(GameTestHelper h) {
         for (int y = GROUND; y <= GROUND + 4; y++) for (int z = 4; z <= 16; z++) h.setBlock(new BlockPos(16, y, z), Blocks.GOLD_BLOCK);
-        Zombie zombie = h.spawn(EntityType.ZOMBIE, new Vec3(13.5, GROUND, 12.5));
+        Zombie zombie = h.spawn(Gt.ZOMBIE, new Vec3(13.5, GROUND, 12.5));
         zombie.setNoAi(true);
-        Pig pig = h.spawn(EntityType.PIG, new Vec3(19.5, GROUND, 10.5));
+        Pig pig = h.spawn(Gt.PIG, new Vec3(19.5, GROUND, 10.5));
         pig.setNoAi(true);
         spawn(h, "GmTestWatcher", 10.5, 10.5, ",\"gamemode\":\"creative\"");
         JsonObject quick = now(call(h, "see", params("{\"name\":\"GmTestWatcher\",\"image\":false}"))).getAsJsonObject();

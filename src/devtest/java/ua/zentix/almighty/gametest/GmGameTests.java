@@ -201,7 +201,7 @@ public final class GmGameTests {
                     check(r.get("changed").getAsLong() == 1024, "changed count is not 1024: " + r);
                     id.set(r.get("id").getAsLong());
                     for (int x = 16; x <= 31; x++) for (int y = 2; y <= 5; y++) for (int z = 16; z <= 31; z++) h.assertBlockPresent(Blocks.STONE, x, y, z);
-                    AABB box = new AABB(h.absolutePos(new BlockPos(15, 1, 15)).getCenter(), h.absolutePos(new BlockPos(32, 7, 32)).getCenter());
+                    AABB box = new AABB(net.minecraft.world.phys.Vec3.atCenterOf(h.absolutePos(new BlockPos(15, 1, 15))), net.minecraft.world.phys.Vec3.atCenterOf(h.absolutePos(new BlockPos(32, 7, 32))));
                     check(h.getLevel().getEntitiesOfClass(ItemEntity.class, box).isEmpty(), "chest dropped items");
                     undo.set(call(h, "undo", params("{\"job\":%d,\"wait\":50}", id.get())));
                 })

@@ -22,7 +22,8 @@ import java.util.List;
 
 /**
  * Owner sign-in commands, added to {@code /almighty} (permission level 4: the console and level-4 operators):
- * {@code approve <code> [name]} lets the waiting login with that code in as agent {@code name}; {@code approve}
+ * {@code approve <code> [name] [owner]} lets the waiting login with that code in as agent {@code name}, with the
+ * owner's own rights when {@code owner} is given ({@link OwnerApp}); {@code approve}
  * alone lists waiting logins (without codes); {@code deny <code>}; {@code connect} shows the address and the ways to
  * connect each product. Brigadier merges these into the same {@code almighty} node.
  */
@@ -36,8 +37,9 @@ public final class SignInCommand {
     private static void onRegister(RegisterCommandsEvent e) {
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("almighty").requires(s -> s.hasPermission(4));
         root.then(Commands.literal("approve").executes(c -> waiting(c.getSource()))
-                .then(Commands.argument("code", StringArgumentType.word()).executes(c -> approve(c, null))
-                        .then(Commands.argument("name", StringArgumentType.word()).executes(c -> approve(c, StringArgumentType.getString(c, "name"))))));
+                .then(Commands.argument("code", StringArgumentType.word()).executes(c -> approve(c, null, false))
+                        .then(Commands.argument("name", StringArgumentType.word()).executes(c -> approve(c, StringArgumentType.getString(c, "name"), false))
+                                .then(Commands.literal("owner").executes(c -> approve(c, StringArgumentType.getString(c, "name"), true))))));
         root.then(Commands.literal("deny").then(Commands.argument("code", StringArgumentType.word()).executes(SignInCommand::deny)));
         root.then(Commands.literal("connect").executes(c -> connect(c.getSource())));
         e.getDispatcher().register(root);
@@ -64,14 +66,33 @@ public final class SignInCommand {
         return list.size();
     }
 
-    private static int approve(CommandContext<CommandSourceStack> c, String name) {
+    private static int approve(CommandContext<CommandSourceStack> c, String name, boolean owner) {
         CommandSourceStack source = c.getSource();
         Mcp mcp = mcp(source);
         if (mcp == null) return 0;
+        GmServer gm = GmServer.of(source.getServer());
         try {
+            if (owner) {
+                // Checked before the approval, so a refused grant never leaves an app connected with fewer rights than asked.
+                String listed = OwnerApp.listed(gm.policies().file(), name);
+                if (listed != null) {
+                    source.sendFailure(Component.literal(listed));
+                    return 0;
+                }
+            }
             String agent = mcp.signIn().approve(StringArgumentType.getString(c, "code"), name);
-            source.sendSuccess(() -> Component.literal("Approved: it connects as agent " + agent
-                    + ". End it any time with /almighty agent remove " + agent).withStyle(ChatFormatting.GREEN), true);
+            String rights;
+            if (owner) {
+                String refused = OwnerApp.grant(gm.policies().file(), agent);
+                String error = refused == null ? gm.policies().reload() : null;
+                rights = refused != null ? " " + refused + "." : error != null ? " The policy did not reload: " + error + "."
+                        : " It has your rights (ceiling owner in policy.toml).";
+            } else {
+                rights = " It has " + gm.policies().current().ceiling(agent).id() + " rights. If it is your own app, sign it in again "
+                        + "and approve with /almighty approve <code> " + agent + " owner.";
+            }
+            String text = "Approved: it connects as agent " + agent + "." + rights + " End it any time with /almighty agent remove " + agent;
+            source.sendSuccess(() -> Component.literal(text).withStyle(ChatFormatting.GREEN), true);
             return 1;
         } catch (SignIn.OAuthError | IOException e) {
             source.sendFailure(Component.literal(e.getMessage()));

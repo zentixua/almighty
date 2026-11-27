@@ -14,6 +14,9 @@ public final class GmConfig {
     public static final ModConfigSpec.IntValue BRIDGE_PORT;
     public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> BRIDGE_ALLOWED_ORIGINS;
     public static final ModConfigSpec.ConfigValue<String> BRIDGE_PUBLIC_URL;
+    public static final ModConfigSpec.ConfigValue<String> BRIDGE_TLS_CERT;
+    public static final ModConfigSpec.ConfigValue<String> BRIDGE_TLS_KEY;
+    public static final ModConfigSpec.BooleanValue BRIDGE_INTEGRATED;
     public static final ModConfigSpec.DoubleValue WORK_MS_PER_TICK;
     public static final ModConfigSpec.IntValue BUILD_MAX_BLOCKS;
     public static final ModConfigSpec.IntValue MAX_CHUNKS;
@@ -46,6 +49,14 @@ public final class GmConfig {
                         "\"https://mc.example.org\" (cloud agents such as claude.ai need public HTTPS). Sign-in links and the address the",
                         "agent is given use it. Empty: the bridge's own address.")
                 .define("public_url", "");
+        BRIDGE_TLS_CERT = b.comment("HTTPS: a PEM certificate chain file (for example a reverse proxy's or Let's Encrypt's fullchain.pem), relative",
+                        "to the server directory. With tls_key set, the bridge speaks only HTTPS. Empty: plain HTTP (fine on loopback).")
+                .define("tls_cert", "");
+        BRIDGE_TLS_KEY = b.comment("HTTPS: the matching unencrypted PKCS#8 PEM private key (BEGIN PRIVATE KEY, for example privkey.pem).")
+                .define("tls_key", "");
+        BRIDGE_INTEGRATED = b.comment("Also start the bridge on the integrated server of single-player and LAN worlds (for mod developers and",
+                        "filming). Loopback only: with another host the bridge does not start there.")
+                .define("integrated", false);
         b.pop();
         b.push("work");
         WORK_MS_PER_TICK = b.comment("Time per server tick for builds, undos and image views, in ms.")

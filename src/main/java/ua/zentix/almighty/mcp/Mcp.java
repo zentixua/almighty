@@ -51,18 +51,25 @@ public final class Mcp {
             }
 
             @Override
+            public boolean elevated(String name) {
+                ua.zentix.almighty.GmServer gm = ua.zentix.almighty.GmServer.of(server);
+                if (gm == null) return false;
+                return gm.policies().current().ceiling(name).compareTo(ua.zentix.almighty.policy.Policy.defaultCeiling(name)) > 0;
+            }
+
+            @Override
             public String current(String name) throws IOException {
                 var a = agents.get(name);
                 return a == null || a.file() == null ? null : Files.readString(a.file(), StandardCharsets.UTF_8).strip();
             }
         }, System::currentTimeMillis);
         int port = bridge.address().getPort();
-        SignInEndpoints endpoints = new SignInEndpoints(signIn, publicUrl, host, port, allowedOrigins, p -> notifyOwners(server, p));
+        SignInEndpoints endpoints = new SignInEndpoints(signIn, publicUrl, host, port, bridge.tls(), allowedOrigins, p -> notifyOwners(server, p));
         bridge.context("/mcp", new McpEndpoint(bridge, Api.LONG, Almighty.version(), endpoints::challenge));
         bridge.context("/.well-known/", endpoints);
         bridge.context("/oauth/", endpoints);
         String base = publicUrl != null && !publicUrl.isBlank() ? stripSlash(publicUrl.strip())
-                : "http://" + (host.equals("0.0.0.0") || host.equals("::") ? "127.0.0.1" : host.contains(":") ? "[" + host + "]" : host) + ":" + port;
+                : (bridge.tls() ? "https://" : "http://") + (host.equals("0.0.0.0") || host.equals("::") ? "127.0.0.1" : host.contains(":") ? "[" + host + "]" : host) + ":" + port;
         Mcp mcp = new Mcp(signIn, base + "/mcp", base.startsWith("https://"));
         LOG.info("Almighty ready - tell your AI agent: \"connect to my Minecraft server at {}\" (all ways: /almighty connect)", mcp.mcpUrl);
         return mcp;

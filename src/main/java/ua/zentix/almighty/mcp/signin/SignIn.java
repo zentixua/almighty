@@ -75,6 +75,11 @@ public final class SignIn {
 
         /** The agent's current token, or null if there is no such agent. */
         String current(String name) throws IOException;
+
+        /** Whether the policy gives this agent more than an unlisted agent gets (for example the owner's own app). */
+        default boolean elevated(String name) {
+            return false;
+        }
     }
 
     /** A registered client: DCR id or CIMD URL, display name, allowed redirects. */
@@ -279,7 +284,7 @@ public final class SignIn {
     }
 
     /** {@code localhost} or a loopback IP literal; a name such as {@code 127.evil.example} is not. */
-    static boolean loopback(String host) {
+    public static boolean loopback(String host) {
         if (host == null) return false;
         String h = host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
         if (h.equalsIgnoreCase("localhost")) return true;
@@ -366,10 +371,12 @@ public final class SignIn {
         if (!AGENT_NAME.matcher(agent).matches()) {
             throw new OAuthError(400, "invalid_request", "Agent names are 1-32 characters: lowercase letters, digits, - and _");
         }
-        if (!free(agent)) {
+        if (!free(agent) || (name == null && issuer.elevated(agent))) {
+            // A name the owner did not type never lands on an agent with raised rights: a later app with the same
+            // client name would otherwise inherit, say, the owner's own app's ceiling.
             if (name != null) throw new OAuthError(400, "invalid_request", "Agent " + agent + " exists and was not made by sign-in; choose another name");
             int n = 2;
-            while (!free(agent + "-" + n)) n++;
+            while (!free(agent + "-" + n) || issuer.elevated(agent + "-" + n)) n++;
             agent = agent + "-" + n;
         }
         p.agent = agent;

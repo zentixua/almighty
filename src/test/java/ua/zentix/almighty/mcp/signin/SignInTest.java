@@ -129,6 +129,43 @@ class SignInTest {
     }
 
     @Test
+    void aDerivedNameNeverLandsOnAnElevatedAgent() throws Exception {
+        Set<String> elevated = new HashSet<>();
+        SignIn s = new SignIn(dir, new SignIn.Issuer() {
+            @Override
+            public String issue(String name) {
+                String t = name + "-token-" + (++issued);
+                made.put(name, t);
+                return t;
+            }
+
+            @Override
+            public boolean exists(String name) {
+                return made.containsKey(name);
+            }
+
+            @Override
+            public String current(String name) {
+                return made.get(name);
+            }
+
+            @Override
+            public boolean elevated(String name) {
+                return elevated.contains(name);
+            }
+        }, now::get);
+        SignIn.Client mine = register(s, "Claude Code", "http://localhost:1/callback");
+        SignIn.Pending p = s.authorize(mine, authorizeQuery(mine.id(), "http://localhost:1/callback"), "http://127.0.0.1:25650/mcp", "127.0.0.1");
+        assertEquals("claude-code", s.approve(p.code(), "claude-code"));
+        s.exchange(Map.of("grant_type", "authorization_code", "code", p.outcome("x").replaceAll(".*code=([0-9a-f]+).*", "$1"),
+                "client_id", mine.id(), "code_verifier", VERIFIER));
+        elevated.add("claude-code"); // the owner approved it with "owner"
+        SignIn.Client other = register(s, "Claude Code", "http://localhost:2/callback");
+        SignIn.Pending q = s.authorize(other, authorizeQuery(other.id(), "http://localhost:2/callback"), "http://127.0.0.1:25650/mcp", "127.0.0.1");
+        assertEquals("claude-code-2", s.approve(q.code(), null), "another app named alike never inherits the owner's app's rights");
+    }
+
+    @Test
     void pkceRedirectAndResourceAreChecked() throws Exception {
         SignIn s = signIn();
         SignIn.Client c = register(s, "Codex", "http://127.0.0.1:1455/callback/x");

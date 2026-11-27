@@ -27,8 +27,9 @@ import java.util.function.Function;
 /**
  * {@code POST /mcp} on the bridge port: MCP served by the mod itself, so a harness connects by URL with no adapter
  * (plan 7.2). Every request goes through {@link Bridge#authenticate} (origin rule, failed-auth backoff, per-agent
- * tokens) and every tool call through {@link Bridge#call}, the same choke point as {@code /rpc}. Long tools (feed
- * waits, jobs, builds, views) run on the long-poll pool, the rest on the call pool.
+ * tokens) and every tool call through {@link Bridge#call}, the same choke point as {@code /rpc}. After authentication
+ * nothing runs on the accept pool: handshakes and ordinary tools on the call pool, long tools (feed waits, jobs,
+ * builds, views) on the long-poll pool.
  * <p>
  * The URL picks what the connection sees: {@code ?profile=compact} for small local models, {@code ?images=false} for
  * clients without vision (both may be combined).
@@ -85,7 +86,9 @@ public final class McpEndpoint implements HttpHandler {
                 caller = bridge.authenticate(exchange);
             } catch (RpcException e) {
                 if (e.status() == 401) exchange.getResponseHeaders().set("WWW-Authenticate", wwwAuthenticate(exchange));
-                send(exchange, e.status(), McpProtocol.error(null, McpProtocol.INVALID_REQUEST, e.getMessage(), null));
+                // The body is read only to answer with its id: a stdio relay matches replies by id.
+                byte[] unread = exchange.getRequestBody().readNBytes(64 * 1024);
+                send(exchange, e.status(), McpProtocol.error(McpProtocol.id(unread), McpProtocol.INVALID_REQUEST, e.getMessage(), null));
                 return;
             }
             McpProtocol.Settings settings;
@@ -105,22 +108,44 @@ public final class McpEndpoint implements HttpHandler {
                 if (!v.isEmpty()) headers.put(k.toLowerCase(Locale.ROOT), v.get(0));
             });
             McpProtocol.Backend backend = backend(caller);
-            McpProtocol.Prepared prepared = McpProtocol.prepare(headers, body, settings, backend);
-            if (prepared.reply() != null) {
-                reply(exchange, prepared.reply());
-                return;
-            }
-            handedOff = bridge.submit(longMethods.contains(prepared.bridgeMethod()), () -> {
+            // Everything after authentication runs off the accept pool: handshakes read the notes index through the
+            // server thread, and a stalled server must not hold the threads that check every request.
+            handedOff = bridge.submit(false, () -> {
+                boolean moved = false;
                 try {
-                    reply(exchange, McpProtocol.finish(prepared, settings, backend));
+                    McpProtocol.Prepared prepared = McpProtocol.prepare(headers, body, settings, backend);
+                    if (prepared.reply() != null) {
+                        reply(exchange, prepared.reply());
+                    } else if (longMethods.contains(prepared.bridgeMethod())) {
+                        // Feed waits, jobs and views wait on the long-poll pool, so they never starve ordinary calls.
+                        moved = bridge.submit(true, () -> {
+                            try {
+                                reply(exchange, McpProtocol.finish(prepared, settings, backend));
+                            } catch (IOException e) {
+                                // The client disconnected before receiving a response.
+                            } finally {
+                                exchange.close();
+                            }
+                        });
+                        if (!moved) reply(exchange, McpProtocol.busy(prepared));
+                    } else {
+                        reply(exchange, McpProtocol.finish(prepared, settings, backend));
+                    }
                 } catch (IOException e) {
                     // The client disconnected before receiving a response.
+                } catch (RuntimeException e) {
+                    LOG.warn("Almighty MCP: request failed", e);
+                    try {
+                        send(exchange, 500, McpProtocol.error(McpProtocol.id(body), McpProtocol.INTERNAL, e.getClass().getSimpleName() + ": " + e.getMessage(), null));
+                    } catch (IOException ignored) {
+                        // The client disconnected.
+                    }
                 } finally {
-                    exchange.close();
+                    if (!moved) exchange.close();
                 }
             });
             if (!handedOff) {
-                send(exchange, 503, McpProtocol.error(null, McpProtocol.INTERNAL, "The bridge is busy; retry shortly", null));
+                send(exchange, 503, McpProtocol.error(McpProtocol.id(body), McpProtocol.INTERNAL, "The bridge is busy; retry shortly", null));
             }
         } catch (IOException e) {
             // The client disconnected before receiving a response.

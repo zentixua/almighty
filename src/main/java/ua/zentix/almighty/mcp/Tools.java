@@ -18,7 +18,7 @@ import java.util.Set;
 
 /**
  * The MCP tools: definitions (names, descriptions, input schemas, annotations) in
- * {@code assets/almighty/mcp/tools.json}, the one source for every harness and for {@code docs/guide/tools.md}; and
+ * {@code assets/almighty/mcp/tools.json}, the one source for every harness; and
  * how each tool call becomes one bridge method call, with the argument checks the Python adapter made (the bridge
  * would name {@code from}/{@code to} instead of {@code start}/{@code end} and silently ignore extra parameters).
  * Few levers: 14 tools reach every bridge method; {@code call} reaches any of them as is.
@@ -166,8 +166,11 @@ public final class Tools {
                     a.need("id");
                     a.only("notes write", "query", "kind", "offset", "limit");
                 }
+                // Paging only applies to searches (as in the adapter): with id alone, offset and limit are dropped.
+                boolean search = a.has("query") || a.has("kind");
+                JsonElement offset = search && a.has("offset") && a.get("offset").getAsDouble() != 0 ? a.get("offset") : null;
                 yield call("notes", "id", a.get("id"), "query", a.get("query"), "kind", a.get("kind"), "text", a.get("text"),
-                        "offset", a.get("offset"), "limit", a.get("limit"));
+                        "offset", offset, "limit", search ? a.get("limit") : null);
             }
             case "call" -> {
                 a.allow("method", "params");

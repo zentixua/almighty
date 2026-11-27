@@ -133,7 +133,8 @@ public final class McpProtocol {
 
         switch (method) {
             case "initialize" -> {
-                String asked = params.has("protocolVersion") ? params.get("protocolVersion").getAsString() : LEGACY.get(0);
+                JsonElement v = params.get("protocolVersion");
+                String asked = v != null && v.isJsonPrimitive() ? v.getAsString() : LEGACY.get(0);
                 JsonObject r = new JsonObject();
                 r.addProperty("protocolVersion", LEGACY.contains(asked) ? asked : LEGACY.get(0));
                 r.add("capabilities", capabilities());
@@ -170,12 +171,31 @@ public final class McpProtocol {
                     return new Prepared(id, modern, method, Tools.route(name, args), null);
                 } catch (Tools.ToolError e) {
                     return done(id, modern, 200, result(id, toolResult(e.getMessage(), modern, settings)));
+                } catch (RuntimeException e) {
+                    // A wrongly typed argument ("wait": true): a tool error the model can correct, not a crash.
+                    return done(id, modern, 200, result(id, toolResult(name + ": an argument has the wrong type ("
+                            + e.getClass().getSimpleName() + ": " + e.getMessage() + ")", modern, settings)));
                 }
             }
             default -> {
                 // Resources and prompts are not used (plan 1.2): an unknown method.
                 return done(id, modern, modern ? 404 : 200, error(id, METHOD_NOT_FOUND, "Method not found: " + method, null));
             }
+        }
+    }
+
+    /** The 503 reply for a prepared request the long-poll pool had no room for. */
+    public static Reply busy(Prepared p) {
+        return new Reply(503, error(p.id, INTERNAL, "The bridge is busy (too many long waits); retry shortly", null));
+    }
+
+    /** The id of a raw request body, or null: for replies that fail before the body is parsed. */
+    public static JsonElement id(byte[] body) {
+        try {
+            JsonElement e = JsonParser.parseString(new String(body, StandardCharsets.UTF_8));
+            return e.isJsonObject() && e.getAsJsonObject().has("id") ? e.getAsJsonObject().get("id") : null;
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 

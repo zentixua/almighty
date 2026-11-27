@@ -77,6 +77,9 @@ public final class Api {
             "status", "players", "player", "entities", "blocks", "map", "look", "see", "jobs", "job", "areas",
             "bots", "bot", "ships", "rules", "event.types", "events", "audit", "pending");
 
+    /** Items one player's requests may receive per hour below owner ({@code give}); configurable from step 9. */
+    static final long GIVE_PER_HOUR = 128;
+
     private Api() {}
 
     public static Map<String, Method> methods(GmServer gm) {
@@ -112,6 +115,41 @@ public final class Api {
                 return CommandRunner.function(server, a, as);
             });
         });
+        m.put("give", a -> {
+            // Items for the requester only (plan P9): a plain item id, no components, never #almighty:never_give.
+            String item = a.string("item");
+            int count = a.integer("count", 1, 1, 64);
+            if (a.caller().agent() != null && a.caller().requester() == null) {
+                throw RpcException.badRequest("give: only for the player who asked (for: their ticket)");
+            }
+            net.minecraft.resources.ResourceLocation id = net.minecraft.resources.ResourceLocation.tryParse(item);
+            if (id == null || item.contains("[") || item.contains("{")) throw RpcException.badRequest("item: a plain item id such as minecraft:bread (no components)");
+            java.util.UUID to = a.caller().requester();
+            boolean owner = a.caller().agent() == null
+                    || gm.gate().rights(a.caller(), a.raw()).effective() == ua.zentix.almighty.policy.Role.OWNER;
+            return gm.onMain(() -> {
+                var holder = server.registryAccess().lookupOrThrow(Registries.ITEM).get(net.minecraft.resources.ResourceKey.create(Registries.ITEM, id))
+                        .orElseThrow(() -> RpcException.notFound("No item " + item));
+                if (!owner && holder.is(ua.zentix.almighty.policy.ContentLimits.NEVER_GIVE)) {
+                    throw new RpcException(403, "policy", item + " is never given (#almighty:never_give)");
+                }
+                // Spawn eggs work in survival (a wither from one egg): never below owner, whatever mod adds them.
+                if (!owner && holder.value() instanceof net.minecraft.world.item.SpawnEggItem) {
+                    throw new RpcException(403, "policy", item + ": spawn eggs are given only by the owner");
+                }
+                int n = Math.min(count, holder.value().getDefaultMaxStackSize());
+                if (!owner && to != null) gm.quotas().charge(to, "give.items", n, GIVE_PER_HOUR);
+                ServerPlayer p = to == null ? null : server.getPlayerList().getPlayer(to);
+                if (p == null) throw RpcException.conflict("The player who asked is offline");
+                net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(holder, n);
+                if (!p.getInventory().add(stack)) p.drop(stack, false);
+                JsonObject out = new JsonObject();
+                out.addProperty("player", p.getGameProfile().getName());
+                out.addProperty("item", id.toString());
+                out.addProperty("count", n);
+                return out;
+            });
+        });
         m.put("pending", a -> gm.decisions().pending(a.caller().name(), a.string("id"), a.integer("wait", 0, 0, MAX_WAIT))
                 .thenApply(o -> (JsonElement) o));
         m.put("say", a -> gm.onMain(() -> Chat.say(server, a)));
@@ -124,8 +162,15 @@ public final class Api {
             return gm.submit(() -> {
                 Job of = gm.jobs().get(id);
                 if (!(of instanceof BuildJob build)) throw RpcException.notFound("No build #" + id + " (the history keeps the last 50 jobs)");
-                if (!of.agent().equals(a.caller().name())) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.UNDO_ANY,
-                        "build #" + id + " is agent " + of.agent() + "'s");
+                // Own undo means the same agent and the same requester (or none); anyone else's needs undo.any.
+                if (!of.agent().equals(a.caller().name()) || !java.util.Objects.equals(of.requester(), a.caller().requester())) {
+                    gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.UNDO_ANY, "build #" + id + " was made for someone else");
+                }
+                // Undoing an undo replays the original build, data and all: below owner that would bypass the content limits.
+                if (of.kind().equals("undo") && a.caller().agent() != null
+                        && gm.gate().rights(a.caller(), a.raw()).effective() != ua.zentix.almighty.policy.Role.OWNER) {
+                    throw new RpcException(403, "policy", "Undoing an undo (a redo) needs the owner");
+                }
                 return BuildJob.undo(build, CHUNK_WAIT_TICKS);
             }, waitSeconds(a));
         });
@@ -393,9 +438,13 @@ public final class Api {
         MinecraftServer server = gm.server();
         ServerLevel level = Dims.level(server, a);
         HolderLookup<Block> blocks = server.registryAccess().lookupOrThrow(Registries.BLOCK);
+        // Below owner: block states only, never #almighty:never_build (plan 4.3).
+        boolean limited = a.caller().agent() != null
+                && gm.gate().rights(a.caller(), a.raw()).effective() != ua.zentix.almighty.policy.Role.OWNER;
         BuildPlan<BlockInput> plan = BuildPlan.parse(a.array("ops"), s -> {
             try {
                 BlockStateParser.BlockResult r = BlockStateParser.parseForBlock(blocks, s, true);
+                if (limited) ua.zentix.almighty.policy.ContentLimits.block(s, r.blockState(), r.nbt() != null);
                 return new BlockInput(r.blockState(), r.properties().keySet(), r.nbt());
             } catch (CommandSyntaxException e) {
                 throw RpcException.badRequest("block \"" + s + "\": " + e.getMessage());

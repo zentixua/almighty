@@ -135,6 +135,10 @@ public final class GmServer {
                 return;
             }
             if (error != null || Api.readOnly(method, params)) return;
+            // Commands report per command; a receipt only for what actually happened.
+            if (result instanceof com.google.gson.JsonArray results) {
+                for (var r : results) if (r instanceof JsonObject o && o.has("ok") && !o.get("ok").getAsBoolean()) return;
+            }
             Long job = result instanceof JsonObject o && o.has("kind") && o.get("id") instanceof com.google.gson.JsonPrimitive id
                     && id.isNumber() && o.get("kind").getAsString().equals("build") ? id.getAsLong() : null;
             String what = method.equals("command") || method.equals("function") ? Confirmations.render(method, params)

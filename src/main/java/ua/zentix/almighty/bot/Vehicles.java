@@ -12,9 +12,12 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PlayerRideableJumping;
+//? if >=26.1 {
+/*import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
+*///?} else {
 import net.minecraft.world.entity.vehicle.Boat;
+//?}
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.fml.util.ObfuscationReflectionHelper;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.compat.Compat;
 
@@ -39,10 +42,16 @@ final class Vehicles {
      * add a mod vehicle to the tag only after checking that it behaves like vanilla.
      */
     static final TagKey<EntityType<?>> DRIVEN_BY_RIDER = TagKey.create(Registries.ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath(Almighty.ID, "driven_by_rider"));
-    private static final Method BOAT_STATUS = ObfuscationReflectionHelper.findMethod(Boat.class, "getStatus");
-    private static final Field STATUS = ObfuscationReflectionHelper.findField(Boat.class, "status");
-    private static final Field DELTA_ROTATION = ObfuscationReflectionHelper.findField(Boat.class, "deltaRotation");
-    private static final Field LAND_FRICTION = ObfuscationReflectionHelper.findField(Boat.class, "landFriction");
+    /** The boat class holding the controls (26.x: {@code AbstractBoat}, boats and rafts). */
+    //? if >=26.1 {
+    /*private static final Class<AbstractBoat> BOAT = AbstractBoat.class;
+    *///?} else {
+    private static final Class<Boat> BOAT = Boat.class;
+    //?}
+    private static final Method BOAT_STATUS = ua.zentix.almighty.platform.Reflect.method(BOAT, "getStatus");
+    private static final Field STATUS = ua.zentix.almighty.platform.Reflect.field(BOAT, "status");
+    private static final Field DELTA_ROTATION = ua.zentix.almighty.platform.Reflect.field(BOAT, "deltaRotation");
+    private static final Field LAND_FRICTION = ua.zentix.almighty.platform.Reflect.field(BOAT, "landFriction");
 
     private final Bot bot;
     /** Drivers for installed vehicle mods (compatibility), separate for each bot. */
@@ -59,7 +68,7 @@ final class Vehicles {
     /** Whether the player drives a vehicle controlled by rider input; the server then computes its movement. */
     static boolean local(ServerPlayer p) {
         Entity v = p.getVehicle();
-        return v != null && v.getControllingPassenger() == p && v.getType().is(DRIVEN_BY_RIDER);
+        return v != null && v.getControllingPassenger() == p && ua.zentix.almighty.platform.Mc.isType(v, DRIVEN_BY_RIDER);
     }
 
     /** Driver for the bot's mod vehicle; null if none. */
@@ -83,7 +92,11 @@ final class Vehicles {
                     moved(p, v, from);
                 }
             } else if (local(p)) {
+                //? if >=26.1 {
+                /*if (v instanceof AbstractBoat boat) {
+                *///?} else {
                 if (v instanceof Boat boat) {
+                //?}
                     steer(boat, held.contains(Controls.Key.LEFT), held.contains(Controls.Key.RIGHT), held.contains(Controls.Key.FORWARD), held.contains(Controls.Key.BACK));
                 }
                 ridingJump(p, v, jump);
@@ -154,7 +167,11 @@ final class Vehicles {
      * drag before movement, so divide thrust and turn by next tick's drag ({@link #nextFriction}). After that,
      * speed, turn and heading exactly match the client.
      */
+    //? if >=26.1 {
+    /*static void steer(AbstractBoat boat, boolean left, boolean right, boolean up, boolean down) {
+    *///?} else {
     static void steer(Boat boat, boolean left, boolean right, boolean up, boolean down) {
+    //?}
         boat.setInput(left, right, up, down);
         if (!boat.isVehicle()) return;
         try {
@@ -180,10 +197,17 @@ final class Vehicles {
      * starts with the same status at the same position), multiplier as in {@code floatBoat}; entering water
      * does not reduce horizontal velocity.
      */
+    //? if >=26.1 {
+    /*private static float nextFriction(AbstractBoat boat) throws IllegalAccessException, InvocationTargetException {
+        AbstractBoat.Status old = (AbstractBoat.Status) STATUS.get(boat);
+        AbstractBoat.Status next = (AbstractBoat.Status) BOAT_STATUS.invoke(boat);
+        if (old == AbstractBoat.Status.IN_AIR && next != AbstractBoat.Status.IN_AIR && next != AbstractBoat.Status.ON_LAND) return 1.0F;
+    *///?} else {
     private static float nextFriction(Boat boat) throws IllegalAccessException, InvocationTargetException {
         Boat.Status old = (Boat.Status) STATUS.get(boat);
         Boat.Status next = (Boat.Status) BOAT_STATUS.invoke(boat);
         if (old == Boat.Status.IN_AIR && next != Boat.Status.IN_AIR && next != Boat.Status.ON_LAND) return 1.0F;
+    //?}
         return switch (next) {
             case IN_WATER, UNDER_FLOWING_WATER, IN_AIR -> 0.9F;
             case UNDER_WATER -> 0.45F;

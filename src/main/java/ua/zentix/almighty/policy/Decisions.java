@@ -6,6 +6,7 @@ import net.minecraft.server.level.ServerPlayer;
 import ua.zentix.almighty.bridge.Dispatch;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.feed.Feed;
+import ua.zentix.almighty.platform.Mc;
 
 import java.util.HashSet;
 import java.util.List;
@@ -59,7 +60,7 @@ public final class Decisions {
         Confirmations.Pending p = confirmations.byNonce(nonce);
         if (p == null) return "No such request (it may have expired)";
         UUID id = by == null ? null : by.getUUID();
-        String name = by == null ? "the console" : by.getGameProfile().getName();
+        String name = by == null ? "the console" : Mc.name(by.getGameProfile());
         String why = confirmations.decide(p, id, name, allow, node -> Nodes.holds(id, node));
         if (why != null) return "Not decided: " + why;
         event(p);

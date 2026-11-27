@@ -1,6 +1,5 @@
 package ua.zentix.almighty.knowledge;
 
-import com.electronwill.nightconfig.core.UnmodifiableConfig;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.mojang.brigadier.CommandDispatcher;
@@ -11,21 +10,18 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.properties.Property;
-import net.neoforged.fml.ModList;
-import net.neoforged.fml.config.IConfigSpec;
-import net.neoforged.fml.config.ModConfig;
-import net.neoforged.fml.config.ModConfigs;
-import net.neoforged.neoforgespi.language.IModInfo;
 import ua.zentix.almighty.bridge.RpcException;
-import ua.zentix.almighty.rules.EventTypes;
+import ua.zentix.almighty.platform.GameEvents;
+import ua.zentix.almighty.platform.Mc;
+import ua.zentix.almighty.platform.Platform;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -105,7 +101,7 @@ public final class Catalog {
         kinds.put("config", config());
         // The level map is the server thread's: a mod may add a dimension at runtime.
         List<Entry> dimensions = new ArrayList<>();
-        for (ResourceKey<?> level : server.levelKeys()) dimensions.add(new Entry("dimensions", level.location().toString(), "", JsonObject::new));
+        for (ResourceKey<?> level : server.levelKeys()) dimensions.add(new Entry("dimensions", Mc.id(level).toString(), "", JsonObject::new));
         kinds.put("dimensions", List.copyOf(dimensions));
         reloadable = new Snapshot(key, kinds, server.getRecipeManager(), server.registryAccess());
     }
@@ -166,16 +162,16 @@ public final class Catalog {
                 d.addProperty("category", effect.getCategory().name().toLowerCase(Locale.ROOT));
                 return d;
             });
-            case "enchantments" -> registry(kind, access.registryOrThrow(Registries.ENCHANTMENT), e -> {
+            case "enchantments" -> registry(kind, Mc.registry(access, Registries.ENCHANTMENT), e -> {
                 JsonObject d = new JsonObject();
                 d.addProperty("max_level", e.getMaxLevel());
                 return d;
             });
-            case "biomes" -> registry(kind, access.registryOrThrow(Registries.BIOME), b -> new JsonObject());
+            case "biomes" -> registry(kind, Mc.registry(access, Registries.BIOME), b -> new JsonObject());
             case "events" -> {
                 List<Entry> out = new ArrayList<>();
-                EventTypes.all().forEach((className, mod) -> {
-                    String name = EventTypes.shortName(className);
+                Platform.get().events().all().forEach((className, mod) -> {
+                    String name = GameEvents.shortName(className);
                     out.add(new Entry(kind, name, className + " " + mod, () -> {
                         JsonObject d = new JsonObject();
                         d.addProperty("class", className);
@@ -191,14 +187,14 @@ public final class Catalog {
 
     private static List<Entry> mods() {
         List<Entry> out = new ArrayList<>();
-        for (IModInfo mod : ModList.get().getMods()) {
-            String description = Notes.shorten(mod.getDescription(), MAX_TEXT);
-            out.add(new Entry("mods", mod.getModId(), mod.getDisplayName() + " " + description, () -> {
+        for (Platform.ModInfo mod : Platform.get().mods()) {
+            String description = Notes.shorten(mod.description(), MAX_TEXT);
+            out.add(new Entry("mods", mod.id(), mod.name() + " " + description, () -> {
                 JsonObject d = new JsonObject();
-                d.addProperty("name", mod.getDisplayName());
-                d.addProperty("version", mod.getVersion().toString());
+                d.addProperty("name", mod.name());
+                d.addProperty("version", mod.version());
                 if (!description.isEmpty()) d.addProperty("description", description);
-                mod.getModURL().ifPresent(url -> d.addProperty("url", url.toString()));
+                if (mod.url() != null) d.addProperty("url", mod.url());
                 return d;
             }));
         }
@@ -209,7 +205,7 @@ public final class Catalog {
         List<Entry> out = new ArrayList<>();
         for (Map.Entry<ResourceKey<T>, T> e : registry.entrySet()) {
             T value = e.getValue();
-            out.add(new Entry(kind, e.getKey().location().toString(), "", () -> detail.apply(value)));
+            out.add(new Entry(kind, Mc.id(e.getKey()).toString(), "", () -> detail.apply(value)));
         }
         out.sort((a, b) -> a.id().compareTo(b.id()));
         return List.copyOf(out);
@@ -236,17 +232,17 @@ public final class Catalog {
         List<Entry> out = new ArrayList<>();
         for (ResourceKey<? extends Registry<?>> key : List.of(Registries.BLOCK, Registries.ITEM, Registries.ENTITY_TYPE,
                 Registries.FLUID, Registries.BIOME, Registries.ENCHANTMENT)) {
-            access.registry(key).ifPresent(r -> r.getTags().forEach(pair -> {
-                int size = pair.getSecond().size();
-                String registry = key.location().getPath();
-                String id = "#" + pair.getFirst().location();
+            for (Map.Entry<ResourceLocation, Integer> tag : Mc.tagSizes(access, key)) {
+                int size = tag.getValue();
+                String registry = Mc.id(key).getPath();
+                String id = "#" + tag.getKey();
                 out.add(new Entry("tags", id, registry, () -> {
                     JsonObject d = new JsonObject();
                     d.addProperty("registry", registry);
                     d.addProperty("size", size);
                     return d;
                 }));
-            }));
+            }
         }
         out.sort((a, b) -> a.id().compareTo(b.id()));
         return List.copyOf(out);
@@ -281,21 +277,20 @@ public final class Catalog {
             String type = String.valueOf(BuiltInRegistries.RECIPE_TYPE.getKey(recipe.getType()));
             String result;
             try {
-                ItemStack stack = recipe.getResultItem(access);
+                ItemStack stack = Mc.recipeResult(recipe, access);
                 result = stack.isEmpty() ? "" : BuiltInRegistries.ITEM.getKey(stack.getItem()) + (stack.getCount() > 1 ? " x" + stack.getCount() : "");
             } catch (RuntimeException e) {
                 result = "";
             }
             String shownResult = result;
-            out.add(new Entry("recipes", holder.id().toString(), type + " " + result, () -> {
+            out.add(new Entry("recipes", Mc.recipeId(holder).toString(), type + " " + result, () -> {
                 JsonObject d = new JsonObject();
                 d.addProperty("type", type);
                 if (!shownResult.isEmpty()) d.addProperty("result", shownResult);
                 JsonArray ingredients = new JsonArray();
-                for (Ingredient ingredient : recipe.getIngredients()) {
-                    if (ingredient.isEmpty()) continue;
+                for (List<net.minecraft.world.item.Item> ingredient : Mc.ingredients(recipe)) {
                     Set<String> items = new LinkedHashSet<>();
-                    for (ItemStack s : ingredient.getItems()) items.add(BuiltInRegistries.ITEM.getKey(s.getItem()).toString());
+                    for (net.minecraft.world.item.Item item : ingredient) items.add(BuiltInRegistries.ITEM.getKey(item).toString());
                     List<String> first = items.stream().limit(4).toList();
                     ingredients.add(String.join("|", first) + (items.size() > 4 ? "|…(" + items.size() + ")" : ""));
                 }
@@ -307,37 +302,24 @@ public final class Catalog {
         return List.copyOf(out);
     }
 
-    /** Mods' NeoForge config values (common and server), without keys that look like secrets. */
+    /** Mods' loaded common and server config values, without keys that look like secrets. */
     private static List<Entry> config() {
-        List<Entry> out = new ArrayList<>();
-        for (IModInfo mod : ModList.get().getMods()) {
-            for (ModConfig config : ModConfigs.getModConfigs(mod.getModId())) {
-                if (config.getType() == ModConfig.Type.CLIENT) continue;
-                IConfigSpec.ILoadedConfig loaded = config.getLoadedConfig();
-                if (loaded == null) continue;
-                flatten(mod.getModId(), config.getFileName(), "", loaded.config(), out);
-            }
-        }
-        return List.copyOf(out);
+        return configEntries(Platform.get().modConfigValues());
     }
 
-    static void flatten(String mod, String file, String prefix, UnmodifiableConfig config, List<Entry> out) {
-        for (UnmodifiableConfig.Entry e : config.entrySet()) {
-            String key = prefix.isEmpty() ? e.getKey() : prefix + "." + e.getKey();
-            Object value = e.getValue();
-            if (value instanceof UnmodifiableConfig sub) {
-                flatten(mod, file, key, sub, out);
-                continue;
-            }
+    static List<Entry> configEntries(List<Platform.ConfigValue> values) {
+        List<Entry> out = new ArrayList<>();
+        for (Platform.ConfigValue v : values) {
+            String key = v.key(), file = v.file();
             boolean secret = SECRET.matcher(key).matches();
-            String shown = secret ? "(hidden: looks like a secret)" : Notes.shorten(String.valueOf(value), MAX_TEXT);
-            String id = mod + ":" + key;
-            out.add(new Entry("config", id, file, () -> {
+            String shown = secret ? "(hidden: looks like a secret)" : Notes.shorten(String.valueOf(v.value()), MAX_TEXT);
+            out.add(new Entry("config", v.mod() + ":" + key, file, () -> {
                 JsonObject d = new JsonObject();
                 d.addProperty("file", file);
                 d.addProperty("value", shown);
                 return d;
             }));
         }
+        return List.copyOf(out);
     }
 }

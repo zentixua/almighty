@@ -1,0 +1,43 @@
+// Stonecutter controller: the active node is the one src/ is written for (switch with the Stonecutter tasks).
+plugins {
+    id 'net.neoforged.moddev' version '2.0.149' apply false
+    id 'net.fabricmc.fabric-loom' version '1.19.6' apply false
+}
+
+stonecutter.active '1.21.1-neoforge'
+
+stonecutter.parameters {
+    String project = node.metadata.project
+    String loader = project.substring(project.lastIndexOf('-') + 1)
+    constants.match(loader, 'neoforge', 'fabric')
+    // Mod compatibility present on this node (versions/<node>/gradle.properties compat_<mod>): a constant for
+    // conditions (//? if ia), and the module's files are left out where the mod has no build for this version.
+    Map<String, String> compat = [ia: 'immersiveaircraft', opac: 'opac', ftbchunks: 'ftbchunks', sable: 'sable']
+    compat.each { key, dir ->
+        boolean present = node.project.findProperty("compat_${key}" as String) != null
+        constants.put(key, present)
+        files.disable(!present, "ua/zentix/almighty/compat/${dir}/" as String)
+    }
+    files.disable(!node.project.findProperty('compat_sable'), 'ua/zentix/almighty/gametest/GmSableGameTests.java')
+    files.disable(loader != 'neoforge', 'ua/zentix/almighty/neoforge/')
+    files.disable(loader != 'fabric', 'ua/zentix/almighty/fabric/')
+    // Plain renames (a replacement runs in reverse when switching back, so each new name is absent from the 1.21.1
+    // source). Anything less mechanical goes through platform/Mc or a version condition.
+    boolean v26 = current.parsed.matches('>=26.1')
+    replacements.string(v26) { replace 'ResourceLocation', 'Identifier' }
+    replacements.string(v26) { replace 'absMoveTo', 'absSnapTo' }
+    replacements.string(v26) { replace 'absRotateTo', 'absSnapRotationTo' }
+    replacements.string(v26) { replace 'ClickType', 'ContainerInput' }
+    replacements.string(v26) { replace 'GameProfileCache', 'CachedUserNameToIdResolver' }
+    // GameTest (src/devtest): 26.x registers tests in registries instead of scanning annotations. The test classes keep
+    // their 1.21.1 annotations; on 26.x they name look-alikes in gametest/v26 (whose sources are 26.x-only conditions),
+    // which gametest/v26/GmTestRegistry registers.
+    replacements.string(v26) { replace 'import net.minecraft.gametest.framework.GameTest;', 'import ua.zentix.almighty.gametest.v26.GameTest;' }
+    replacements.string(v26) { replace 'net.neoforged.neoforge.gametest.GameTestHolder', 'ua.zentix.almighty.gametest.v26.GameTestHolder' }
+    replacements.string(v26) { replace 'net.neoforged.neoforge.gametest.PrefixGameTestTemplate', 'ua.zentix.almighty.gametest.v26.PrefixGameTestTemplate' }
+    replacements.string(v26) { replace 'new GameTestAssertException(', 'new ua.zentix.almighty.gametest.v26.Failure(' }
+    // 26.x day time is a world clock: `time query daytime` became `time query time` (GameTest command fixtures).
+    replacements.string(v26) { replace 'time query daytime', 'time query time' }
+    boolean v263 = current.parsed.matches('>=26.3')
+    replacements.string(v263) { replace 'net.minecraft.advancements.CriteriaTriggers', 'net.minecraft.advancements.triggers.CriteriaTriggers' }
+}

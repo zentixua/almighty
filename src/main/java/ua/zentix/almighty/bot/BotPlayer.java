@@ -24,4 +24,27 @@ public final class BotPlayer extends ServerPlayer {
     public boolean isLocalPlayer() {
         return Vehicles.local(this);
     }
+    //? if >=26.1 {
+    /*// 26.x: the server moves a vehicle whose driver is not client-authoritative (isLocalInstanceAuthoritative).
+    @Override
+    public boolean isClientAuthoritative() {
+        return !Vehicles.local(this);
+    }
+    *///?}
+    //? if fabric {
+    /*// Fabric has no name-format events: the bot marks its own tab line and chat name (NeoForge: AlmightyNeoForge).
+    @Override
+    public net.minecraft.network.chat.Component getTabListDisplayName() {
+        net.minecraft.network.chat.Component current = super.getTabListDisplayName();
+        net.minecraft.network.chat.Component marked = Bots.tabName(this, current);
+        return marked != null ? marked : current;
+    }
+
+    @Override
+    public net.minecraft.network.chat.Component getDisplayName() {
+        net.minecraft.network.chat.Component current = super.getDisplayName();
+        net.minecraft.network.chat.Component marked = Bots.displayName(this, current);
+        return marked != null ? marked : current;
+    }
+    *///?}
 }

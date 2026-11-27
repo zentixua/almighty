@@ -11,11 +11,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.mcp.Connect;
 import ua.zentix.almighty.mcp.Mcp;
+import ua.zentix.almighty.platform.Mc;
 
 import java.io.IOException;
 import java.util.List;
@@ -30,19 +29,15 @@ import java.util.List;
 public final class SignInCommand {
     private SignInCommand() {}
 
-    public static void register(IEventBus bus) {
-        bus.addListener(SignInCommand::onRegister);
-    }
-
-    private static void onRegister(RegisterCommandsEvent e) {
-        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("almighty").requires(s -> s.hasPermission(4));
+    public static void register(com.mojang.brigadier.CommandDispatcher<CommandSourceStack> dispatcher) {
+        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("almighty").requires(s -> Mc.has(s, 4));
         root.then(Commands.literal("approve").executes(c -> waiting(c.getSource()))
                 .then(Commands.argument("code", StringArgumentType.word()).executes(c -> approve(c, null, false))
                         .then(Commands.argument("name", StringArgumentType.word()).executes(c -> approve(c, StringArgumentType.getString(c, "name"), false))
                                 .then(Commands.literal("owner").executes(c -> approve(c, StringArgumentType.getString(c, "name"), true))))));
         root.then(Commands.literal("deny").then(Commands.argument("code", StringArgumentType.word()).executes(SignInCommand::deny)));
         root.then(Commands.literal("connect").executes(c -> connect(c.getSource())));
-        e.getDispatcher().register(root);
+        dispatcher.register(root);
     }
 
     private static Mcp mcp(CommandSourceStack source) {
@@ -122,8 +117,8 @@ public final class SignInCommand {
             if (w.how() != null) out.append(copyable(w.how()));
             if (w.link() != null) {
                 out.append(Component.literal(" [link]").withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
-                        .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, w.link()))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(w.link())))));
+                        .withClickEvent(Mc.openUrl(w.link()))
+                        .withHoverEvent(Mc.showText(Component.literal(w.link())))));
             }
         }
         out.append(Component.literal("\nThe agent's app opens a sign-in page with a code; approve it here with /almighty approve <code>.")
@@ -134,7 +129,7 @@ public final class SignInCommand {
 
     /** Text that copies itself when clicked (players); the console just prints it. */
     private static MutableComponent copyable(String text) {
-        return Component.literal(text).withStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, text))
-                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to copy"))));
+        return Component.literal(text).withStyle(Style.EMPTY.withClickEvent(Mc.copyToClipboard(text))
+                .withHoverEvent(Mc.showText(Component.literal("Click to copy"))));
     }
 }

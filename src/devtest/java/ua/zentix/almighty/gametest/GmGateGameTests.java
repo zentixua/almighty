@@ -14,6 +14,7 @@ import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.Agents;
 import ua.zentix.almighty.bridge.Caller;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.policy.Gate;
 import ua.zentix.almighty.policy.Policy;
 
@@ -124,10 +125,10 @@ public final class GmGateGameTests {
         h.getLevel().getServer().getCommands().performPrefixedCommand(p.createCommandSourceStack(), "gm " + text);
         for (JsonElement e : gm.feed().read(after, 100, 0).getAsJsonArray("events")) {
             JsonObject o = e.getAsJsonObject();
-            if (o.get("type").getAsString().equals("gm") && o.get("player").getAsString().equals(p.getGameProfile().getName())) {
+            if (o.get("type").getAsString().equals("gm") && o.get("player").getAsString().equals(Mc.name(p.getGameProfile()))) {
                 return o.get("ticket").getAsString();
             }
         }
-        throw new GameTestAssertException("no /gm event for " + p.getGameProfile().getName());
+        throw new GameTestAssertException("no /gm event for " + Mc.name(p.getGameProfile()));
     }
 }

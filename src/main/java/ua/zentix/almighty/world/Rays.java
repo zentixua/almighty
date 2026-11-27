@@ -14,6 +14,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import ua.zentix.almighty.platform.Mc;
 
 /**
  * Block rays without chunk loading: like {@code BlockGetter.clip} (block shape, interaction shape, fluid;
@@ -40,7 +41,7 @@ public final class Rays {
             if (chunk == null) {
                 unloaded[0] = true;
                 Vec3 entry = new AABB(pos).clip(from, to).orElse(Vec3.atCenterOf(pos));
-                return BlockHitResult.miss(entry, Direction.getNearest(from.x - to.x, from.y - to.y, from.z - to.z), pos);
+                return BlockHitResult.miss(entry, Mc.nearest(from.x - to.x, from.y - to.y, from.z - to.z), pos);
             }
             BlockState state = chunk.getBlockState(pos);
             FluidState fluidState = state.getFluidState();
@@ -58,7 +59,7 @@ public final class Rays {
             return ds <= dw ? solid : wet;
         }, c -> {
             Vec3 back = from.subtract(to);
-            return BlockHitResult.miss(to, Direction.getNearest(back.x, back.y, back.z), BlockPos.containing(to));
+            return BlockHitResult.miss(to, Mc.nearest(back.x, back.y, back.z), BlockPos.containing(to));
         });
         return new Hit(result, unloaded[0]);
     }

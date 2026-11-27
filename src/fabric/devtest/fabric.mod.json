@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "almighty_gametest",
+  "version": "0",
+  "name": "Almighty GameTests",
+  "description": "Almighty's GameTests on Fabric (Gradle runs only).",
+  "license": "GPL-3.0-only",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["ua.zentix.almighty.gametest.fabric.FabricTests"]
+  },
+  "mixins": ["almighty_gametest.mixins.json"],
+  "depends": {
+    "almighty": "*",
+    "fabric-gametest-api-v1": "*"
+  }
+}

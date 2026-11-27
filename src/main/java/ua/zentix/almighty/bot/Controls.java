@@ -11,7 +11,6 @@ import net.minecraft.network.protocol.game.ServerboundInteractPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -33,6 +32,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.world.Observe;
 import ua.zentix.almighty.world.Rays;
 
@@ -85,6 +85,8 @@ final class Controls {
     private int destroyDelay;
     private int sequence;
     private boolean shiftSent, attackedThisTick;
+    //? if >=26.1
+    /*private net.minecraft.world.entity.player.Input inputSent = net.minecraft.world.entity.player.Input.EMPTY;*/
     /** Movement packets the client would send after its ticks: the server recalculates visible entities for each. */
     private final MovePackets movePackets = new MovePackets();
     /** Blocks finished by holding attack since the last read (step result). */
@@ -162,7 +164,11 @@ final class Controls {
         HitResult hit = pick(p);
         describe(p, hit, out);
         switch (hit.getType()) {
+            //? if >=26.1 {
+            /*case ENTITY -> bot.send(new net.minecraft.network.protocol.game.ServerboundAttackPacket(((EntityHitResult) hit).getEntity().getId()));
+            *///?} else {
             case ENTITY -> bot.send(ServerboundInteractPacket.createAttackPacket(((EntityHitResult) hit).getEntity(), p.isShiftKeyDown()));
+            //?}
             case BLOCK -> {
                 BlockHitResult block = (BlockHitResult) hit;
                 if (!p.level().getBlockState(block.getBlockPos()).isAir()) {
@@ -175,7 +181,7 @@ final class Controls {
             }
             case MISS -> miss(p);
         }
-        bot.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+        bot.send(Mc.swingPacket());
         return out;
     }
 
@@ -192,7 +198,7 @@ final class Controls {
         if (p.isUsingItem()) return note(out, "hands busy: an item is in use");
         HitResult hit = pick(p);
         describe(p, hit, out);
-        ServerLevel level = p.serverLevel();
+        ServerLevel level = Mc.level(p);
         for (InteractionHand hand : InteractionHand.values()) {
             ItemStack stack = p.getItemInHand(hand);
             if (!stack.isItemEnabled(level.enabledFeatures())) return out;
@@ -200,11 +206,12 @@ final class Controls {
                 Entity entity = entityHit.getEntity();
                 if (!level.getWorldBorder().isWithinBounds(entity.blockPosition())) return out;
                 InteractionResult r = interact(p, entity, hand, entityHit.getLocation().subtract(entity.position()));
+                //? if <26.1
                 if (!r.consumesAction()) r = interact(p, entity, hand, null);
                 if (r.consumesAction()) return result(out, hand, r);
             } else if (hit instanceof BlockHitResult blockHit && hit.getType() == HitResult.Type.BLOCK) {
                 InteractionResult r = useOn(p, hand, blockHit);
-                if (r.consumesAction() || r == InteractionResult.FAIL) return result(out, hand, r);
+                if (r.consumesAction() || InteractionResult.FAIL.equals(r)) return result(out, hand, r);
             }
             if (!stack.isEmpty()) {
                 InteractionResult r = useItem(p, hand);
@@ -230,7 +237,7 @@ final class Controls {
         if (missTime > 0 || p.isUsingItem()) return;
         HitResult hit = leftClick ? pick(p) : null;
         if (hit instanceof BlockHitResult block && hit.getType() == HitResult.Type.BLOCK && !p.level().getBlockState(block.getBlockPos()).isAir()) {
-            if (continueDestroyBlock(p, block.getBlockPos(), block.getDirection())) bot.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+            if (continueDestroyBlock(p, block.getBlockPos(), block.getDirection())) bot.send(Mc.swingPacket());
         } else {
             stopDestroyBlock();
         }
@@ -294,7 +301,12 @@ final class Controls {
     }
 
     private boolean sameTarget(ServerPlayer p, BlockPos pos) {
+        //? if neoforge {
         return pos.equals(destroyPos) && !destroyingItem.shouldCauseBlockBreakReset(p.getMainHandItem());
+        //?} else {
+        /*// Vanilla's client check (MultiPlayerGameMode.sameDestroyTarget); NeoForge lets items refine it.
+        return pos.equals(destroyPos) && ItemStack.isSameItemSameComponents(destroyingItem, p.getMainHandItem());
+        *///?}
     }
 
     private void action(ServerboundPlayerActionPacket.Action action, BlockPos pos, Direction face) {
@@ -303,38 +315,52 @@ final class Controls {
 
     /**
      * Entity interaction follows {@code handleInteract}: world border, reach, NeoForge event, entity itself,
-     * advancement criterion, swing. {@code at} is a point on the entity (as tried first by the client); null means no point.
+     * advancement criterion, swing. {@code at} is a point on the entity (as tried first by the client); null means no point
+     * (1.21.1 only: 26.x has one interaction, always with the point).
      */
     private static InteractionResult interact(ServerPlayer p, Entity entity, InteractionHand hand, Vec3 at) {
-        ServerLevel level = p.serverLevel();
+        ServerLevel level = Mc.level(p);
+        //? if >=26.1 {
+        /*if (!level.getWorldBorder().isWithinBounds(entity.blockPosition()) || !p.isWithinEntityInteractionRange(entity.getBoundingBox(), 3.0)) return InteractionResult.PASS;
+        *///?} else {
         if (!level.getWorldBorder().isWithinBounds(entity.blockPosition()) || !p.canInteractWithEntity(entity.getBoundingBox(), 1.0)) return InteractionResult.PASS;
+        //?}
         ItemStack stack = p.getItemInHand(hand);
         if (!stack.isItemEnabled(level.enabledFeatures())) return InteractionResult.PASS;
         ItemStack before = stack.copy();
         InteractionResult r;
+        //? if >=26.1 {
+        /*r = ua.zentix.almighty.platform.Platform.get().interactEntityAt(p, entity, at, hand);
+        if (r == null) r = p.interactOn(entity, hand, at);
+        *///?} else {
         if (at != null) {
-            r = net.neoforged.neoforge.common.CommonHooks.onInteractEntityAt(p, entity, at, hand);
+            r = ua.zentix.almighty.platform.Platform.get().interactEntityAt(p, entity, at, hand);
             if (r == null) r = entity.interactAt(p, at, hand);
         } else {
             r = p.interactOn(entity, hand);
         }
+        //?}
         if (r.consumesAction()) {
-            CriteriaTriggers.PLAYER_INTERACTED_WITH_ENTITY.trigger(p, r.indicateItemUse() ? before : ItemStack.EMPTY, entity);
-            if (r.shouldSwing()) p.swing(hand, true);
+            CriteriaTriggers.PLAYER_INTERACTED_WITH_ENTITY.trigger(p, Mc.usedItem(r) ? before : ItemStack.EMPTY, entity);
+            if (Mc.swings(r)) Mc.swing(p, hand);
         }
         return r;
     }
 
     /** Use on a block follows {@code handleUseItemOn}: reach, point within the block, height, building permission. */
     private static InteractionResult useOn(ServerPlayer p, InteractionHand hand, BlockHitResult hit) {
-        ServerLevel level = p.serverLevel();
+        ServerLevel level = Mc.level(p);
         ItemStack stack = p.getItemInHand(hand);
         BlockPos pos = hit.getBlockPos();
         if (!level.getWorldBorder().isWithinBounds(pos)) return InteractionResult.FAIL;
+        //? if >=26.1 {
+        /*if (!p.isWithinBlockInteractionRange(pos, 1.0)) return InteractionResult.PASS;
+        *///?} else {
         if (!p.canInteractWithBlock(pos, 1.0)) return InteractionResult.PASS;
+        //?}
         Vec3 inside = hit.getLocation().subtract(Vec3.atCenterOf(pos));
         if (Math.abs(inside.x) >= 1.0000001 || Math.abs(inside.y) >= 1.0000001 || Math.abs(inside.z) >= 1.0000001) return InteractionResult.PASS;
-        int top = level.getMaxBuildHeight();
+        int top = Mc.maxBuildHeight(level);
         if (pos.getY() >= top) {
             p.sendSystemMessage(Component.translatable("build.tooHigh", top - 1).withStyle(ChatFormatting.RED), true);
             return InteractionResult.PASS;
@@ -344,8 +370,8 @@ final class Controls {
         if (r.consumesAction()) CriteriaTriggers.ANY_BLOCK_USE.trigger(p, pos, stack.copy());
         if (hit.getDirection() == Direction.UP && !r.consumesAction() && pos.getY() >= top - 1 && stack.getItem() instanceof BlockItem) {
             p.sendSystemMessage(Component.translatable("build.tooHigh", top - 1).withStyle(ChatFormatting.RED), true);
-        } else if (r.shouldSwing()) {
-            p.swing(hand, true);
+        } else if (Mc.swings(r)) {
+            Mc.swing(p, hand);
         }
         return r;
     }
@@ -354,8 +380,8 @@ final class Controls {
     private static InteractionResult useItem(ServerPlayer p, InteractionHand hand) {
         ItemStack stack = p.getItemInHand(hand);
         if (stack.isEmpty() || !stack.isItemEnabled(p.level().enabledFeatures())) return InteractionResult.PASS;
-        InteractionResult r = p.gameMode.useItem(p, p.serverLevel(), stack, hand);
-        if (r.shouldSwing()) p.swing(hand, true);
+        InteractionResult r = p.gameMode.useItem(p, Mc.level(p), stack, hand);
+        if (Mc.swings(r)) Mc.swing(p, hand);
         return r;
     }
 
@@ -379,21 +405,40 @@ final class Controls {
             forward *= 0.2F;
             strafe *= 0.2F;
         }
+        //? if >=26.1 {
+        /*// The client sends its keys whenever they change (LocalPlayer.tick); sneaking and vehicle input come from them.
+        net.minecraft.world.entity.player.Input keys = new net.minecraft.world.entity.player.Input(held.contains(Key.FORWARD),
+                held.contains(Key.BACK), held.contains(Key.LEFT), held.contains(Key.RIGHT), jump, sneak, held.contains(Key.SPRINT));
+        if (!keys.equals(inputSent)) {
+            bot.send(new ServerboundPlayerInputPacket(keys));
+            inputSent = keys;
+        }
+        *///?} else {
         if (sneak != shiftSent) {
             bot.send(new ServerboundPlayerCommandPacket(p, sneak ? ServerboundPlayerCommandPacket.Action.PRESS_SHIFT_KEY : ServerboundPlayerCommandPacket.Action.RELEASE_SHIFT_KEY));
             shiftSent = sneak;
         }
+        //?}
         sprint(p, forward);
         // A client does not tick the player until the chunk below arrives (LocalPlayer.tick); the bot waits for chunks
         // its tick will touch: player physics reads blocks and fluids underfoot, and an unready chunk would load synchronously.
         if (!p.isPassenger() && !ready(p)) {
             // The server learns the teleported position from the first movement packet, then every 20 ticks, as on the client.
             if (movePackets.tick(p.getX(), p.getY(), p.getZ(), p.getYRot(), p.getXRot(), p.onGround())) {
-                p.serverLevel().getChunkSource().move(p);
+                Mc.level(p).getChunkSource().move(p);
             }
             return;
         }
+        //? if >=26.1 {
+        /*if (p.isPassenger()) {
+            // The 1.21.1 input packet set a rider's movement (setPlayerInput); a 26.x client sets it itself (LocalPlayer.aiStep).
+            p.xxa = strafe;
+            p.zza = forward;
+            p.setJumping(jump);
+        }
+        *///?} else {
         if (p.isPassenger()) bot.send(new ServerboundPlayerInputPacket(strafe, forward, jump, sneak));
+        //?}
         bot.vehicles.tick(p, held);
         if (!p.isPassenger()) {
             p.xxa = strafe;
@@ -417,7 +462,7 @@ final class Controls {
         // A rider sends a packet every tick; a player on foot sends one after movement, rotation, landing or leaving ground,
         // and every 20 ticks when stationary.
         if (riding || movePackets.tick(p.getX(), p.getY(), p.getZ(), p.getYRot(), p.getXRot(), p.onGround())) {
-            p.serverLevel().getChunkSource().move(p);
+            Mc.level(p).getChunkSource().move(p);
         }
         if (!riding && !p.isPassenger()) {
             p.doCheckFallDamage(d.x, d.y, d.z, p.onGround());
@@ -445,7 +490,10 @@ final class Controls {
 
     /** Sprinting: held while the key is pressed and moving forward, with enough food, no blindness and no wall collision. */
     private void sprint(ServerPlayer p, float forward) {
+        //? if neoforge {
         boolean able = (p.getFoodData().getFoodLevel() > 6 || p.mayFly()) && !p.isUsingItem()
+        //?} else
+        /*boolean able = (p.getFoodData().getFoodLevel() > 6 || p.getAbilities().mayfly) && !p.isUsingItem()*/
                 && !p.hasEffect(MobEffects.BLINDNESS) && !p.isFallFlying() && !p.isPassenger();
         boolean want = held.contains(Key.SPRINT) && forward >= 0.8F && !p.isShiftKeyDown() && !(p.horizontalCollision && !p.minorHorizontalCollision);
         if (want && able) {
@@ -463,7 +511,7 @@ final class Controls {
         double blockRange = p.blockInteractionRange(), entityRange = p.entityInteractionRange();
         double range = Math.max(blockRange, entityRange), rangeSqr = range * range;
         Vec3 eye = p.getEyePosition(), look = p.getViewVector(1.0F);
-        Rays.Hit ray = Rays.clip(p.serverLevel(), eye, eye.add(look.scale(range)), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, p);
+        Rays.Hit ray = Rays.clip(Mc.level(p), eye, eye.add(look.scale(range)), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, p);
         HitResult hit = ray.block();
         double blockDistSqr = hit.getLocation().distanceToSqr(eye);
         if (hit.getType() != HitResult.Type.MISS) {
@@ -480,7 +528,7 @@ final class Controls {
     private static HitResult within(HitResult hit, Vec3 eye, double range) {
         Vec3 at = hit.getLocation();
         if (at.closerThan(eye, range)) return hit;
-        return BlockHitResult.miss(at, Direction.getNearest(at.x - eye.x, at.y - eye.y, at.z - eye.z), BlockPos.containing(at));
+        return BlockHitResult.miss(at, Mc.nearest(at.x - eye.x, at.y - eye.y, at.z - eye.z), BlockPos.containing(at));
     }
 
     /** Click target for the step result. */
@@ -504,7 +552,7 @@ final class Controls {
 
     private static JsonObject result(JsonObject out, InteractionHand hand, InteractionResult r) {
         out.addProperty("hand", hand == InteractionHand.MAIN_HAND ? "main" : "off");
-        out.addProperty("result", r.name().toLowerCase(Locale.ROOT));
+        out.addProperty("result", Mc.resultName(r));
         return out;
     }
 

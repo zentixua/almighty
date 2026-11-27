@@ -60,7 +60,7 @@ jobs:
           [ -n "$v" ] || v=$(gh release view --json tagName -q .tagName | sed 's/^v//')
           case $v in ''|*[!0-9A-Za-z.+-]*) echo "::error::Version $v is not a release number"; exit 1 ;; esac
           mkdir -p dist
-          gh release download "v$v" --pattern "almighty-$v.jar" --dir dist
+          gh release download "v$v" --pattern "almighty-$v+1.21.1-neoforge.jar" --dir dist
           if [ -f "docs/releases/$v.md" ]; then
             cp "docs/releases/$v.md" dist/changelog.md
             notes="docs/releases/$v.md ($GITHUB_REF_NAME)"
@@ -73,7 +73,7 @@ jobs:
             (.server_side | {required: "server", optional: "server?"}[.] // empty)] | join(" | ")' docs/store/modrinth.json)
           {
             echo "version=$v"
-            echo "jar=dist/almighty-$v.jar"
+            echo "jar=dist/almighty-$v+1.21.1-neoforge.jar"
             echo "environment=$environment"
           } >> "$GITHUB_OUTPUT"
           {

@@ -23,7 +23,6 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.LongTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
 import net.minecraft.resources.ResourceLocation;
@@ -32,11 +31,11 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.fml.util.ObfuscationReflectionHelper;
 import org.slf4j.Logger;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.GmConfig;
 import ua.zentix.almighty.bridge.Args;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.policy.DenyList;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.world.Dims;
@@ -220,7 +219,7 @@ public final class CommandRunner {
     @SuppressWarnings("unchecked")
     private static ThreadLocal<Object> currentExecution() {
         try {
-            return (ThreadLocal<Object>) ObfuscationReflectionHelper.findField(Commands.class, "CURRENT_EXECUTION_CONTEXT").get(null);
+            return (ThreadLocal<Object>) ua.zentix.almighty.platform.Reflect.field(Commands.class, "CURRENT_EXECUTION_CONTEXT").get(null);
         } catch (RuntimeException | IllegalAccessException e) {
             LOG.error("GM: Commands.CURRENT_EXECUTION_CONTEXT not found; commands of a rule that runs inside another command will join that command's queue", e);
             return null;
@@ -230,10 +229,10 @@ public final class CommandRunner {
     private static CommandSourceStack source(MinecraftServer server, ServerLevel level, Vec3 pos, CommandSource capture, As who) {
         if (who.player() != null) {
             // The requester's own source: their entity, position and name, at their level (output still captured).
-            return who.player().createCommandSourceStack().withSource(capture).withPermission(who.level());
+            return Mc.withLevel(who.player().createCommandSourceStack().withSource(capture), who.level());
         }
         String name = GmConfig.NAME.get();
-        return new CommandSourceStack(capture, pos, Vec2.ZERO, level, who.level(), name, Component.literal(name), server, null);
+        return Mc.source(capture, pos, Vec2.ZERO, level, who.level(), name, Component.literal(name), server, null);
     }
 
     /** Commands as {@code who} at a place (declarative rules: as the rule's creator), logged at DEBUG. */
@@ -253,7 +252,7 @@ public final class CommandRunner {
     }
 
     private static Vec3 origin(ServerLevel level, Args args) throws RpcException {
-        if (!args.has("pos")) return Vec3.atBottomCenterOf(level.getSharedSpawnPos());
+        if (!args.has("pos")) return Vec3.atBottomCenterOf(Mc.spawnPos(level));
         int[] p = args.ints("pos", 3);
         return new Vec3(p[0] + 0.5, p[1], p[2] + 0.5);
     }
@@ -261,7 +260,7 @@ public final class CommandRunner {
     static CompoundTag macroArgs(JsonElement json) throws RpcException {
         if (json.isJsonPrimitive() && json.getAsJsonPrimitive().isString()) {
             try {
-                return TagParser.parseTag(json.getAsString());
+                return Mc.parseCompound(json.getAsString());
             } catch (CommandSyntaxException e) {
                 throw RpcException.badRequest("args: " + e.getMessage());
             }
@@ -280,7 +279,15 @@ public final class CommandRunner {
         if (json.isJsonArray()) {
             ListTag out = new ListTag();
             for (JsonElement e : json.getAsJsonArray()) {
+                //? if >=26.1 {
+                /*// 26.x lists may mix types; macro arguments keep 1.21.1's rule (one element type per list).
+                Tag t = tag(e);
+                if (!out.isEmpty() && out.get(0).getId() != t.getId() || !out.addTag(out.size(), t)) {
+                    throw RpcException.badRequest("args: all elements of an NBT list must have the same type");
+                }
+                *///?} else {
                 if (!out.addTag(out.size(), tag(e))) throw RpcException.badRequest("args: all elements of an NBT list must have the same type");
+                //?}
             }
             return out;
         }

@@ -1,4 +1,4 @@
-package ua.zentix.almighty.rules;
+package ua.zentix.almighty.neoforge;
 
 import net.neoforged.neoforgespi.language.ModFileScanData;
 import org.junit.jupiter.api.Test;

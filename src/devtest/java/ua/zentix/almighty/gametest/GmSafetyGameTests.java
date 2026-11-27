@@ -76,8 +76,9 @@ public final class GmSafetyGameTests {
     @GameTest(template = "floor", batch = "gm_safety", timeoutTicks = 40)
     public static void worldCallsRunAtTickEnd(GameTestHelper h) {
         GmServer gm = gm(h);
-        CompletableFuture<Boolean> onServer = CompletableFuture.supplyAsync(() -> gm.onMain(() -> gm.server().isSameThread()))
-                .thenCompose(f -> f);
+        // Queued from another thread (waited for here: a pool thread's start-up is wall-clock time, GameTest ticks are not).
+        CompletableFuture<Boolean> onServer = CompletableFuture.supplyAsync(() -> gm.onMain(() -> gm.server().isSameThread())).join();
+        check(!onServer.isDone(), "a world call from another thread ran before the tick end");
         h.succeedWhen(() -> check(onServer.isDone() && onServer.join(), "world call has not run on the server thread yet"));
     }
 

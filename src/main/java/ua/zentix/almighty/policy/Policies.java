@@ -68,10 +68,10 @@ public final class Policies {
         }
     }
 
-    /** Read the file again; null on success, else the reason (the previous policy stays). */
     /** Bumped by every policy or role change: caches of rights (rules' creator checks) start over. */
     public static final java.util.concurrent.atomic.AtomicLong CHANGES = new java.util.concurrent.atomic.AtomicLong();
 
+    /** Read the file again; null on success, else the reason (the previous policy stays). */
     public synchronized String reload() {
         CHANGES.incrementAndGet();
         if (file == null) return null;

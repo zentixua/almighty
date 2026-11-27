@@ -45,15 +45,46 @@ The normal agent workflow: task → branch → code → build and tests → PR �
 ## Workflow
 
 ```sh
-./gradlew build                          # compile (-Xlint:all, no warnings) and run unit tests
-./gradlew runGameTestServer              # GameTest: headless server, only this mod
-./gradlew runServer                      # trial dedicated server with the bridge (run/server)
+./gradlew build                          # every node: compile (-Xlint:all, no warnings) and run unit tests
+./gradlew :1.21.1-neoforge:build         # one node (versions/<node>)
+./gradlew runGameTestServer              # GameTest: headless server, only this mod (run/<node>/gametest)
+./gradlew :1.21.1-neoforge:runServer     # trial dedicated server with the bridge (run/<node>/server)
 uv run mcp/almighty.py call status       # one bridge call (address and token at the top of the script)
 ```
 
-CI (GitHub Actions) checks every PR and push to `main`: GM toolkit, build, unit tests, GameTest; the jar is the
-`almighty-jar` artifact. Release: bump `mod_version` (`gradle.properties`) and both `plugin/almighty` manifests (CI checks), write `docs/releases/<version>.md`, merge
-into `main` and manually run `build` on `main` with `release=true`; the workflow releases `v<version>` with the jar.
+Versions and loaders (Stonecutter 0.10, `settings.gradle`, `stonecutter.gradle`): one source in `src/`, one node per
+game version and loader in `versions/<version>-<loader>/gradle.properties` (Minecraft, loader, Java, Groovy and
+compat versions), built by `build.<loader>.gradle`. Code that differs by version sits in Stonecutter conditions
+(`//? if >=26.1 {` … `//?} else {` … `//?}`); the loader is a constant (`//? if neoforge`). The committed source is
+written for `vcsVersion` (`1.21.1-neoforge`); switch the active node with Stonecutter's `Set active project to …`
+tasks and switch back to `vcsVersion` before committing (`"Reset active project"`). Gradle runs on Java 25 (Stonecutter
+0.10 needs it, Gradle 9.9); nodes compile with their own toolchain. Jars: `almighty-<mod_version>+<version>-<loader>.jar`.
+
+Game-version differences live in `platform/Mc` (vanilla across versions: profiles, permission sets, heights,
+spawn, NBT, chunk positions, text events, interaction results, registries), in plain renames in `stonecutter.gradle`
+(`ResourceLocation`→`Identifier` …; only renames whose new name never appears in the 1.21.1 source, as a replacement
+also runs in reverse) and in a few local conditions (tickets in `world/Areas`, bot packets, `BuildJob` placement).
+Compat modules exist per node: `compat_<mod>` in the node's properties sets the constant (`//? if ia`) and Stonecutter
+leaves `compat/<mod>/` out where the mod has no build. GameTests: on 26.x the same test classes are registered by
+`gametest/v26/GmTestRegistry` (Stonecutter points the 1.21.1 annotation imports at look-alikes there; one
+`TEST_FUNCTION` and one `FunctionGameTestInstance` per method, one empty environment per batch, the origin moved one
+block down so `absolutePos` means what it means on 1.21.1); the loader hands them over: `v26/NeoForgeTests`
+(registry events) or, on Fabric, the test mod `almighty_gametest` (`src/fabric/devtest/fabric.mod.json`, devtest
+source set; `gametest/fabric/FabricTests` registers functions at init and batches and instances where Fabric API
+registers its own, `FabricGameTestMixin`). Version and loader differences of test setup are in `gametest/Gt`: rule
+event names (Fabric: Fabric API callbacks), the break event, entity type constants (26.3: `EntityTypes`). Fabric
+has no cancellable entity-join callback, so the script test's guard cancels a zombie's damage there
+(`ServerLivingEntityEvents.ALLOW_DAMAGE`) instead of its arrival; a server-wide cancel without a place is a game
+message there (chat carries its player). Tests of a mod without a build for the node sit in its compat constant
+(`//? if ia`). New test classes go into the registrar's list. Fabric unit tests bootstrap the game first
+(`fabric/GameBootstrap`, a JUnit launcher listener registered from `src/fabric/test`). Fabric's GameTest run
+(`runGameTestServer` → Loom's `runGametest`) writes `run/<node>/gametest/logs/latest.log` and `report.xml` and exits
+with the number of failed tests, as NeoForge's.
+
+CI (GitHub Actions) checks every PR and push to `main`: GM toolkit once, then build, unit tests and GameTest for every
+node in parallel (`versions/*`); each node's jar is the `almighty-<node>` artifact; the required check is "Сборка и
+тесты", which waits for all of them. Release: bump `mod_version` (`gradle.properties`) and both `plugin/almighty` manifests (CI checks), write `docs/releases/<version>.md`, merge
+into `main` and manually run `build` on `main` with `release=true`; the workflow releases `v<version>` with every node's jar.
 open-skies-friends picks the jar up by itself (its `update` workflow, every 3 hours; run it manually to get it at once).
 Immersive Aircraft and Sable are pinned there: change them in an open-skies-friends PR together with the pins here.
 Modrinth and CurseForge pages use the manually triggered `publish` workflow: `draft` (hidden Modrinth draft),
@@ -61,7 +92,26 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 
 ## Architecture (`ua.zentix.almighty`)
 
-- `Almighty`: subscriptions; `GmServer`: state of one server run (`ServerStartedEvent` … `ServerStoppedEvent`):
+- Common core and loaders: everything is vanilla Minecraft and plain Java except `neoforge/` (later `fabric/`), which
+  holds the loader: `AlmightyNeoForge` (`@Mod` entry: sets the `Platform`, routes NeoForge events to the core's plain
+  methods `FeedListeners.on*`, `Bots.tabName|displayName|onLogin`, the commands' `register(dispatcher)` and the
+  lifecycle hooks in `Almighty`), `NeoForgeConfig` (binds `GmConfig`'s declared `Setting`s to a `ModConfigSpec`),
+  `NeoForgePlatform` (paths, mod list, mod config values, permission nodes, the bot connection hooks) and
+  `NeoForgeEvents` + `EventTypes` (the rules' bus and FML scan data). `platform/` is the seam: `Platform` (one per
+  loader, `Platform.get()`; absent in unit tests, so callers there use `Platform.present()`), `GameEvents` (events
+  are plain objects to the core: subscribe, cancel, place, base class), `Setting`, `Reflect` (Mojang-named members;
+  no loader remapping helper). Only `neoforge/`, `fabric/` and `compat/` import a loader or another mod.
+  `fabric/` is the same seam on Fabric: `AlmightyFabric` (Fabric API callbacks to the core; `SERVER_STOPPING` in an
+  early phase, so GM tickets go first), `FabricConfig` (the same `almighty-common.toml` through NightConfig, bundled
+  with Groovy as jar-in-jar; reloaded when the file changes, checked every 40 ticks), `FabricPlatform` (permission
+  nodes through lucko's fabric-permissions-api when installed, else the ladder), `FabricEvents` (rules on any static
+  `Event<T>` of Fabric API or a mod: one dispatcher per callback, registered once; only callbacks with a neutral
+  answer: nothing, `InteractionResult.PASS`, `TriState.DEFAULT`, or a boolean in the allow/before convention
+  `ALLOW_*`/`BEFORE` — any other boolean callback is refused, since listening alone would change the game; a
+  callback's place is a block position or hit or an entity it is about, never the acting player, so chat has no
+  place and a server-wide cancel there needs the owner, as on NeoForge) and mixins for what Fabric API has no
+  callback for (advancements, player commands).
+- `Almighty`: the mod id, version and lifecycle hooks; `GmServer`: state of one server run (`ServerStartedEvent` … `ServerStoppedEvent`):
   feed, jobs, chunks, bridge. The bridge runs only on a dedicated server (`isDedicatedServer`), not in singleplayer or GameTest.
 - `mcp/`: the MCP endpoint (`McpEndpoint`), both protocol eras (`McpProtocol`), tool definitions and routing (`Tools`).
 - `mcp/signin/`: keyless sign-in, the mod as a minimal OAuth 2.1 server on the bridge port (`/.well-known/*`,
@@ -215,7 +265,7 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 - `script/`: Groovy scripts (`Scripts`: compilation with a deadline, execution), scripts' `gm` variable (`ScriptApi`),
   values ↔ JSON (`Json`: position `[x, y, z]`, block string as in `/setblock`, NBT as SNBT, event via its `getX()`).
 - `rules/`: rules (`Rules`), subscribing to any game-bus event, budgets, persistence with the world
-  (`<world>/almighty/rules.json`); `EventTypes`: all NeoForge and mod events from FML scan data.
+  (`<world>/almighty/rules.json`); `neoforge/EventTypes`: all NeoForge and mod events from FML scan data.
 - `bot/`: player bots (`Bots`: login, logout, markers, name protection; `Bot`: connection, packet reception, inbox,
   hearing; `BotPlayer`: bot player class; `Controls`: client keyboard and mouse; `Vehicles`: the bot's vehicle;
   `VehicleDriver`: mod vehicle driver; `Steps`/`Program`: `bot.act` steps; `Eye`: vision without an image).
@@ -348,6 +398,25 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
 
 ## Pitfalls
 
+- 26.x (found by the GameTests): a player's own command source is not the player (`ServerPlayer.commandSource()`):
+  "typed by the player" checks use `Mc.typedBy`. The server ignores a player's input, attacks and use and keeps them
+  invulnerable until the client reports its level loaded: bots send `ServerboundPlayerLoadedPacket` once their chunks
+  are ready (`Bot.reportLoaded`; until then its programs wait), mock players call `markClientLoaded()`. Player data is loaded in the configuration
+  phase, which bots skip: `Bots.place` loads it itself (`Platform.playerLoaded` fires the loader's event). Ticket
+  types are registry entries: ours (`Areas.TICKET`, loading only, not saved, no timeout) is registered by the
+  loader. Boats are per-wood entities (`driven_by_rider` lists ids as optional entries). Unit tests of 26.x nodes run
+  under moddev's `unitTest` (game classes need FML at class init).
+- 26.3: a teleport confirmation carries the client's position and the server applies it as a movement packet,
+  checked against the position at the listener's last tick start; a bot's listener never ticks, so the bot resets
+  it before confirming (`Bot.acceptTeleport`; otherwise "moved too quickly", a teleport back and a new
+  confirmation, endlessly within one tick). Chat signatures are optional (bots acknowledge only signed messages,
+  send an empty one). Saved block states name their fields `id`/`properties` (`Mc.blockStateName`, which also
+  renames journal entries written before). Entity type constants moved to `EntityTypes`.
+- Fabric: Fabric API's GameTest server reports itself dedicated; the bridge checks for `GameTestServer` itself.
+  Player join and leave come from `ServerPlayerEvents.JOIN`/`LEAVE` (`PlayerList.placeNewPlayer` end, `remove`
+  start, as NeoForge's logged-in/out events; connection events never fire for bots or test players). A rule's
+  `FabricEvent` has `server`/`player`/`level`/`pos`/`entity`, the callback's arguments as fields and script
+  properties, `event.canceled = true`, and resolves fully qualified names (`<owner class>.<FIELD>`).
 - Load chunks only with vanilla radius-0 region tickets (`ServerChunkCache.addRegionTicket`, level 33 = full chunk
   without ticking; `TickingTracker` level 33 does not tick either). Radius above 0 starts ticking immediately,
   before neighbors are ready; NeoForge `TicketController.forceChunk` and `level.getChunk` load synchronously.
@@ -412,7 +481,7 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
   average over 20 ticks: timing is wall-clock; a GC pause inside a run would otherwise disable rules.
 - FML scan data (`EventTypes`): `module-info` (present in many mod jars) has no parent, so `ClassData.parent()` is
   null. Without a null check, every `rule.add` crashes (absent in the cloud with only the GM mod, present on a modpack server).
-- Rules attach to the static `NeoForge.EVENT_BUS`: remove them in `GmServer.stop` (the bus outlives singleplayer
+- Rules attach to the loader's static bus (`NeoForge.EVENT_BUS` through `GameEvents`): remove them in `GmServer.stop` (the bus outlives singleplayer
   worlds). Reentry into the same rule (its script triggers the same event) does not run it again.
 - The bridge grants operator level 4 and, with scripts (`scripts.enabled`, default true), arbitrary code in the
   server JVM as its OS user (files, processes). Listen only on loopback or a host-only network (`bridge.host`).
@@ -476,11 +545,13 @@ Before planning or changing bot or vision behavior (including compatibility driv
   it, so floor stone is at y=1 and standing height at 2.
 - Script/rule GameTest: `GmScriptGameTests`; remove rules in `finally` (the server shares the bus). GameTest does
   not check the nested Groovy jar: after build changes, use a dedicated NeoForge server from the installer
-  (`java -jar neoforge-<version>-installer.jar --installServer`, directory under `run/`), put the `build/libs` jar
+  (`java -jar neoforge-<version>-installer.jar --installServer`, directory under `run/`), put the node's `versions/<node>/build/libs` jar
   in `mods/`, set `server-ip=127.0.0.1`, call `script` through `mcp/almighty.py call`.
-- GameTest runs include Immersive Aircraft and Sable (`devtestRuntimeOnly` from Modrinth Maven, using the `devtest`
-  set; Sable compile types also use sable-companion from maven.ryanhcode.dev). Mods send custom packets on player
-  login, so test mock players need all mod channels (`NetworkRegistry.configureMockConnection`), like bots.
+- GameTest runs include Immersive Aircraft and Sable where the node has their build (`devtestRuntimeOnly` from
+  Modrinth Maven, using the `devtest` set; Sable compile types also use sable-companion from maven.ryanhcode.dev):
+  Sable on 1.21.1 only, Immersive Aircraft on 1.21.1 and 26.1.2 (both loaders), neither on 26.3 (its four tests are
+  `//? if ia`). Mods send custom packets on player login, so test mock players need all mod channels
+  (`Platform.configureMockConnection`: NeoForge's `NetworkRegistry.configureMockConnection`; nothing on Fabric), like bots.
 - Sable ship GameTest: `GmSableGameTests`: assemble with `sable assemble area`, a lease on its plot places no
   tickets, building there refuses immediately, releasing the lease leaves the live ship's chunk level unchanged;
   remove the ship with a lease active, then lease nearby again without a generation crash. Autopilot ship:
@@ -493,5 +564,6 @@ Before planning or changing bot or vision behavior (including compatibility driv
   response (and its `job` response) is completed off the server thread (`thenApplyAsync`, PNG): GameTest runs
   through the tick timeout before it finishes (CI: 200 ticks in 0.3 s). Await job completion by ticks, the response
   with timed `get`.
-- Trial server: `./gradlew runServer` (directory `run/server`, `eula.txt`, `server.properties` with
-  `server-ip=127.0.0.1`), then `ALMIGHTY_TOKEN_FILE=run/server/config/almighty/token uv run mcp/almighty.py call status`.
+- Trial server: `./gradlew :1.21.1-neoforge:runServer` (directory `run/1.21.1-neoforge/server`, `eula.txt`,
+  `server.properties` with `server-ip=127.0.0.1`), then
+  `ALMIGHTY_TOKEN_FILE=run/1.21.1-neoforge/server/config/almighty/token uv run mcp/almighty.py call status`.

@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.world.Dims;
 
 import java.util.HashMap;
@@ -39,7 +40,7 @@ public final class BlockText {
         Map<BlockState, Character> cache = new HashMap<>();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         JsonArray layers = new JsonArray();
-        int minBuild = level.getMinBuildHeight(), maxBuild = level.getMaxBuildHeight() - 1;
+        int minBuild = Mc.minBuildHeight(level), maxBuild = Mc.maxBuildHeight(level) - 1;
         for (int y = minY; y < minY + sy; y++) {
             JsonArray rows = new JsonArray();
             for (int z = minZ; z < minZ + sz; z++) {

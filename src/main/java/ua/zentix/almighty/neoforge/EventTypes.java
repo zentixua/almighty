@@ -1,4 +1,4 @@
-package ua.zentix.almighty.rules;
+package ua.zentix.almighty.neoforge;
 
 import net.neoforged.bus.api.Event;
 import net.neoforged.bus.api.ICancellableEvent;
@@ -7,6 +7,7 @@ import net.neoforged.fml.event.IModBusEvent;
 import net.neoforged.neoforgespi.language.IModInfo;
 import net.neoforged.neoforgespi.language.ModFileScanData;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.GameEvents.Found;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -20,15 +21,12 @@ import java.util.TreeMap;
  * and their ancestors), without loading classes. Event names may be short ({@code BlockEvent.BreakEvent}) or
  * fully qualified; {@code tick} means {@code ServerTickEvent.Post}, the end of each server tick.
  */
-public final class EventTypes {
+final class EventTypes {
     static final String TICK = "net.neoforged.neoforge.event.tick.ServerTickEvent$Post";
     private static final String EVENT = "net.neoforged.bus.api.Event";
     private static volatile Map<String, String> index;
 
     private EventTypes() {}
-
-    /** Discovered event: class and its source mod. */
-    public record Found(Class<? extends Event> type, String name, String mod) {}
 
     /** Class name (using {@code $}) to mod; only {@link Event} subclasses. */
     static Map<String, String> index() {
@@ -91,9 +89,8 @@ public final class EventTypes {
         return new TreeMap<>(index());
     }
 
-    /** Short name: class without its package, nested classes separated by dots ({@code BlockEvent.BreakEvent}). */
-    public static String shortName(String className) {
-        return className.substring(className.lastIndexOf('.') + 1).replace('$', '.');
+    static String shortName(String className) {
+        return ua.zentix.almighty.platform.GameEvents.shortName(className);
     }
 
     /** Event by name; missing or ambiguous means an error with similar names. */
@@ -130,9 +127,7 @@ public final class EventTypes {
         if (IModBusEvent.class.isAssignableFrom(type)) {
             throw RpcException.badRequest(shortName(className) + " is a mod loading event (mod bus); it does not fire after startup");
         }
-        @SuppressWarnings("unchecked")
-        Class<? extends Event> event = (Class<? extends Event>) type;
-        return new Found(event, shortName(className), all.get(className));
+        return new Found(type, shortName(className), all.get(className));
     }
 
     /** Events whose names contain {@code query} (case-insensitive): name, full class, mod, cancelable status. */

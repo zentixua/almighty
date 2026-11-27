@@ -12,6 +12,7 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.policy.Tickets;
 
 import java.nio.charset.StandardCharsets;
@@ -133,7 +134,7 @@ public final class GmInboxGameTests {
 
     private static JsonObject base(ServerPlayer p, String text) {
         JsonObject d = new JsonObject();
-        d.addProperty("player", p.getGameProfile().getName());
+        d.addProperty("player", Mc.name(p.getGameProfile()));
         d.addProperty("text", text);
         return d;
     }

@@ -25,14 +25,14 @@ English · [Русский](troubleshooting.ru.md)
 | Your `/gm` requests do not carry owner rights | Add yourself with `/almighty owner add <name>` in the console; `/almighty whoami` must say verified. On an offline-mode server behind Velocity set `identity = "proxy"`. |
 | A call is refused with `denied` | It is on the list refused for every agent because it crashes or freezes servers ([Safety](security.md#what-protects-the-server)). Run it yourself in the console if you mean it. |
 | A call answers `423` | The agent is paused: `/almighty resume [agent]`. |
-| A call answers `429` | A player's hourly quota is used up, or too many confirmations wait. |
+| A call answers `429` | A player's hourly quota is used up, too many confirmations or admin requests wait, or the address is locked out after wrong tokens. |
 | `policy.toml refused, the previous policy stays` | The message names the key and the mistake; fix it and `/almighty reload`. |
 
 ## While it runs
 
 | What you see | What to do |
 |---|---|
-| The server lags while the agent works | Lower `work.ms_per_tick`; ask the agent to stop its jobs (`job` with `cancel`) and rules (`rule` remove). `/almighty pause` stops everything at once. |
+| The server lags while the agent works | Lower `work.ms_per_tick`; ask the agent to stop its jobs (`job` with `cancel`) and rules (`rule` remove). `/almighty pause` stops builds, bots and script rules at once. |
 | A rule stopped working | It turned itself off: `rules` lists it with the reason (time budget, 10 errors in a row, flooding the feed). |
 | A build waits and never starts | Its chunks are not loaded yet; it waits up to 2 minutes. A place on a Sable ship plot is refused. |
 | Players get "The game master is away right now; your message is kept." | The agent has not read their message within `feed.away_seconds`. Keep it running in [game master mode](game-master.md). |

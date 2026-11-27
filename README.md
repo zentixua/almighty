@@ -54,12 +54,12 @@ plus notes that mods, datapacks and you leave for it.
   players or cannot be undone waits for the requester's own confirmation in chat; above their rights, only the kinds
   of request you list go to an admin.
 - **Recorded and reversible.** Every block the agent writes is journaled on disk, so a change can be undone even
-  after a crash. Every call with an effect is in the audit log. `/almighty pause` leaves every agent only able to
-  look until you resume it.
+  after a crash. Every call with an effect is in the audit log. `/almighty pause` stops an agent's builds and bots
+  until you resume it.
 - **Safe defaults.** The bridge listens only on the server machine, every app signs in with a code you type on the
   server, and commands that crash or freeze servers are refused for every agent.
 
-## Quick start
+## Install
 
 1. Put the jar for your Minecraft version and loader ([requirements](#requirements)) into the server's `mods/`
    folder and start the server. The console says:
@@ -133,10 +133,10 @@ access to the server machine, so approve only apps you run yourself.
 
 More: [FAQ](docs/guide/faq.md).
 
-## Contributing and building
+## For developers
 
-Bug reports and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Security problems:
-[SECURITY.md](SECURITY.md). The developer guide with the internals and every bridge method is [AGENTS.md](AGENTS.md).
+The bridge API, the command line and the source layout: [docs/developers.md](docs/developers.md). Building, tests
+and pull requests: [CONTRIBUTING.md](CONTRIBUTING.md). Security problems: [SECURITY.md](SECURITY.md).
 
 ## License
 

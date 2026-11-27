@@ -12,7 +12,7 @@ English · [Русский](commands.ru.md)
 | `/gm @<agent> <text>` | The same, to one agent when several are connected. |
 | `/almighty whoami` | Your UUID, whether the server counts it as verified, and your role. |
 | `/almighty confirm <id>`, `/almighty deny <id>` | Answer a confirmation the server asked you for. Clicking `[Allow]` or `[Deny]` in chat types these for you; only the player asked can answer. |
-| `/almighty undo <change>` | Undo a change the game master made at your request. The receipt in chat has an `[Undo]` button. |
+| `/almighty undo <change>` | Undo a change the game master made at your request. Clicking `[Undo]` in the receipt puts this command in your chat line; press Enter to run it. |
 
 Players can also address the game master in public chat by its name (`feed.names`); see
 [Game master mode](game-master.md).
@@ -22,7 +22,7 @@ Players can also address the game master in public chat by its name (`feed.names
 | Command | Who | What it does |
 |---|---|---|
 | `/almighty inbox` | Admins who hold what a request needs (for commands, `almighty.approve`), the console | Requests above a player's rights that wait for an admin (`ask_admin`), with `[Allow]` and `[Deny]`. |
-| `/almighty role <player> <role> [duration]` | Admins, the console | Give a role (`guest`, `member`, `builder`, `admin`) below your own, for example `/almighty role Alex builder 3h` (`30m`, `2d`, `1h30m`). Without a duration, until cleared. |
+| `/almighty role <player> <role> [duration]` | Admins, the console | Raise a verified player to a role (`member`, `builder`, `admin`) below your own; it never lowers what the preset or operator level gives, for example `/almighty role Alex builder 3h` (`30m`, `2d`, `1h30m`). Without a duration, until cleared. |
 | `/almighty role <player> clear` | Admins, the console | Take a given role back. |
 
 ## For operators of level 4 and the console
@@ -35,10 +35,10 @@ Players can also address the game master in public chat by its name (`feed.names
 | `/almighty deny <code>` | Refuse a waiting sign-in. |
 | `/almighty agents` | Every agent with its last call and address. |
 | `/almighty reload` | Reread `policy.toml` and the agent token files. A file with a mistake is refused and the previous policy stays. |
-| `/almighty pause [agent]` | The red button: that agent, or every agent, may only look. Its builds wait, its bots stop, rules made below the owner stop. |
+| `/almighty pause [agent]` | The red button: that agent, or every agent, may only look and clean up (cancel jobs, release areas, remove rules and bots). Its builds wait and its bots stop. Without a name it also stops every rule with a script and every rule made below the owner. |
 | `/almighty resume [agent]` | Undo the pause. |
 | `/almighty log [agent] [count]` | The latest audit entries (10 by default, up to 100). |
-| `/almighty undo <change>` | Undo any change; the agent lists them with the `changes` method. Positions changed since are left as they are. |
+| `/almighty undo <change>` | Undo any change by its number, shown in receipts and the audit log. Positions changed since are left as they are. |
 
 ## For owners
 
@@ -46,10 +46,10 @@ These need the console, or a verified owner from `policy.toml` who is also a lev
 
 | Command | What it does |
 |---|---|
-| `/almighty owner add <player>`, `/almighty owner remove <player>` | Edit `owners` in `policy.toml`. The player must have joined once. |
+| `/almighty owner add <player>`, `/almighty owner remove <player>` | Edit `owners` in `policy.toml`. The player must have joined once. This command can remove the last owner; the console stays owner. |
 | `/almighty agent add <name>` | A new agent with a token in `config/almighty/agents/<name>.token`, for scripts and CI ([headless](connect/headless.md)). The token is never printed. |
 | `/almighty agent remove <name>` | End an agent: its token stops working at once. |
 | `/almighty revoke <name>` | Replace an agent's token; the old one stops working at once. |
 | `/almighty script approve <name>` | Let agents with `almighty.scripts.run` run `config/almighty/scripts/<name>.groovy` by name, until the file changes. |
 | `/almighty script revoke <name>`, `/almighty script list` | Withdraw an approval; list approved scripts. |
-| `/almighty policy undo` | Put back the `policy.toml` saved before the last change. |
+| `/almighty policy undo` | Put back the `policy.toml` saved before the last change made through the game master. Owner commands and hand edits are not saved in the history, so an undo discards later ones too. |

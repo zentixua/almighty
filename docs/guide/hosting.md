@@ -9,7 +9,7 @@ the bridge without opening the bridge to the internet:
 | Your setup | Recommended |
 |---|---|
 | Server on your own PC or in your home network | Run the agent on that PC, or keep the bridge on loopback and use the PC's own agent app. |
-| VPS or dedicated server with SSH | An SSH tunnel from your computer: `ssh -N -L 25650:127.0.0.1:25650 you@server`, then connect the agent to `http://127.0.0.1:25650/mcp` on your computer. Or Tailscale on both machines. The bridge stays on loopback. |
+| VPS or dedicated server with SSH | An SSH tunnel from your computer: `ssh -N -L 25650:127.0.0.1:25650 you@server`, then connect the agent to `http://127.0.0.1:25650/mcp` on your computer. The bridge stays on loopback. Or Tailscale on both machines, with `bridge.host` set to the server's Tailscale address. |
 | Self-hosted panel (Crafty, Pterodactyl, Pelican) | A tunnel to the host as above, or an allocated port bound to the container's own address (`bridge.host`), reachable only from the host. |
 | Paid shared hosting (no SSH) | Only an extra allocated port on the public internet, which means the bridge itself is public. Use it only with the bridge's own HTTPS: a certificate for that host's name in `bridge.tls_cert` and `bridge.tls_key`. Without it, tokens and sign-in codes cross the internet in plain text: do not. A proxy elsewhere does not help, because it would still reach the bridge over plain HTTP. |
 | Free hosting such as Aternos | Not supported: it offers only mods from its own library and no extra ports. |

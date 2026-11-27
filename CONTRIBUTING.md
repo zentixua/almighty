@@ -22,7 +22,8 @@ The jars are in `versions/<version>-<loader>/build/libs/`. The `mcp/gm` kit is t
 `python3 -m unittest discover -s mcp/gm/tests` and `node --test` in `mcp/gm/almighty-chat`.
 
 One source tree serves every version: code that differs between versions sits in Stonecutter conditions, and the
-committed source is the 1.21.1 NeoForge one. [AGENTS.md](AGENTS.md) explains the layout, the internals, every bridge
+committed source is the 1.21.1 NeoForge one. [docs/developers.md](docs/developers.md) gives an overview and the
+bridge API; [AGENTS.md](AGENTS.md) explains the layout, the internals, every bridge
 method and the known pitfalls.
 
 ## Changes

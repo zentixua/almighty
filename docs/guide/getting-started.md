@@ -61,7 +61,7 @@ page and can type on the server can approve it.
 
 | You type | The app gets |
 |---|---|
-| `/almighty approve <code>` | A name made from the app's own name, with admin as the most it may do: no scripts, and commands only up to operator level 3 |
+| `/almighty approve <code>` | A name made from the app's own name, with admin as the most it may do: no script code of its own (only scripts you approved), and commands only up to operator level 3 |
 | `/almighty approve <code> <name>` | The same, under the name you chose |
 | `/almighty approve <code> <name> owner` | Your rights as the most it may do: `[agents.<name>] ceiling = "owner"` is added to `policy.toml` |
 

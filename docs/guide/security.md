@@ -64,8 +64,9 @@ level. Scripts and rules with scripts need the owner.
 - **Receipts.** After a request with an effect, the player who asked gets a line in chat with `[Undo]`.
 - **Audit log.** Every call with an effect and every refusal is a line in `logs/almighty/audit-<date>.jsonl` (kept
   30 days, `audit.days`); `/almighty log [agent] [count]` shows the latest.
-- **Pause.** `/almighty pause [agent]`: that agent, or every agent, may only look. Its builds wait, its bots stop, and
-  rules made below the owner stop until `/almighty resume`.
+- **Pause.** `/almighty pause [agent]`: that agent, or every agent, may only look and clean up until
+  `/almighty resume`. Its builds wait and its bots stop. Without a name it also stops every rule with a script and
+  every rule made below the owner.
 - **Off switches.** `scripts.enabled = false` refuses scripts and rules with a script; `bridge.enabled = false` turns
   the bridge off. Both in `config/almighty-common.toml`.
 

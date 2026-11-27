@@ -24,8 +24,9 @@ operator level, or at the level of their role if that is higher (owner 4, admin 
 never above the agent's ceiling. Unasked, the agent runs commands at the level of its floor.
 
 Owners are listed by UUID, never by name. Add one with `/almighty owner add <player>` in the console (the player must
-have joined once). `/almighty role <player> <role> [duration]` gives a role for a while, for example
-`/almighty role Alex builder 3h`; admins may give only roles below their own, and nobody can give owner this way.
+have joined once). `/almighty role <player> <role> [duration]` raises a verified player to a role for a while, for example
+`/almighty role Alex builder 3h`; admins may give only roles below their own, nobody can give owner this way, and it
+never lowers what the preset or operator level gives (to restrict someone, use LuckPerms).
 
 ### Verified players
 
@@ -39,7 +40,8 @@ have joined once). `/almighty role <player> <role> [duration]` gives a role for 
 | `offline` | Everyone: you vouch for every name, for example on an offline LAN among friends |
 
 With `auto` or `mojang` on a server with `online-mode=false`, nobody is verified, because any client can claim any
-UUID there. An unverified player is a guest whatever their role or a permission plugin says.
+UUID there. An unverified player is a guest for Almighty's capabilities whatever their role or a permission plugin says; commands
+they ask for still run at their vanilla operator level.
 
 ## Presets
 
@@ -169,7 +171,7 @@ give_items = 128
 ```
 
 How many blocks one player's requests may build, and how many items they may be given, per hour. Owners have no
-quota; the agent's own builds share one budget.
+quota; each agent's own unasked builds share one budget per agent.
 
 ## Claims
 
@@ -207,11 +209,12 @@ The game master can read and edit `policy.toml` (and, for owners only, scripts i
 
 - **Your request** (you are an owner and ask in game with `/gm`) applies at once.
 - **The agent's own proposal** applies at once only if it restricts. Anything that grants more (a more open preset,
-  a new owner, a higher ceiling or floor, a narrower deny zone, a wider arena, larger quotas) waits for a holder of
+  a new or removed owner, a higher ceiling or floor, a narrower deny zone, a wider arena, larger quotas) waits for a holder of
   `almighty.engine` to allow it in game; you see a summary of the change.
 - **A player's request** to change the policy is refused.
 
 Every write is checked first; the previous file goes to `config/almighty/policy.history/` (50 kept), and
-`/almighty policy undo` puts it back. Raising an agent to an owner ceiling is done only in the file or with
+`/almighty policy undo` puts it back. Owner commands and hand edits keep no
+history, and an undo discards them too. Raising an agent to an owner ceiling is done only in the file or with
 `/almighty approve <code> <name> owner`, which the console and level-4 operators can type: give level 4 only to
 people you trust as owners.

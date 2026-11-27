@@ -35,25 +35,26 @@ public final class Dispatch {
 
     private final Map<String, Method> methods;
     private final List<Check> checks;
-    private final Set<String> readOnly;
+    private final java.util.function.BiPredicate<String, JsonObject> readOnly;
     private final LongSupplier clockMillis;
     private final Map<String, Remembered> keys = new LinkedHashMap<>();
 
     private record Remembered(String call, CompletableFuture<JsonElement> result, long expires) {}
 
     public Dispatch(Map<String, Method> methods) {
-        this(methods, List.of(), Set.of());
+        this(methods, List.of(), (m, p) -> false);
     }
 
-    /** {@code readOnly}: methods without effects, for which idempotency keys are ignored. */
-    public Dispatch(Map<String, Method> methods, List<Check> checks, Set<String> readOnly) {
+    /** {@code readOnly}: whether a call (method and parameters) has no effects; idempotency keys are ignored for it. */
+    public Dispatch(Map<String, Method> methods, List<Check> checks, java.util.function.BiPredicate<String, JsonObject> readOnly) {
         this(methods, checks, readOnly, System::currentTimeMillis);
     }
 
-    Dispatch(Map<String, Method> methods, List<Check> checks, Set<String> readOnly, LongSupplier clockMillis) {
+    Dispatch(Map<String, Method> methods, List<Check> checks, java.util.function.BiPredicate<String, JsonObject> readOnly,
+             LongSupplier clockMillis) {
         this.methods = Map.copyOf(methods);
         this.checks = List.copyOf(checks);
-        this.readOnly = Set.copyOf(readOnly);
+        this.readOnly = readOnly;
         this.clockMillis = clockMillis;
     }
 
@@ -73,7 +74,7 @@ public final class Dispatch {
         if (key != null && (key.isEmpty() || key.length() > MAX_KEY_LENGTH)) {
             throw RpcException.badRequest("key: 1 to " + MAX_KEY_LENGTH + " characters");
         }
-        if (key == null || readOnly.contains(name)) return method.call(new Args(params, caller));
+        if (key == null || readOnly.test(name, p)) return method.call(new Args(params, caller));
         String slot = caller.name() + "\u0000" + key;
         String call = name + "\u0000" + p;
         CompletableFuture<JsonElement> mine = new CompletableFuture<>();

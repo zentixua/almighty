@@ -28,7 +28,7 @@ class DispatchTest {
             "flaky", a -> CompletableFuture.failedFuture(new RpcException(504, "timeout", "late " + runs.incrementAndGet()))),
             List.of((caller, method, params) -> {
                 if (params.has("forbidden")) throw new RpcException(403, "denied", "no");
-            }), java.util.Set.of("look"), clock::get);
+            }), (m, p) -> m.equals("look"), clock::get);
 
     private static JsonObject json(String s) {
         return JsonParser.parseString(s).getAsJsonObject();

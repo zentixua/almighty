@@ -95,7 +95,7 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   tick length (`/tick rate`; 50 ms at 20) for 10 s → GM budget a quarter until 10 s below; `lag_guard` feed event,
   `lag_guard` in `status`. Idempotency: `/rpc` body `key` (≤ 128 characters): the same agent's repeat of a call
   with effects within 10 minutes returns the first result (joining it if still running); the same key for a
-  different call → 409; read-only methods (`Api.READ_ONLY`) ignore keys (images are never kept); a failed call
+  different call → 409; read-only calls (`Api.readOnly`; `notes` with `text` writes) ignore keys (images are never kept); a failed call
   forgets its key. Vanilla already caps `fill`/`clone` at 32 768 blocks: larger work uses `build`.
 - `act/`: commands and functions (`CommandRunner`), messages to players (`Chat`); `feed/`: event feed and a player's
   private channel to the GM: `/gm <text>` (any player) emits `gm` in the feed, invisible to others; reply with `say` and `to`.

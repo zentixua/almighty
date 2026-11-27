@@ -73,7 +73,7 @@ public final class GmServer {
                 server.getWorldPath(LevelResource.ROOT).resolve("almighty").resolve("rules.json"));
         this.bots = new Bots(this);
         this.dispatch = new Dispatch(Api.methods(this), List.of((caller, method, params) -> DenyList.check(method, params)),
-                Api.READ_ONLY);
+                Api::readOnly);
     }
 
     /** This server's game master; null if the server has not started yet or has already stopped. */

@@ -62,6 +62,9 @@ public final class Api {
     /** The longest one-shot script: the server thread is blocked for that duration. */
     static final int MAX_SCRIPT_MS = 10_000;
     private static final Logger LOG = LogUtils.getLogger();
+    /** Methods that may wait for seconds (feed long poll, job waits): served by the bridge's long-poll pool. */
+    public static final java.util.Set<String> LONG = java.util.Set.of(
+            "events", "job", "build", "undo", "area.prepare", "map", "look", "see", "bot.act", "bot.spawn");
 
     private Api() {}
 

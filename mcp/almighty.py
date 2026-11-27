@@ -19,7 +19,7 @@ The mod listens over HTTP on the server (default 127.0.0.1:25650, only POST /rpc
 
 Address: ALMIGHTY_URL (default http://127.0.0.1:25650); token: ALMIGHTY_TOKEN or the file in
 ALMIGHTY_TOKEN_FILE (the mod writes config/almighty/token in the server directory on first start).
-Methods and parameters: CLAUDE.md.
+Methods and parameters: AGENTS.md ("Methods").
 """
 import argparse
 import base64

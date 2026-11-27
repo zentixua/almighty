@@ -12,16 +12,28 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Bridge over real loopback HTTP: token, request parsing, method errors. Unicode payloads below exercise UTF-8 round trips. */
+/**
+ * Bridge over real loopback HTTP: per-agent tokens, caller identity, origin rule, failed-auth lockout, separate pools
+ * for long polls and calls, request parsing, method errors. Unicode payloads exercise UTF-8 round trips.
+ */
 class BridgeTest {
     private Bridge bridge;
+    private final AtomicLong clock = new AtomicLong(1_000_000);
+    /** Released at test end: "hold" calls block a long-poll thread until then. */
+    private final CountDownLatch release = new CountDownLatch(1);
     private final HttpClient http = HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY).build();
 
     @BeforeEach
@@ -33,21 +45,46 @@ class BridgeTest {
                 "late", a -> CompletableFuture.failedFuture(RpcException.conflict("busy")),
                 "throws", a -> {
                     throw new IllegalArgumentException("immediate");
+                },
+                "whoami", a -> CompletableFuture.completedFuture(new JsonPrimitive(a.caller().name())),
+                "hold", a -> {
+                    CompletableFuture<com.google.gson.JsonElement> f = new CompletableFuture<>();
+                    Thread.ofVirtual().start(() -> {
+                        try {
+                            release.await(30, TimeUnit.SECONDS);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        f.complete(new JsonPrimitive("released"));
+                    });
+                    return f;
                 });
-        bridge = new Bridge(new InetSocketAddress("127.0.0.1", 0), Token.of("secret-abc"), methods);
+        Agents agents = Agents.of(Map.of("gm", "secret-abc", "builder", "secret-builder"));
+        bridge = new Bridge(new InetSocketAddress("127.0.0.1", 0), agents, new Dispatch(methods), Set.of("hold"),
+                Set.of("https://allowed.example"), clock::get);
         bridge.start();
     }
 
     @AfterEach
     void stop() {
+        release.countDown();
         bridge.stop();
     }
 
     private HttpResponse<String> post(String token, String body) throws Exception {
+        return post(token, body, null);
+    }
+
+    private HttpRequest request(String token, String body, String origin) {
         HttpRequest.Builder r = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + bridge.address().getPort() + "/rpc"))
                 .POST(HttpRequest.BodyPublishers.ofString(body));
         if (token != null) r.header("Authorization", "Bearer " + token);
-        return http.send(r.build(), HttpResponse.BodyHandlers.ofString());
+        if (origin != null) r.header("Origin", origin);
+        return r.build();
+    }
+
+    private HttpResponse<String> post(String token, String body, String origin) throws Exception {
+        return http.send(request(token, body, origin), HttpResponse.BodyHandlers.ofString());
     }
 
     private static JsonObject json(HttpResponse<String> r) {
@@ -98,5 +135,71 @@ class BridgeTest {
         HttpResponse<String> late = post("secret-abc", "{\"method\":\"late\"}");
         assertEquals(409, late.statusCode());
         assertEquals("busy", json(late).getAsJsonObject("error").get("message").getAsString());
+    }
+
+    @Test
+    void eachAgentIsItsOwnCaller() throws Exception {
+        assertEquals("gm", json(post("secret-abc", "{\"method\":\"whoami\"}")).get("result").getAsString());
+        assertEquals("builder", json(post("secret-builder", "{\"method\":\"whoami\"}")).get("result").getAsString());
+        assertEquals("gm", json(post("secret-abc", "{\"method\":\"whoami\",\"params\":{\"agent\":\"builder\"}}"))
+                .get("result").getAsString(), "parameters cannot change who is calling");
+        assertTrue(bridge.agents().get("builder").lastSeenMillis() > 0, "presence recorded");
+    }
+
+    @Test
+    void browserOriginsRefusedUnlessAllowed() throws Exception {
+        HttpResponse<String> r = post("secret-abc", "{\"method\":\"echo\"}", "http://evil.example");
+        assertEquals(403, r.statusCode());
+        assertEquals("forbidden_origin", json(r).getAsJsonObject("error").get("code").getAsString());
+        assertEquals(403, post("secret-abc", "{\"method\":\"echo\"}", "null").statusCode());
+        assertEquals(200, post("secret-abc", "{\"method\":\"echo\"}", "https://allowed.example").statusCode());
+        assertEquals(200, post("secret-abc", "{\"method\":\"echo\"}").statusCode(), "no Origin: native client");
+    }
+
+    @Test
+    void failedAuthenticationLocksTheAddressOut() throws Exception {
+        for (int i = 0; i < AuthGuard.FREE_FAILURES; i++) assertEquals(401, post("guess-" + i, "{\"method\":\"echo\"}").statusCode());
+        HttpResponse<String> locked = post("secret-abc", "{\"method\":\"echo\"}");
+        assertEquals(429, locked.statusCode(), "even the right token waits out the lockout");
+        assertEquals("locked_out", json(locked).getAsJsonObject("error").get("code").getAsString());
+        clock.addAndGet(AuthGuard.FIRST_LOCK_MS);
+        assertEquals(200, post("secret-abc", "{\"method\":\"echo\"}").statusCode());
+    }
+
+    @Test
+    void longPollsDoNotStarveCalls() throws Exception {
+        List<CompletableFuture<HttpResponse<String>>> held = new ArrayList<>();
+        for (int i = 0; i < Bridge.POLL_THREADS; i++) {
+            held.add(http.sendAsync(request("secret-abc", "{\"method\":\"hold\"}", null), HttpResponse.BodyHandlers.ofString()));
+        }
+        // Every long-poll thread is busy: a call still answers at once.
+        long start = System.nanoTime();
+        assertEquals(200, post("secret-abc", "{\"method\":\"echo\"}").statusCode());
+        assertTrue(System.nanoTime() - start < TimeUnit.SECONDS.toNanos(5));
+        release.countDown();
+        for (CompletableFuture<HttpResponse<String>> f : held) assertEquals(200, f.get(30, TimeUnit.SECONDS).statusCode());
+    }
+
+    @Test
+    void fullPoolAnswersBusy() throws Exception {
+        List<CompletableFuture<HttpResponse<String>>> held = new ArrayList<>();
+        for (int i = 0; i < Bridge.POLL_THREADS + Bridge.QUEUE + 8; i++) {
+            held.add(http.sendAsync(request("secret-abc", "{\"method\":\"hold\"}", null), HttpResponse.BodyHandlers.ofString()));
+        }
+        boolean busy = false;
+        for (int i = 0; i < 200 && !busy; i++) {
+            Thread.sleep(25);
+            for (CompletableFuture<HttpResponse<String>> f : held) {
+                if (f.isDone() && f.get().statusCode() == 503) busy = true;
+            }
+        }
+        java.util.Map<Integer, Integer> seen = new java.util.TreeMap<>();
+        for (CompletableFuture<HttpResponse<String>> f : held) if (f.isDone()) seen.merge(f.get().statusCode(), 1, Integer::sum);
+        assertTrue(busy, "overflow is refused with 503, not queued without bound; done: " + seen);
+        release.countDown();
+        for (CompletableFuture<HttpResponse<String>> f : held) {
+            int status = f.get(30, TimeUnit.SECONDS).statusCode();
+            assertTrue(status == 200 || status == 503, "status " + status);
+        }
     }
 }

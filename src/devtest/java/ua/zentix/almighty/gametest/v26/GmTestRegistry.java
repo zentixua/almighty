@@ -15,10 +15,6 @@ import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.RegisterGameTestsEvent;
-import net.neoforged.neoforge.registries.RegisterEvent;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.gametest.GmAuditGameTests;
 import ua.zentix.almighty.gametest.GmBotGameTests;
@@ -38,13 +34,12 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.function.Consumer;
 
-// 26.x GameTest registration. 1.21.1 NeoForge scans @GameTestHolder classes for @GameTest methods; 26.x tests are
+// 26.x GameTest registration (the loader-neutral part; NeoForgeTests and fabric/FabricTests hand it to the loader).
+// 1.21.1 NeoForge scans @GameTestHolder classes for @GameTest methods; 26.x tests are
 // registry entries (a test function in TEST_FUNCTION, a GameTestInstance in the test-instance registry, its batch an
 // environment). This registers each @GameTest method of the listed classes with its 1.21.1 attributes: template
 // (namespace:template, as @PrefixGameTestTemplate(false)), timeout, setup ticks, required, sky access, and its
@@ -54,7 +49,6 @@ import java.util.function.Consumer;
 // Positions: 1.21.1 counts relative positions from the structure block under the template (floor stone at y=1);
 // 26.x from the template's corner (floor at y=0). Each test gets a GameTestHelper whose origin is one block lower,
 // so the shared test bodies keep the 1.21.1 coordinates.
-@EventBusSubscriber(modid = Almighty.ID)
 public final class GmTestRegistry {
     private GmTestRegistry() {}
 
@@ -64,11 +58,28 @@ public final class GmTestRegistry {
             GmLadderGameTests.class, GmLimitsGameTests.class, GmRuleGameTests.class, GmSafetyGameTests.class,
             GmScriptGameTests.class);
 
-    private record Entry(Identifier id, Method method, GameTest test, String namespace) {}
+    // One test: its id, method, 1.21.1 attributes and namespace.
+    public record Entry(Identifier id, Method method, GameTest test, String namespace) {
+        // The test's batch as an environment id: {@code <namespace>:batch/<batch>}.
+        public Identifier batch() {
+            return Identifier.fromNamespaceAndPath(namespace, "batch/" + test.batch().toLowerCase(Locale.ROOT));
+        }
+
+        // The test's function (it runs the method with a 1.21.1-positioned helper).
+        public Consumer<GameTestHelper> function() {
+            return run(method);
+        }
+
+        // The test instance, its environment being its batch.
+        public FunctionGameTestInstance instance(Holder<TestEnvironmentDefinition<?>> batch) {
+            String template = test.template().contains(":") ? test.template() : namespace + ":" + test.template();
+            return new FunctionGameTestInstance(ResourceKey.create(Registries.TEST_FUNCTION, id), data(batch, Identifier.parse(template), test));
+        }
+    }
 
     private static List<Entry> entries;
 
-    private static synchronized List<Entry> entries() {
+    public static synchronized List<Entry> entries() {
         if (entries != null) return entries;
         List<Entry> out = new ArrayList<>();
         for (Class<?> c : CLASSES) {
@@ -90,39 +101,23 @@ public final class GmTestRegistry {
         return entries;
     }
 
-    @SubscribeEvent
-    static void functions(RegisterEvent e) {
-        e.register(Registries.TEST_FUNCTION, helper -> {
-            for (Entry entry : entries()) helper.register(entry.id(), run(entry.method()));
-        });
-    }
-
-    @SubscribeEvent
-    static void tests(RegisterGameTestsEvent e) {
-        Map<String, Holder<TestEnvironmentDefinition<?>>> batches = new HashMap<>();
-        for (Entry entry : entries()) {
-            GameTest t = entry.test();
-            Holder<TestEnvironmentDefinition<?>> batch = batches.computeIfAbsent(entry.namespace() + ":" + t.batch(),
-                    k -> e.registerEnvironment(Identifier.fromNamespaceAndPath(entry.namespace(), "batch/" + t.batch().toLowerCase(Locale.ROOT))));
-            String template = t.template().contains(":") ? t.template() : entry.namespace() + ":" + t.template();
-            // 26.3 adds the test's dimension (the Overworld, as before).
-*///?}
-//? if >=26.3 {
-/*            TestData<Holder<TestEnvironmentDefinition<?>>> data = new TestData<>(batch, net.minecraft.world.level.Level.OVERWORLD, Identifier.parse(template),
-                    t.timeoutTicks(), (int) t.setupTicks(), t.required(), Rotation.NONE, false, 1, 1, t.skyAccess(), 0);
-*///?} else if >=26.1 {
-/*            TestData<Holder<TestEnvironmentDefinition<?>>> data = new TestData<>(batch, Identifier.parse(template), t.timeoutTicks(),
-                    (int) t.setupTicks(), t.required(), Rotation.NONE, false, 1, 1, t.skyAccess(), 0);
-*///?}
-//? if >=26.1 {
-/*            e.registerTest(entry.id(), new FunctionGameTestInstance(ResourceKey.create(Registries.TEST_FUNCTION, entry.id()), data));
-        }
+    private static TestData<Holder<TestEnvironmentDefinition<?>>> data(Holder<TestEnvironmentDefinition<?>> batch, Identifier template, GameTest t) {
+        // 26.3 adds the test's dimension (the Overworld, as before).
+        *///?}
+        //? if >=26.3 {
+        /*return new TestData<>(batch, net.minecraft.world.level.Level.OVERWORLD, template, t.timeoutTicks(), (int) t.setupTicks(), t.required(),
+                Rotation.NONE, false, 1, 1, t.skyAccess(), 0);
+        *///?} else if >=26.1 {
+        /*return new TestData<>(batch, template, t.timeoutTicks(), (int) t.setupTicks(), t.required(), Rotation.NONE, false, 1, 1, t.skyAccess(), 0);
+        *///?}
+        //? if >=26.1 {
+        /*
     }
 
     private static Consumer<GameTestHelper> run(Method method) {
         return helper -> {
             try {
-                method.invoke(null, new Shifted(helper.testInfo));
+                method.invoke(null, new Shifted(info(helper)));
             } catch (InvocationTargetException ex) {
                 if (ex.getCause() instanceof RuntimeException r) throw r;
                 if (ex.getCause() instanceof Error r) throw r;
@@ -133,10 +128,18 @@ public final class GmTestRegistry {
         };
     }
 
+    // The helper's test (a public field on NeoForge, private in vanilla, which Fabric runs).
+    private static GameTestInfo info(GameTestHelper helper) throws IllegalAccessException {
+        return (GameTestInfo) ua.zentix.almighty.platform.Reflect.field(GameTestHelper.class, "testInfo").get(helper);
+    }
+
     // A helper whose relative origin is the block under the template, as 1.21.1's structure block.
     private static final class Shifted extends GameTestHelper {
+        private final GameTestInfo testInfo;
+
         Shifted(GameTestInfo info) {
             super(info);
+            this.testInfo = info;
         }
 
         private BlockPos origin() {

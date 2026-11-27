@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "ua.zentix.almighty.gametest.fabric.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "FabricGameTestMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

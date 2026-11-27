@@ -27,7 +27,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.core.Direction;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
-import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.Api;
 import ua.zentix.almighty.GmConfig;
@@ -470,11 +469,11 @@ public final class GmGameTests {
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
         new EmbeddedChannel(connection);
         // Client with all server mods: mods send their packets on login (Immersive Aircraft).
-        NetworkRegistry.configureMockConnection(connection);
+        ua.zentix.almighty.platform.Platform.get().configureMockConnection(connection);
         h.getLevel().getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
         // 26.x: as the client's ServerboundPlayerLoadedPacket.
         //? if >=26.1
-        /*player.connection.markClientLoaded();*/
+        /*player.connection.handleAcceptPlayerLoad(new net.minecraft.network.protocol.game.ServerboundPlayerLoadedPacket());*/
         return player;
     }
 

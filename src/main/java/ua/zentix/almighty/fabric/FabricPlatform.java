@@ -68,10 +68,14 @@ final class FabricPlatform implements Platform {
         return out;
     }
 
-    /** Fabric has no shared config system: other mods' settings are their own files, not listed. */
+    /** Fabric has no shared config system: other mods' settings are their own files, not listed; ours are (FabricConfig). */
     @Override
     public List<ConfigValue> modConfigValues() {
-        return List.of();
+        List<ConfigValue> out = new ArrayList<>();
+        for (ua.zentix.almighty.platform.Setting<?> s : ua.zentix.almighty.GmConfig.ALL) {
+            out.add(new ConfigValue(Almighty.ID, Almighty.ID + "-common.toml", s.section().isEmpty() ? s.key() : s.section() + "." + s.key(), s.get()));
+        }
+        return out;
     }
 
     @Override
@@ -100,6 +104,10 @@ final class FabricPlatform implements Platform {
     public CommonListenerCookie cookie(GameProfile profile, ClientInformation info) {
         return new CommonListenerCookie(profile, 0, info, false);
     }
+
+    /** Fabric has no "player data loaded" event: mods' player data (attachments) loads with the player's own data. */
+    @Override
+    public void playerLoaded(ServerPlayer player) {}
 
     @Override
     public RegistryFriendlyByteBuf registryBuffer(ByteBuf buf, RegistryAccess access) {

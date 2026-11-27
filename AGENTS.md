@@ -68,8 +68,18 @@ Compat modules exist per node: `compat_<mod>` in the node's properties sets the 
 leaves `compat/<mod>/` out where the mod has no build. GameTests: on 26.x the same test classes are registered by
 `gametest/v26/GmTestRegistry` (Stonecutter points the 1.21.1 annotation imports at look-alikes there; one
 `TEST_FUNCTION` and one `FunctionGameTestInstance` per method, one empty environment per batch, the origin moved one
-block down so `absolutePos` means what it means on 1.21.1); version differences of test setup are in `gametest/Gt`.
-New test classes go into the registrar's list.
+block down so `absolutePos` means what it means on 1.21.1); the loader hands them over: `v26/NeoForgeTests`
+(registry events) or, on Fabric, the test mod `almighty_gametest` (`src/fabric/devtest/fabric.mod.json`, devtest
+source set; `gametest/fabric/FabricTests` registers functions at init and batches and instances where Fabric API
+registers its own, `FabricGameTestMixin`). Version and loader differences of test setup are in `gametest/Gt`: rule
+event names (Fabric: Fabric API callbacks), the break event, entity type constants (26.3: `EntityTypes`). Fabric
+has no cancellable entity-join callback, so the script test's guard cancels a zombie's damage there
+(`ServerLivingEntityEvents.ALLOW_DAMAGE`) instead of its arrival; a server-wide cancel without a place is a game
+message there (chat carries its player). Tests of a mod without a build for the node sit in its compat constant
+(`//? if ia`). New test classes go into the registrar's list. Fabric unit tests bootstrap the game first
+(`fabric/GameBootstrap`, a JUnit launcher listener registered from `src/fabric/test`). Fabric's GameTest run
+(`runGameTestServer` → Loom's `runGametest`) writes `run/<node>/gametest/logs/latest.log` and `report.xml` and exits
+with the number of failed tests, as NeoForge's.
 
 CI (GitHub Actions) checks every PR and push to `main`: GM toolkit once, then build, unit tests and GameTest for every
 node in parallel (`versions/*`); each node's jar is the `almighty-<node>` artifact; the required check is "Сборка и
@@ -386,6 +396,17 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
   types are registry entries: ours (`Areas.TICKET`, loading only, not saved, no timeout) is registered by the
   loader. Boats are per-wood entities (`driven_by_rider` lists ids as optional entries). Unit tests of 26.x nodes run
   under moddev's `unitTest` (game classes need FML at class init).
+- 26.3: a teleport confirmation carries the client's position and the server applies it as a movement packet,
+  checked against the position at the listener's last tick start; a bot's listener never ticks, so the bot resets
+  it before confirming (`Bot.acceptTeleport`; otherwise "moved too quickly", a teleport back and a new
+  confirmation, endlessly within one tick). Chat signatures are optional (bots acknowledge only signed messages,
+  send an empty one). Saved block states name their fields `id`/`properties` (`Mc.blockStateName`, which also
+  renames journal entries written before). Entity type constants moved to `EntityTypes`.
+- Fabric: Fabric API's GameTest server reports itself dedicated; the bridge checks for `GameTestServer` itself.
+  Player join and leave come from `ServerPlayerEvents.JOIN`/`LEAVE` (`PlayerList.placeNewPlayer` end, `remove`
+  start, as NeoForge's logged-in/out events; connection events never fire for bots or test players). A rule's
+  `FabricEvent` has `server`/`player`/`level`/`pos`/`entity`, the callback's arguments as fields and script
+  properties, `event.canceled = true`, and resolves fully qualified names (`<owner class>.<FIELD>`).
 - Load chunks only with vanilla radius-0 region tickets (`ServerChunkCache.addRegionTicket`, level 33 = full chunk
   without ticking; `TickingTracker` level 33 does not tick either). Radius above 0 starts ticking immediately,
   before neighbors are ready; NeoForge `TicketController.forceChunk` and `level.getChunk` load synchronously.
@@ -516,9 +537,11 @@ Before planning or changing bot or vision behavior (including compatibility driv
   not check the nested Groovy jar: after build changes, use a dedicated NeoForge server from the installer
   (`java -jar neoforge-<version>-installer.jar --installServer`, directory under `run/`), put the node's `versions/<node>/build/libs` jar
   in `mods/`, set `server-ip=127.0.0.1`, call `script` through `mcp/almighty.py call`.
-- GameTest runs include Immersive Aircraft and Sable (`devtestRuntimeOnly` from Modrinth Maven, using the `devtest`
-  set; Sable compile types also use sable-companion from maven.ryanhcode.dev). Mods send custom packets on player
-  login, so test mock players need all mod channels (`NetworkRegistry.configureMockConnection`), like bots.
+- GameTest runs include Immersive Aircraft and Sable where the node has their build (`devtestRuntimeOnly` from
+  Modrinth Maven, using the `devtest` set; Sable compile types also use sable-companion from maven.ryanhcode.dev):
+  Sable on 1.21.1 only, Immersive Aircraft on 1.21.1 and 26.1.2 (both loaders), neither on 26.3 (its four tests are
+  `//? if ia`). Mods send custom packets on player login, so test mock players need all mod channels
+  (`Platform.configureMockConnection`: NeoForge's `NetworkRegistry.configureMockConnection`; nothing on Fabric), like bots.
 - Sable ship GameTest: `GmSableGameTests`: assemble with `sable assemble area`, a lease on its plot places no
   tickets, building there refuses immediately, releasing the lease leaves the live ship's chunk level unchanged;
   remove the ship with a lease active, then lease nearby again without a generation crash. Autopilot ship:

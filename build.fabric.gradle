@@ -15,10 +15,18 @@ version = "${mod_version}+${minecraft_version}-fabric"
 java.toolchain.languageVersion = JavaLanguageVersion.of(java_version as int)
 
 // GameTest is for Gradle runs only; not included in the jar.
+// Loom puts the game and Fabric API on main only: devtest takes main's classpaths (as Fabric API's own test mods).
+// On Fabric the tests are their own mod (src/fabric/devtest/fabric.mod.json, id almighty_gametest): a production
+// fabric.mod.json cannot name test entry points.
 sourceSets {
     devtest {
-        compileClasspath += sourceSets.main.output
-        runtimeClasspath += sourceSets.main.output
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+        resources.srcDir rootProject.file('src/fabric/devtest')
+    }
+    // Unit tests bootstrap the game first (src/fabric/test registers ua.zentix.almighty.fabric.GameBootstrap).
+    test {
+        resources.srcDir rootProject.file('src/fabric/test')
     }
 }
 configurations {
@@ -61,6 +69,8 @@ loom {
     mods {
         almighty {
             sourceSet sourceSets.main
+        }
+        almighty_gametest {
             sourceSet sourceSets.devtest
         }
     }
@@ -108,7 +118,8 @@ dependencies {
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // Compile scope: the game bootstrap is a launcher session listener (ua.zentix.almighty.fabric.GameBootstrap).
+    testImplementation 'org.junit.platform:junit-platform-launcher'
 }
 
 test {

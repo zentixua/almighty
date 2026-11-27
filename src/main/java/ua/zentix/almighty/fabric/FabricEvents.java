@@ -149,17 +149,27 @@ final class FabricEvents implements GameEvents {
         if (query.equalsIgnoreCase("tick")) query = TICK;
         Map<String, Callback> all = index();
         Callback hit = all.get(query);
+        if (hit == null) hit = qualified(query, all);
         if (hit == null) {
             List<String> tail = all.keySet().stream().filter(k -> k.endsWith("." + name.strip()) || k.equalsIgnoreCase(name.strip())).toList();
             if (tail.size() == 1) hit = all.get(tail.get(0));
             else if (tail.size() > 1) throw RpcException.badRequest("Event \"" + name + "\" is ambiguous: " + String.join(", ", tail.stream().limit(10).toList()));
         }
-        if (hit == null) throw RpcException.notFound("No Fabric callback \"" + name + "\"" + similar(name, all) + "; search with event.types");
+        if (hit == null) throw RpcException.notFound("No event \"" + name + "\" among Fabric callbacks" + similar(name, all) + "; search with event.types");
         if (!observable(hit.method())) {
             throw RpcException.badRequest(hit.name() + " returns " + hit.method().getReturnType().getSimpleName()
                     + "; rules observe only callbacks that return nothing, a boolean, an InteractionResult or a TriState");
         }
         return new Found(hit.listener(), hit.name(), hit.mod(), hit);
+    }
+
+    /** A fully qualified name, {@code <owner class>.<FIELD>} (as event.types gives it in {@code class}). */
+    private static Callback qualified(String query, Map<String, Callback> all) {
+        int dot = query.lastIndexOf('.');
+        if (dot <= 0) return null;
+        String owner = query.substring(0, dot), field = query.substring(dot + 1);
+        Callback c = all.get(GameEvents.shortName(owner) + "." + field);
+        return c != null && c.field().getDeclaringClass().getName().replace('$', '.').equals(owner.replace('$', '.')) ? c : null;
     }
 
     @Override
@@ -215,6 +225,11 @@ final class FabricEvents implements GameEvents {
     @Override
     public boolean isEvent(Object value) {
         return value instanceof FabricEvent;
+    }
+
+    @Override
+    public Map<String, Object> properties(Object event) {
+        return event instanceof FabricEvent e ? e.getArguments() : Map.of();
     }
 
     @Override

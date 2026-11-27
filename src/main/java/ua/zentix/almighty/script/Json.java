@@ -163,6 +163,9 @@ public final class Json {
                 // A property unreadable without context is not an event property.
             }
         }
+        if (Platform.present()) Platform.get().events().properties(event).forEach((k, v) -> {
+            if (!out.has(k)) out.add(k, from(v, depth - 1));
+        });
         return out;
     }
 

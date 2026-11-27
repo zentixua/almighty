@@ -52,8 +52,6 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
-import net.neoforged.neoforge.network.connection.ConnectionType;
-import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.Api;
 import ua.zentix.almighty.GmConfig;
@@ -668,7 +666,7 @@ public final class GmBotGameTests {
         EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(ResourceLocation.fromNamespaceAndPath("immersive_aircraft", "biplane")).orElse(null);
         check(type != null, "GameTest run is missing Immersive Aircraft");
         // Bytes as written by the IA client: serverbound packet codec, id supplied separately.
-        RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), h.getLevel().registryAccess(), ConnectionType.NEOFORGE);
+        RegistryFriendlyByteBuf buf = ua.zentix.almighty.platform.Platform.get().registryBuffer(Unpooled.buffer(), h.getLevel().registryAccess());
         ServerboundCustomPayloadPacket.STREAM_CODEC.encode(buf, new ServerboundCustomPayloadPacket(iaDismount()));
         String id = buf.readResourceLocation().toString();
         byte[] body = new byte[buf.readableBytes()];
@@ -886,11 +884,11 @@ public final class GmBotGameTests {
             Connection connection = new Connection(PacketFlow.SERVERBOUND);
             new EmbeddedChannel(connection);
             // Client with all server mods: mods send their packets on login (Immersive Aircraft).
-            NetworkRegistry.configureMockConnection(connection);
+            ua.zentix.almighty.platform.Platform.get().configureMockConnection(connection);
             server.getPlayerList().placeNewPlayer(connection, real, cookie);
             // 26.x: as the client's ServerboundPlayerLoadedPacket.
             //? if >=26.1
-            /*real.connection.markClientLoaded();*/
+            /*real.connection.handleAcceptPlayerLoad(new net.minecraft.network.protocol.game.ServerboundPlayerLoadedPacket());*/
             check(gm(h).bots().find("GmTestFriend") == null && !bot.online(), "bot did not yield the name to a player");
         } finally {
             GmConfig.BOTS_ALLOW_DISGUISE.set(disguise);

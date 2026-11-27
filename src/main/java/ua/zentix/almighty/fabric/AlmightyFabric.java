@@ -4,10 +4,10 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityLevelChangeEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -40,11 +40,13 @@ public final class AlmightyFabric implements ModInitializer {
             AlmightyCommand.register(dispatcher);
         });
         // A real player's login takes a bot's name back first, then the feed sees the join (NeoForge: HIGHEST, LOWEST).
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            Bots.onLogin(handler.player);
-            FeedListeners.onLogin(handler.player);
+        // Fabric API fires these where NeoForge fires its logged-in/out events: the end of PlayerList.placeNewPlayer and
+        // the start of PlayerList.remove (bots and test players included, which have no network connection to close).
+        ServerPlayerEvents.JOIN.register(player -> {
+            Bots.onLogin(player);
+            FeedListeners.onLogin(player);
         });
-        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> FeedListeners.onLogout(handler.player));
+        ServerPlayerEvents.LEAVE.register(FeedListeners::onLogout);
         ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> FeedListeners.onChat(sender, message.signedContent()));
         ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
             if (entity instanceof ServerPlayer p) FeedListeners.onDeath(p, source);

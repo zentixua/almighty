@@ -191,20 +191,19 @@ public final class GmScriptGameTests {
             BlockPos base = h.absolutePos(BlockPos.ZERO);
             String near = String.format(Locale.ROOT, "event.entity.blockPosition().closerThan(new BlockPos(%d, %d, %d), 32)",
                     base.getX(), base.getY(), base.getZ());
-            JsonObject guard = rule(h, "EntityJoinLevelEvent", "gm-test-guard",
+            JsonObject guard = rule(h, Gt.GUARD_EVENT, "gm-test-guard",
                     "if (EntityType.getKey(event.entity.type).path == 'zombie' && " + near + ") { event.canceled = true; gm.emit([blocked: event.entity]) }",
                     "priority", "highest");
-            rule(h, "EntityJoinLevelEvent", "gm-test-tag",
+            rule(h, Gt.JOIN_EVENT, "gm-test-tag",
                     "if (EntityType.getKey(event.entity.type).path == 'pig' && " + near + ") gm.commandAs(event.entity, 'tag @s add gm_seen')");
-            h.spawn(Gt.ZOMBIE, 4, 2, 4);
+            Gt.guarded(h, 4, 2, 4);
             Pig pig = h.spawn(Gt.PIG, 6, 2, 6);
             check(Mc.tags(pig).contains("gm_seen"), "pig is missing tag: " + Mc.tags(pig));
-            h.assertEntityNotPresent(Gt.ZOMBIE);
             JsonObject blocked = find(gm, after, "emit", e -> of(e, guard));
             check(blocked != null && blocked.getAsJsonObject("data").getAsJsonObject("blocked").get("type").getAsString().equals("minecraft:zombie"),
                     "guard did not record zombie: " + blocked);
 
-            JsonObject replaced = rule(h, "EntityJoinLevelEvent", "gm-test-tag",
+            JsonObject replaced = rule(h, Gt.JOIN_EVENT, "gm-test-tag",
                     "if (EntityType.getKey(event.entity.type).path == 'pig' && " + near + ") gm.commandAs(event.entity, 'tag @s add gm_second')");
             long named = gm.rules().describe().asList().stream()
                     .filter(e -> e.getAsJsonObject().has("name") && e.getAsJsonObject().get("name").getAsString().equals("gm-test-tag")).count();
@@ -222,14 +221,14 @@ public final class GmScriptGameTests {
             for (JsonElement e : types) {
                 JsonObject t = e.getAsJsonObject();
                 found |= t.get("event").getAsString().equals(Gt.BREAK_EVENT) && t.get("cancellable").getAsBoolean()
-                        && t.get("mod").getAsString().equals("neoforge");
+                        && t.get("mod").getAsString().equals(Gt.BREAK_EVENT_MOD);
             }
             check(found, "event.types: " + types);
             // The fully qualified event name resolves to the same event as the short name.
-            JsonObject full = rule(h, "net.neoforged.neoforge.event.ServerChatEvent", "gm-test-full", null);
-            JsonObject brief = rule(h, "ServerChatEvent", "gm-test-full", null);
-            check(full.get("event").getAsString().equals("ServerChatEvent") && brief.get("event").getAsString().equals("ServerChatEvent")
-                    && full.get("mod").getAsString().equals("neoforge"), "full and short name: " + full + ", " + brief);
+            JsonObject full = rule(h, Gt.CHAT_EVENT_FULL, "gm-test-full", null);
+            JsonObject brief = rule(h, Gt.CHAT_EVENT, "gm-test-full", null);
+            check(full.get("event").getAsString().equals(Gt.CHAT_EVENT) && brief.get("event").getAsString().equals(Gt.CHAT_EVENT)
+                    && full.get("mod").getAsString().equals(Gt.CHAT_EVENT_MOD), "full and short name: " + full + ", " + brief);
             drop(h, "gm-test-full");
             JsonObject unknown = new JsonObject();
             unknown.addProperty("event", "NoSuchEventAtAll");
@@ -238,7 +237,7 @@ public final class GmScriptGameTests {
             // Event from a GM command: rule commands execute immediately (not queued in the outer command),
             // and the same event they trigger does not run the rule again.
             BlockPos gold = h.absolutePos(new BlockPos(2, 2, 12)), spot = h.absolutePos(new BlockPos(3, 2, 12));
-            rule(h, "EntityJoinLevelEvent", "gm-test-nested", String.format(Locale.ROOT, """
+            rule(h, Gt.JOIN_EVENT, "gm-test-nested", String.format(Locale.ROOT, """
                     if (!event.entity.%7$s.contains('gm_nested') || (state.gmNested ?: 0) >= 3) return
                     state.gmNested = (state.gmNested ?: 0) + 1
                     gm.command('setblock %1$d %2$d %3$d gold_block', 'summon marker %4$d %5$d %6$d {Tags:["gm_nested"]}')

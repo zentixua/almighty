@@ -34,7 +34,7 @@ public final class Connect {
         url.addProperty("url", mcpUrl);
         String b64 = Base64.getEncoder().encodeToString(url.toString().getBytes(StandardCharsets.UTF_8));
         out.add(new Way("Cursor", "Settings → MCP → Add, or the link", "cursor://anysphere.cursor-deeplink/mcp/install?name=almighty&config=" + enc(b64)));
-        out.add(new Way("opencode", "opencode mcp add almighty --url " + mcpUrl + "   then opencode mcp auth almighty", null));
+        out.add(new Way("opencode", "opencode mcp add almighty (remote, " + mcpUrl + ")   then opencode mcp auth almighty", null));
         out.add(new Way("Gemini CLI", "gemini mcp add -t http almighty " + mcpUrl, null));
         out.add(new Way("LM Studio (local models: add ?profile=compact&images=false)", "the link", "https://lmstudio.ai/install-mcp?name=almighty&config=" + enc(b64)));
         out.add(new Way("Goose", "the link", "goose://extension?url=" + enc(mcpUrl) + "&type=streamable_http&id=almighty&name=Almighty"));

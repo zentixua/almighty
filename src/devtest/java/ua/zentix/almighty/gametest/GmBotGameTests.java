@@ -356,8 +356,15 @@ public final class GmBotGameTests {
         // Respawn on this test's floor, facing east along it: without a spawn point a player respawns at a random spot
         // in the world spawn's radius, outside the test, where whatever stands in front of it can stop the walk below.
         BlockPos home = h.absolutePos(new BlockPos(10, GROUND, 10));
-        new ScriptApi(h.getLevel().getServer(), true, d -> {}).command(String.format(java.util.Locale.ROOT,
-                "spawnpoint GmTestPhoenix %d %d %d -90", home.getX(), home.getY(), home.getZ()));
+        // 1.21.1 takes an angle; 26.x a rotation (yaw and pitch).
+        //? if >=26.1 {
+        /*String facing = "-90 0";
+        *///?} else
+        String facing = "-90";
+        String spawnpoint = String.format(java.util.Locale.ROOT, "spawnpoint GmTestPhoenix %d %d %d %s", home.getX(), home.getY(), home.getZ(), facing);
+        com.google.gson.JsonArray set = ua.zentix.almighty.act.CommandRunner.run(h.getLevel().getServer(), h.getLevel(), Vec3.atBottomCenterOf(home),
+                null, java.util.List.of(spawnpoint), true).getAsJsonArray();
+        check(set.get(0).getAsJsonObject().get("ok").getAsBoolean(), "/" + spawnpoint + ": " + set);
         ServerPlayer first = bot.player();
         Gt.hurt(first, first.damageSources().genericKill(), Float.MAX_VALUE);
         AtomicReference<CompletableFuture<JsonElement>> walk = new AtomicReference<>();

@@ -487,6 +487,34 @@ public final class GmBotGameTests {
     }
 
     /**
+     * A bot that leaves while riding comes back in its vehicle (saved with its player data), as a player does: the
+     * vehicle leaves with the bot and returns with it; it is never lost.
+     */
+    @GameTest(template = "floor", batch = "gm_bot_return", timeoutTicks = 200, skyAccess = true)
+    public static void botReturnsInItsBoat(GameTestHelper h) {
+        Bot bot = spawn(h, "GmTestReturner", 8.5, 10.5, ",\"gamemode\":\"survival\"");
+        Boat boat = h.spawn(Gt.BOAT, new Vec3(8.5, GROUND + 0.5, 10.5));
+        check(Gt.ride(bot.player(), boat), "did not board the boat");
+        java.util.UUID first = boat.getUUID();
+        h.startSequence()
+                .thenExecuteAfter(2, () -> {
+                    leave(h, "GmTestReturner");
+                    check(boat.isRemoved(), "the boat stayed when its rider left");
+                    // Without a position: the bot comes back where it was saved (a teleport would dismount it).
+                    JsonObject r = now(call(h, "bot.spawn", params("{\"name\":\"GmTestReturner\",\"gamemode\":\"survival\"}"))).getAsJsonObject();
+                    check(r.get("bot").getAsBoolean(), "bot.spawn: " + r);
+                })
+                .thenWaitUntil(() -> {
+                    Bot back = gm(h).bots().find("GmTestReturner");
+                    check(back != null && back.online(), "bot did not come back");
+                    check(back.player().getVehicle() instanceof Boat b && b.getUUID().equals(first),
+                            "came back without its boat: " + back.player().getVehicle());
+                })
+                .thenExecute(() -> leave(h, "GmTestReturner"))
+                .thenSucceed();
+    }
+
+    /**
      * Immersive Aircraft plane: a creative bot (no fuel needed) raises throttle with jump, and the plane rolls
      * east; sneak lowers throttle and brakes; the IA dismount key dismounts on the ground.
      */

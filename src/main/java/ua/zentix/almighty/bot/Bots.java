@@ -260,6 +260,18 @@ public final class Bots {
         ProfileCache.Snapshot cache = ProfileCache.snapshot(Mc.profileCache(server), spec.name(), Mc.id(profile));
         try {
             server.getPlayerList().placeNewPlayer(bot.connection(), player, cookie);
+            //? if >=26.1 {
+            /*// As PrepareSpawnTask after placeNewPlayer: the vehicle and ender pearls saved with the player come back
+            // (on 1.21.1 placeNewPlayer does this itself).
+            try (var reporter = new net.minecraft.util.ProblemReporter.ScopedCollector(LOG)) {
+                server.getPlayerList().loadPlayerData(new net.minecraft.server.players.NameAndId(profile))
+                        .map(tag -> net.minecraft.world.level.storage.TagValueInput.create(reporter, server.registryAccess(), tag))
+                        .ifPresent(saved -> {
+                            player.loadAndSpawnEnderPearls(saved);
+                            player.loadAndSpawnParentVehicle(saved);
+                        });
+            }
+            *///?}
         } catch (RuntimeException e) {
             forget(bot);
             bot.disconnect(Component.literal("failed to join"));

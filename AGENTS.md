@@ -88,10 +88,15 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   `logs/almighty/audit-<date>.jsonl` on its own thread (never the server thread), keeps the last 1000 in memory
   (`/almighty log`, `audit {limit, agent?, method?}`), deletes files older than `audit.days` (30); successful reads
   are not logged. GameTest keeps it in memory. A plain writer instead of a log4j2 appender: configuring an appender
-  changes the server's global logging, which panels and other mods own. `Pause`: a paused agent (or all) gets 423
-  for calls with effects, its jobs freeze in the queue (`Jobs.paused`), its bots stop (`Bot.controller`).
+  changes the server's global logging, which panels and other mods own. Parameters are clipped to 4 KB on the calling
+  thread (`Dispatch.clipped`); the writer uses a `FileOutputStream` (interrupts cannot close it), stops on an end
+  marker, and reopens after an IO error. `Pause`: a paused agent (or all) gets 423 for calls with effects except
+  `cancel`, `area.release`, `rule.remove`, `bot.remove` (cleanup); its builds and undos freeze in the queue
+  (`Job.effects`, `Jobs.paused`; views and area preparation go on), its bots stop and get no new programs
+  (`Bot.controller`); `pause` of all also skips rules with a script.
   `Dispatch.current()` is the caller of the running call; `GmServer.onMain` carries it to the server thread, so jobs
-  (`Job.agent`) and bot programs know which agent acts.
+  (`Job.agent`) and bot programs know which agent acts; the future completes inside the caller's scope, so
+  continuations on the server thread act as the same caller.
 - `policy/DenyList`: built-in deny list (from `crash_guard.py`), refused for every agent and harness: `stop`, `reload`,
   `save-off`, `save-all flush`, `forceload add`, `tick rate` > 100, `almighty …` (agents and policy are the owner's),
   far commands, builds, areas and bot spawns at Sable plot coordinates (|x| or |z| ≥ 20 000 000), bot chat commands;

@@ -26,7 +26,8 @@ public final class Dispatch {
     /** Told about every call once it ends (audit): result or error, and how long it took. */
     @FunctionalInterface
     public interface Listener {
-        void ended(Caller caller, String method, JsonObject params, JsonElement result, Throwable error, long nanos);
+        /** {@code paramsText}: the parameters as JSON, clipped to {@value #MAX_PARAMS_TEXT} characters (made on the calling thread). */
+        void ended(Caller caller, String method, JsonObject params, String paramsText, JsonElement result, Throwable error, long nanos);
     }
 
     /** The caller whose call is running on this thread: set while a method parses here, carried to the server thread
@@ -62,6 +63,50 @@ public final class Dispatch {
     }
 
     static final long KEY_TTL_MS = 10 * 60_000;
+    public static final int MAX_PARAMS_TEXT = 4096;
+    private static final com.google.gson.Gson GSON = new com.google.gson.GsonBuilder().disableHtmlEscaping().create();
+
+    /** JSON text of {@code e}, stopping after {@code max} characters: a 16 MB build costs no more than 4 KB here. */
+    public static String clipped(JsonElement e, int max) {
+        StringBuilder out = new StringBuilder();
+        Appendable bounded = new Appendable() {
+            private Appendable add(CharSequence s) {
+                if (out.length() + s.length() > max) {
+                    out.append(s, 0, Math.max(0, max - out.length()));
+                    throw new Full();
+                }
+                out.append(s);
+                return this;
+            }
+
+            @Override
+            public Appendable append(CharSequence s) {
+                return add(s == null ? "null" : s);
+            }
+
+            @Override
+            public Appendable append(CharSequence s, int start, int end) {
+                return add((s == null ? "null" : s).subSequence(start, end));
+            }
+
+            @Override
+            public Appendable append(char c) {
+                return add(String.valueOf(c));
+            }
+        };
+        try {
+            GSON.toJson(e, bounded);
+            return out.toString();
+        } catch (Full | com.google.gson.JsonIOException full) {
+            return out + "…";
+        }
+    }
+
+    private static final class Full extends RuntimeException {
+        Full() {
+            super(null, null, false, false);
+        }
+    }
     static final int MAX_KEYS = 1024;
     static final int MAX_KEY_LENGTH = 128;
 
@@ -108,22 +153,24 @@ public final class Dispatch {
     public CompletableFuture<JsonElement> invoke(Caller caller, String name, JsonObject params, String key) throws RpcException {
         long start = System.nanoTime();
         JsonObject p = params == null ? new JsonObject() : params;
+        // Made here (a bridge thread): the call may end on the server thread, which should not serialize a big plan.
+        String text = listeners.isEmpty() ? "" : clipped(p, MAX_PARAMS_TEXT);
         CompletableFuture<JsonElement> out;
         try {
             out = as(caller, () -> run(caller, name, params, key));
         } catch (RpcException | RuntimeException e) {
-            tell(caller, name, p, null, e, start);
+            tell(caller, name, p, text, null, e, start);
             throw e;
         }
-        out.whenComplete((v, e) -> tell(caller, name, p, v, e, start));
+        out.whenComplete((v, e) -> tell(caller, name, p, text, v, e, start));
         return out;
     }
 
-    private void tell(Caller caller, String name, JsonObject p, JsonElement result, Throwable error, long start) {
+    private void tell(Caller caller, String name, JsonObject p, String text, JsonElement result, Throwable error, long start) {
         Throwable cause = error instanceof java.util.concurrent.CompletionException c && c.getCause() != null ? c.getCause() : error;
         for (Listener l : listeners) {
             try {
-                l.ended(caller, name, p, result, cause, System.nanoTime() - start);
+                l.ended(caller, name, p, text, result, cause, System.nanoTime() - start);
             } catch (RuntimeException ignored) {
                 // A listener never breaks a call.
             }

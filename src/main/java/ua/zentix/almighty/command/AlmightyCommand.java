@@ -145,12 +145,11 @@ public final class AlmightyCommand {
         return 1;
     }
 
-    /** The last entries of the audit log, optionally of one agent (or the player whose ticket was used). */
+    /** The last entries of the audit log, optionally of one agent. */
     private static int log(CommandSourceStack source, String who, int count) {
         GmServer gm = GmServer.of(source.getServer());
         if (gm == null) return 0;
-        var entries = gm.audit().recent(count, e -> who == null || e.get("agent").getAsString().equals(who)
-                || (e.has("player") && e.get("player").getAsString().equalsIgnoreCase(who)));
+        var entries = gm.audit().recent(count, e -> who == null || e.get("agent").getAsString().equals(who));
         StringBuilder out = new StringBuilder("Almighty log (" + entries.size() + "):");
         for (var el : entries) {
             var e = el.getAsJsonObject();

@@ -61,6 +61,7 @@ public final class GmServer {
     private final Tickets tickets = new Tickets(System::currentTimeMillis);
     private final Inbox inbox;
     private final Pause pause = new Pause();
+    private static final java.util.Set<String> PAUSE_ALLOWS = java.util.Set.of("cancel", "area.release", "rule.remove", "bot.remove");
     private final Audit audit;
     private Bridge bridge;
     private long lastTick;
@@ -85,17 +86,19 @@ public final class GmServer {
                 : server.getServerDirectory().resolve("logs").resolve("almighty"),
                 GmConfig.AUDIT_DAYS.get());
         jobs.paused(pause::paused);
+        rules.paused(pause::all);
         this.inbox = new Inbox(server, feed, tickets, () -> bridge == null ? null : bridge.agents());
         this.dispatch = new Dispatch(Api.methods(this), List.of(
                 (caller, method, params) -> DenyList.check(method, params),
                 (caller, method, params) -> {
-                    if (!Api.readOnly(method, params) && pause.paused(caller.name())) {
+                    // Cancelling, releasing and removing only reduce effects: allowed, so a paused agent can clean up.
+                    if (!Api.readOnly(method, params) && !PAUSE_ALLOWS.contains(method) && pause.paused(caller.name())) {
                         throw new RpcException(423, "paused", "Paused by the owner (/almighty resume): only reading is allowed");
                     }
                 }),
                 Api::readOnly);
-        dispatch.listen((caller, method, params, result, error, nanos) ->
-                audit.ended(caller, method, params, result, error, nanos, Api.readOnly(method, params)));
+        dispatch.listen((caller, method, params, text, result, error, nanos) ->
+                audit.ended(caller, method, params, text, result, error, nanos, Api.readOnly(method, params)));
     }
 
     /** This server's game master; null if the server has not started yet or has already stopped. */
@@ -300,7 +303,9 @@ public final class GmServer {
                 return;
             }
             try {
-                out.complete(Dispatch.as(caller, call::run));
+                // Completed inside the caller's scope: continuations that run here (thenCompose on the server thread)
+                // still act as this caller, so a job they submit is tagged with the right agent.
+                Dispatch.as(caller, () -> out.complete(call.run()));
             } catch (VirtualMachineError e) {
                 if (!(e instanceof StackOverflowError)) throw e;
                 out.completeExceptionally(e);

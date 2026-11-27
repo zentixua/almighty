@@ -177,15 +177,15 @@ public final class Bot {
         return previous;
     }
 
-    /**
-     * Stop: remove programs and release keys at the next bot tick start (requested from a rule mid-tick,
-     * possibly in this same bot's step); emit {@code bot_stopped} to the feed.
-     */
     /** The agent whose call gave this bot its last program ({@code internal} for scripts and rules). */
     public String controller() {
         return controller;
     }
 
+    /**
+     * Stop: remove programs and release keys at the next bot tick start (requested from a rule mid-tick,
+     * possibly in this same bot's step); emit {@code bot_stopped} to the feed.
+     */
     public void stop(String reason) {
         if (stopReason == null) stopReason = reason;
     }
@@ -195,7 +195,10 @@ public final class Bot {
      * this method from a script's {@code act(list, true)}, passing a list of maps instead of steps.
      */
     Program start(List<Steps.Step> steps, boolean replace) {
-        controller = ua.zentix.almighty.bridge.Dispatch.current().name();
+        String by = ua.zentix.almighty.bridge.Dispatch.current().name();
+        // Paused (including a rule started inside a paused agent's call): no new program for the bot.
+        if (bots.paused(by)) throw new IllegalStateException("paused by the owner (/almighty resume)");
+        controller = by;
         if (replace) cancelAll("replaced by a new program");
         Program program = new Program(++programIds, steps);
         programs.add(program);

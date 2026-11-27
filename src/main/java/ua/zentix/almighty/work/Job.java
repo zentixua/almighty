@@ -50,6 +50,11 @@ public abstract class Job {
         submitted();
     }
 
+    /** Whether the job changes the world (builds, undos): only such jobs freeze while their agent is paused. */
+    public boolean effects() {
+        return false;
+    }
+
     /** The agent whose call submitted the job ({@code internal} for scripts, rules and tests). */
     public String agent() {
         return agent;

@@ -285,6 +285,11 @@ public final class Bots {
         return out;
     }
 
+    /** Whether {@code agent} is paused by the owner (its bots get no new programs). */
+    boolean paused(String agent) {
+        return gm.pause().paused(agent);
+    }
+
     public List<Bot> all() {
         return new ArrayList<>(byName.values());
     }

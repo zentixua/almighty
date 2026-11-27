@@ -10,13 +10,11 @@ import org.slf4j.Logger;
 import ua.zentix.almighty.bridge.Caller;
 import ua.zentix.almighty.bridge.RpcException;
 
-import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -43,7 +41,9 @@ import java.util.function.Predicate;
  */
 public final class Audit {
     static final int KEEP = 1000;
-    static final int MAX_PARAMS = 4096;
+    static final int MAX_PARAMS = ua.zentix.almighty.bridge.Dispatch.MAX_PARAMS_TEXT;
+    /** Queued after the last line at stop: the writer finishes and exits without being interrupted. */
+    private static final String END = "\u0000end";
     private static final Logger LOG = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
@@ -62,14 +62,18 @@ public final class Audit {
         this.days = days;
         this.writer = new Thread(this::write, "almighty audit");
         writer.setDaemon(true);
-        if (dir != null) {
-            prune();
-            writer.start();
+    }
+
+    private void startWriter() {
+        if (dir == null || writer.getState() != Thread.State.NEW) return;
+        synchronized (writer) {
+            if (writer.getState() == Thread.State.NEW) writer.start();
         }
     }
 
     /** Record a finished call; {@code readOnly}: a successful read is not recorded. */
-    public void ended(Caller caller, String method, JsonObject params, JsonElement result, Throwable error, long nanos, boolean readOnly) {
+    public void ended(Caller caller, String method, JsonObject params, String paramsText, JsonElement result, Throwable error,
+                      long nanos, boolean readOnly) {
         if (readOnly && error == null) return;
         JsonObject e = new JsonObject();
         e.addProperty("n", seq.incrementAndGet());
@@ -77,12 +81,13 @@ public final class Audit {
         e.addProperty("agent", caller.name());
         e.addProperty("address", caller.address());
         e.addProperty("method", method);
-        String p = GSON.toJson(params);
-        e.addProperty("params", p.length() > MAX_PARAMS ? p.substring(0, MAX_PARAMS) + "…" : p);
+        e.addProperty("params", paramsText);
         if (params.has("for") && params.get("for").isJsonPrimitive()) e.addProperty("ticket", params.get("for").getAsString());
         if (error == null) {
             e.addProperty("outcome", "ok");
-            if (result instanceof JsonObject o && o.has("id") && o.has("kind")) e.addProperty("job", o.get("id").getAsLong());
+            if (result instanceof JsonObject o && o.has("kind") && o.get("id") instanceof com.google.gson.JsonPrimitive id && id.isNumber()) {
+                e.addProperty("job", id.getAsLong());
+            }
         } else if (error instanceof RpcException r) {
             e.addProperty("outcome", r.code());
             e.addProperty("status", r.status());
@@ -113,7 +118,10 @@ public final class Audit {
             recent.addLast(e);
             while (recent.size() > KEEP) recent.removeFirst();
         }
-        if (dir != null && !pending.offer(GSON.toJson(e))) dropped.incrementAndGet();
+        if (dir == null) return;
+        // Started on the first entry: a server that never starts (a constructor failing later) leaks no thread.
+        startWriter();
+        if (!pending.offer(GSON.toJson(e))) dropped.incrementAndGet();
     }
 
     /** The last {@code limit} entries passing {@code filter}, oldest first. */
@@ -136,9 +144,11 @@ public final class Audit {
 
     public void stop() {
         running = false;
-        writer.interrupt();
+        if (writer.getState() == Thread.State.NEW) return;
+        // No interrupt: writing through an interruptible channel would close it and lose what is still queued.
+        pending.offer(END);
         try {
-            writer.join(2000);
+            writer.join(5000);
         } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
         }
@@ -149,41 +159,59 @@ public final class Audit {
     }
 
     private void write() {
+        prune();
         LocalDate day = null;
-        BufferedWriter out = null;
-        try {
-            while (running || !pending.isEmpty()) {
-                String line;
+        java.io.Writer out = null;
+        boolean warned = false;
+        while (true) {
+            String line;
+            try {
+                line = pending.poll(1, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                line = pending.poll();
+            }
+            if (line == null) {
+                if (!running) break;
                 try {
-                    line = pending.poll(1, TimeUnit.SECONDS);
-                } catch (InterruptedException e) {
-                    line = pending.poll();
-                    if (line == null) break;
-                }
-                if (line == null) {
                     if (out != null) out.flush();
-                    continue;
+                } catch (IOException ignored) {
+                    // Reported on the next write.
                 }
+                continue;
+            }
+            if (line.equals(END)) break;
+            try {
                 LocalDate today = LocalDate.now(ZoneId.systemDefault());
-                if (!today.equals(day)) {
+                if (out == null || !today.equals(day)) {
                     if (out != null) out.close();
                     Files.createDirectories(dir);
-                    out = Files.newBufferedWriter(file(today), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-                    if (day != null) prune();
+                    // FileOutputStream, not a channel: an interrupt cannot close it under us.
+                    out = new java.io.BufferedWriter(new java.io.OutputStreamWriter(
+                            new java.io.FileOutputStream(file(today).toFile(), true), StandardCharsets.UTF_8));
+                    if (day != null && !today.equals(day)) prune();
                     day = today;
                 }
                 out.write(line);
-                out.newLine();
+                out.write('\n');
                 if (pending.isEmpty()) out.flush();
+                warned = false;
+            } catch (IOException e) {
+                // Keep running: reopen on the next line (the disk may come back).
+                if (!warned) LOG.error("Almighty audit: cannot write to {}: {}", dir, e.toString());
+                warned = true;
+                dropped.incrementAndGet();
+                try {
+                    if (out != null) out.close();
+                } catch (IOException ignored) {
+                    // Already failing.
+                }
+                out = null;
             }
+        }
+        try {
+            if (out != null) out.close();
         } catch (IOException e) {
-            LOG.error("Almighty audit: cannot write to {}; entries stay in memory only", dir, e);
-        } finally {
-            try {
-                if (out != null) out.close();
-            } catch (IOException ignored) {
-                // Closing after a failed write.
-            }
+            LOG.warn("Almighty audit: closing {}: {}", dir, e.toString());
         }
     }
 

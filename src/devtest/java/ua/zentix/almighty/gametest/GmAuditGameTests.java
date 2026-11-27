@@ -62,6 +62,8 @@ public final class GmAuditGameTests {
                 check(e.status() == 423, "paused: " + e.status());
             }
             as(gm, BUILDER, "status", new JsonObject()).join();
+            // A view runs as a job too, but has no effects: a paused agent can still look.
+            as(gm, BUILDER, "map", params("{\"center\":[%d,%d],\"size\":16,\"wait\":0}", at.getX(), at.getZ()));
             as(gm, GM, "command", params("{\"commands\":[\"say still here\"]}")).join();
         } catch (RuntimeException e) {
             gm.pause().resume(null);
@@ -73,9 +75,17 @@ public final class GmAuditGameTests {
         long id = job;
         h.runAfterDelay(20, () -> {
             boolean frozen = !gm.jobs().get(id).state().finished() && h.getLevel().getBlockState(at).isAir();
+            boolean looked = false;
+            for (JsonElement j : gm.jobs().describe()) {
+                JsonObject o = j.getAsJsonObject();
+                if (o.get("agent").getAsString().equals("builder") && !o.get("kind").getAsString().equals("build")) {
+                    looked = !o.get("state").getAsString().equals("queued") && !o.get("state").getAsString().equals("waiting");
+                }
+            }
             // Resume first: a failed check must not leave the agent paused for the batches after this one.
             gm.pause().resume("builder");
             check(frozen, "frozen while paused");
+            check(looked, "the paused agent's view ran: " + gm.jobs().describe());
             h.succeedWhen(() -> {
                 check(h.getLevel().getBlockState(at).is(Blocks.GOLD_BLOCK),
                         String.format(Locale.ROOT, "resumed build not done: %s", gm.jobs().get(id).state()));

@@ -50,8 +50,9 @@ public final class Jobs {
         Budget budget = new Budget(clock, nanos);
         boolean first = true;
         for (Job job : active) {
-            // A paused agent's jobs are frozen in place (resume continues them); they never take the first slice.
-            if (paused.test(job.agent())) continue;
+            // A paused agent's builds and undos are frozen in place (resume continues them, cancel ends them); views
+            // and area preparation go on, so the paused agent can still look.
+            if (job.effects() && paused.test(job.agent())) continue;
             if (first || budget.left()) job.run(budget);
             first = false;
         }

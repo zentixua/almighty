@@ -70,6 +70,7 @@ public final class GmServer {
     private final Tickets tickets = new Tickets(System::currentTimeMillis);
     private final Inbox inbox;
     private final Pause pause = new Pause();
+    private final ua.zentix.almighty.policy.Quotas quotas = new ua.zentix.almighty.policy.Quotas(System::currentTimeMillis);
     private final Policies policies;
     private final Gate gate;
     private final Decisions decisions;
@@ -251,6 +252,7 @@ public final class GmServer {
         inbox.tick(server.getTickCount());
         decisions.tick(server.getTickCount());
         if (server.getTickCount() % 20 == 0) Nodes.refresh(server);
+        if (server.getTickCount() % 72_000 == 0) quotas.prune();
     }
 
     /** The GM budget per tick; a quarter of it while the lag guard holds, so builds and views slow down but go on. */
@@ -327,6 +329,10 @@ public final class GmServer {
 
     public Bots bots() {
         return bots;
+    }
+
+    public ua.zentix.almighty.policy.Quotas quotas() {
+        return quotas;
     }
 
     public Decisions decisions() {

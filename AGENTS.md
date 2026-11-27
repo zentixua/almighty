@@ -163,8 +163,11 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   their `/gm` down for 10 minutes (`Inbox.refused`).
 - Content limits (step 7, `policy/ContentLimits`): below owner (the call's effective role), `build` takes block
   states only (any NBT → 403) and never a block in `#almighty:never_build` (command, structure, jigsaw blocks,
-  spawners); `give {item, count ≤ 64, for}` gives the requester a plain item (no components) and never one in
-  `#almighty:never_give`; creative/spectator/unmarked/skinned bots and `payload` need `bots.admin` (step 5).
+  spawners, barrier, light, bedrock, portals, end portal frame, reinforced deepslate); `give {item, count ≤ 64,
+  for}` gives the requester a plain item (no components, at most one stack) and never one in `#almighty:never_give`
+  nor a spawn egg (any `SpawnEggItem`), within 128 items per player per hour (`policy/Quotas`); `undo` of a build
+  made for someone else (agent or requester) needs `undo.any`, and undoing an undo (a redo, which replays block
+  data) needs the owner; creative/spectator/unmarked/skinned bots and `payload` need `bots.admin` (step 5).
   Datapacks may add to both tags. `BuildPlan` keeps a refusal's status (403) instead of turning it into 400.
 - `policy/DenyList`: built-in deny list (from `crash_guard.py`), refused for every agent and harness: `stop`, `reload`,
   `save-off`, `save-all flush`, `forceload add`, `tick rate` > 100, `almighty …` (agents and policy are the owner's),

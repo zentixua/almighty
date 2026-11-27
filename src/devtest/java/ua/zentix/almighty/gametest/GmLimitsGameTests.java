@@ -69,6 +69,9 @@ public final class GmLimitsGameTests {
             RpcException nbt = refused(gm, "build", params(set(at, "minecraft:oak_sign{front_text:{messages:['\"a\"','\"\"','\"\"','\"\"']}}")));
             check(nbt.getMessage().contains("block data"), "sign with data: " + nbt.getMessage());
             gm.dispatch().invoke(GM, "build", params(set(at, "minecraft:oak_sign[rotation=4]")));
+            RpcException palette = refused(gm, "build", params("{\"ops\":[{\"op\":\"layers\",\"origin\":[%d,%d,%d],\"palette\":{\"#\":\"minecraft:repeating_command_block\"},\"layers\":[[\"#\"]]}],\"wait\":0}",
+                    at.getX(), at.getY(), at.getZ()));
+            check(palette.code().equals("policy"), "a layers palette is checked too: " + palette.getMessage());
             // Owner (private: the floor is owner): anything, as before.
             gm.policies().set(Policy.parse("preset = \"private\""));
             gm.dispatch().invoke(GM, "build", params(set(at.east(), "minecraft:command_block")));
@@ -76,6 +79,38 @@ public final class GmLimitsGameTests {
             gm.policies().set(before);
         }
         h.succeed();
+    }
+
+    /** An owner's build undone, then a member-level call tries to undo the undo (a redo of the command block): refused. */
+    @GameTest(template = "floor", batch = "gm_limits", timeoutTicks = 200)
+    public static void noRedoBelowOwner(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        BlockPos at = h.absolutePos(new BlockPos(4, 2, 4));
+        gm.policies().set(Policy.parse("preset = \"private\""));
+        gm.dispatch().invoke(GM, "build", params(set(at, "minecraft:command_block{Command:\"say hi\"}")));
+        long[] ids = new long[2];
+        h.runAfterDelay(10, () -> {
+            for (JsonElement j : gm.jobs().describe()) ids[0] = Math.max(ids[0], j.getAsJsonObject().get("id").getAsLong());
+            try {
+                gm.dispatch().invoke(GM, "undo", params("{\"job\":%d,\"wait\":0}", ids[0]));
+            } catch (RpcException e) {
+                throw new GameTestAssertException("owner undo: " + e.getMessage());
+            }
+        });
+        h.runAfterDelay(30, () -> {
+            for (JsonElement j : gm.jobs().describe()) ids[1] = Math.max(ids[1], j.getAsJsonObject().get("id").getAsLong());
+            try {
+                gm.policies().set(Policy.parse("preset = \"friends\""));
+                RpcException e = refused(gm, "undo", params("{\"job\":%d,\"wait\":0}", ids[1]));
+                check(e.status() == 403 && e.getMessage().contains("redo"), "redo below owner: " + e.getMessage());
+            } catch (Policy.Invalid e) {
+                throw new GameTestAssertException(e.getMessage());
+            } finally {
+                gm.policies().set(before);
+            }
+            h.succeed();
+        });
     }
 
     @GameTest(template = "floor", batch = "gm_limits")
@@ -98,6 +133,11 @@ public final class GmLimitsGameTests {
                     .status() == 400, "components");
             check(refused(gm, "give", params("{\"item\":\"minecraft:bread\"}")).status() == 400, "only for a requester");
             check(refused(gm, "bot.spawn", params("{\"name\":\"LimitsBot\",\"gamemode\":\"creative\"}")).status() == 403, "creative bot at member floor");
+            check(refused(gm, "give", params("{\"item\":\"minecraft:wither_spawn_egg\",\"for\":\"%s\"}", t)).status() == 403, "spawn eggs");
+            // The hourly item quota: 3 + 64 + 61 = 128 given, one more refused.
+            gm.dispatch().invoke(GM, "give", params("{\"item\":\"minecraft:dirt\",\"count\":64,\"for\":\"%s\"}", t)).join();
+            gm.dispatch().invoke(GM, "give", params("{\"item\":\"minecraft:dirt\",\"count\":61,\"for\":\"%s\"}", t)).join();
+            check(refused(gm, "give", params("{\"item\":\"minecraft:dirt\",\"for\":\"%s\"}", t)).status() == 429, "item quota");
         } finally {
             gm.policies().set(before);
             h.getLevel().getServer().getPlayerList().remove(alex);

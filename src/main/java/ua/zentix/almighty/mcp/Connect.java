@@ -40,7 +40,7 @@ public final class Connect {
         out.add(new Way("Goose", "the link", "goose://extension?url=" + enc(mcpUrl) + "&type=streamable_http&id=almighty&name=Almighty"));
         if (publicHttps) {
             out.add(new Way("claude.ai, Claude Desktop chat", "the link, then Connect", "https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Almighty&connectorUrl=" + enc(mcpUrl)));
-            out.add(new Way("ChatGPT on the web (advanced)", "Settings → Apps → Developer mode → Create: " + mcpUrl, null));
+            out.add(new Way("ChatGPT on the web (advanced)", "Settings → Apps → Advanced → Developer mode, then Create: " + mcpUrl, null));
         }
         return out;
     }

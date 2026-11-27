@@ -142,7 +142,9 @@ class SignInTest {
         assertEquals("invalid_target", assertThrows(SignIn.OAuthError.class,
                 () -> s.authorize(c, other, "http://127.0.0.1:25650/mcp", "127.0.0.1")).error());
 
-        SignIn.Pending p = s.authorize(c, authorizeQuery(c.id(), "http://127.0.0.1:1455/callback/x"), "http://127.0.0.1:25650/mcp", "127.0.0.1");
+        Map<String, String> withQuery = authorizeQuery(c.id(), "http://127.0.0.1:1455/callback/x");
+        withQuery.put("resource", "http://127.0.0.1:25650/mcp?profile=compact&images=false");
+        SignIn.Pending p = s.authorize(c, withQuery, "http://127.0.0.1:25650/mcp", "127.0.0.1");
         s.approve(p.code(), "codex");
         String code = p.outcome("x").replaceAll(".*code=([0-9a-f]+).*", "$1");
         assertEquals("invalid_grant", assertThrows(SignIn.OAuthError.class, () -> s.exchange(Map.of("grant_type", "authorization_code",

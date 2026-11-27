@@ -320,7 +320,7 @@ public final class SignIn {
         if (challenge == null || !"S256".equals(q.get("code_challenge_method"))) {
             throw new OAuthError(400, "invalid_request", "PKCE with code_challenge_method S256 is required");
         }
-        if (q.containsKey("resource") && !resource.equals(stripSlash(q.get("resource")))) {
+        if (q.containsKey("resource") && !resource.equals(resource(q.get("resource")))) {
             throw new OAuthError(400, "invalid_target", "resource must be " + resource);
         }
         if (pending.values().stream().filter(x -> x.client.id().equals(client.id())).count() >= MAX_PENDING_PER_CLIENT) {
@@ -425,7 +425,7 @@ public final class SignIn {
         }
         String verifier = form.get("code_verifier");
         if (verifier == null || !verifier.matches("[A-Za-z0-9._~-]{43,128}") || !s256(verifier).equals(p.challenge)) throw new OAuthError(400, "invalid_grant", "PKCE verification failed");
-        if (form.containsKey("resource") && !p.resource.equals(stripSlash(form.get("resource")))) {
+        if (form.containsKey("resource") && !p.resource.equals(resource(form.get("resource")))) {
             throw new OAuthError(400, "invalid_target", "resource must be " + p.resource);
         }
         // Re-checked here: the owner may have made an agent with this name since the approval.
@@ -577,6 +577,15 @@ public final class SignIn {
         byte[] b = new byte[bytes];
         random.nextBytes(b);
         return HexFormat.of().formatHex(b);
+    }
+
+    /**
+     * A {@code resource} as the client sent it, without the query and trailing slash: a client may derive it from the
+     * URL it connects to, which can carry {@code ?profile=compact&images=false}.
+     */
+    static String resource(String value) {
+        int q = value.indexOf('?');
+        return stripSlash(q < 0 ? value : value.substring(0, q));
     }
 
     static String stripSlash(String s) {

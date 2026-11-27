@@ -133,7 +133,7 @@ running server. To explain more, ship a note at `data/<namespace>/almighty/notes
 
 ## Links
 
-[Guide](https://github.com/zentixua/almighty/blob/main/docs/guide/README.md) · [Issues](https://github.com/zentixua/almighty/issues) · [Source](https://github.com/zentixua/almighty)
+[Guide](https://github.com/zentixua/almighty/blob/main/docs/guide/README.md) · [Permissions](https://github.com/zentixua/almighty/blob/main/docs/guide/permissions.md) · [FAQ](https://github.com/zentixua/almighty/blob/main/docs/guide/faq.md) · [Issues](https://github.com/zentixua/almighty/issues) · [Source](https://github.com/zentixua/almighty)
 
 ## License and credits
 

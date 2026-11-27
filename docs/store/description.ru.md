@@ -130,7 +130,7 @@ Parties and Claims или FTB Chunks приваты соблюдаются. Бл
 
 ## Ссылки
 
-[Руководство](https://github.com/zentixua/almighty/blob/main/docs/guide/README.ru.md) · [Ошибки](https://github.com/zentixua/almighty/issues) · [Исходный код](https://github.com/zentixua/almighty)
+[Руководство](https://github.com/zentixua/almighty/blob/main/docs/guide/README.ru.md) · [Права](https://github.com/zentixua/almighty/blob/main/docs/guide/permissions.ru.md) · [Вопросы и ответы](https://github.com/zentixua/almighty/blob/main/docs/guide/faq.ru.md) · [Ошибки](https://github.com/zentixua/almighty/issues) · [Исходный код](https://github.com/zentixua/almighty)
 
 ## Лицензия и благодарности
 

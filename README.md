@@ -166,6 +166,12 @@ access to the bridge like shell access to the server machine.
   `[quotas]` limits how many blocks and items one player's requests may take per hour (the game master's own builds
   share one such budget). With Open Parties and Claims
   or FTB Chunks installed, the game master never builds in a claim the player may not build in.
+- The owner can also change the policy by asking the game master ("deny building at spawn", "make this a friends'
+  server"). A change you ask for is applied at once; one the game master proposes on its own applies at once only if
+  it restricts, and anything that grants more (a wider preset, a new owner, an arena, larger quotas) waits for the
+  owner to confirm it in game (`/almighty inbox`). Players cannot change the policy. Raising an agent to an owner
+  ceiling is done only by editing the file. Each change keeps the previous file in `config/almighty/policy.history/`;
+  `/almighty policy undo` puts the previous one back.
 - Every game master call that changes something, and every refused call, is written to
   `logs/almighty/audit-<date>.jsonl` (kept 30 days, `audit.days`). `/almighty log [agent|player] [count]` shows the
   latest in game or in the console. `/almighty pause [agent]` is the red button: that agent (or every agent) can

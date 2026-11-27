@@ -70,6 +70,7 @@ public final class AlmightyCommand {
                         .executes(c -> change(c, "add"))))
                 .then(Commands.literal("remove").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
                         .executes(c -> change(c, "remove")))));
+        root.then(trueOwner("policy").then(Commands.literal("undo").executes(c -> policyUndo(c.getSource()))));
         root.then(trueOwner("revoke").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
                 .executes(c -> change(c, "revoke"))));
         root.then(owner("reload").executes(c -> reload(c.getSource())));
@@ -370,6 +371,20 @@ public final class AlmightyCommand {
         gm.audit().owner(source.getTextName(), add ? "owner add" : "owner remove", profile.getName() + " " + profile.getId());
         source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line((add ? "Owner added: " : "Owner removed: ") + profile.getName()
                 + (add && !verified ? " (their UUID is not verified on this server, so they act as a guest until it is)" : "")), true);
+        return 1;
+    }
+
+    /** {@code /almighty policy undo}: put back the policy.toml saved before the last change (by the agent or by you). */
+    private static int policyUndo(CommandSourceStack source) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        String why = gm.files().undoByOwner();
+        gm.audit().owner(source.getTextName(), "policy undo", why == null ? "restored" : "refused: " + why);
+        if (why != null) {
+            source.sendFailure(Component.literal("Policy not changed: " + why));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("Policy restored: preset " + gm.policies().current().preset().id()), true);
         return 1;
     }
 

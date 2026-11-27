@@ -123,8 +123,9 @@ public final class GmJournalGameTests {
         GmServer gm = gm(h);
         java.util.function.LongSupplier clock = GmServer.clock;
         java.util.concurrent.atomic.AtomicLong t = new java.util.concurrent.atomic.AtomicLong();
-        // One work unit per tick: the build takes many ticks.
-        GmServer.clock = () -> t.addAndGet(1_000_000_000L);
+        // 1 ms per call (as other job tests): a few 32-position portions per tick, so the build takes several ticks.
+        // Not more per call: a job left in the queue by an earlier test would then take every tick's only slice.
+        GmServer.clock = () -> t.addAndGet(1_000_000L);
         BlockPos a = h.absolutePos(new BlockPos(0, 2, 0)), b = h.absolutePos(new BlockPos(7, 5, 7));
         // The build and its neighbour ring ready now (as other build tests): writes start within the ticks below even
         // when this is the first batch on a fresh world.

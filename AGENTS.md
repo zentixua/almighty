@@ -7,7 +7,7 @@ The mod presents itself to players as "An almighty AI for your Minecraft server"
 (README, settings, bridge errors, tool descriptions, logs) is in English.
 
 A server-side NeoForge mod for Minecraft 1.21.1 through which an AI agent (game master, GM) sees and acts in the
-world: an HTTP bridge on the server and the agent's MCP adapter `mcp/almighty.py`. No custom blocks, items, packets
+world: an HTTP bridge on the server that also serves MCP itself (`/mcp`); `mcp/almighty.py` is an optional CLI and stdio relay. No custom blocks, items, packets
 or registry entries (the only custom data is the entity tag `almighty:driven_by_rider`); clients need not install it.
 No dependencies on other mods: a mod's compatibility module (`compat/`) loads only when that mod is installed.
 Public repository: https://github.com/zentixua/almighty. The bridge runs on the Open Skies modpack server
@@ -62,6 +62,7 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 
 - `Almighty`: subscriptions; `GmServer`: state of one server run (`ServerStartedEvent` … `ServerStoppedEvent`):
   feed, jobs, chunks, bridge. The bridge runs only on a dedicated server (`isDedicatedServer`), not in singleplayer or GameTest.
+- `mcp/`: the MCP endpoint (`McpEndpoint`), both protocol eras (`McpProtocol`), tool definitions and routing (`Tools`).
 - `bridge/`: Java's own HTTP (`com.sun.net.httpserver`): `POST /rpc` `{"method", "params"}` → `{"ok": true, "result"}`
   or `{"ok": false, "error": {code, message}}`. Threads: a 4-thread accept pool checks the request and hands it to a
   bounded call pool (8 threads) or long-poll pool (16 threads, methods in `Api.LONG`); a full queue (64) → 503.
@@ -126,7 +127,7 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 
 All accept `dimension` (Overworld by default); long operations accept `wait` (default 30 s, up to 50): if the job
 has not finished, return its description and continue with `job`. A snapshot image is returned once (`png_base64`);
-the job then releases it. The 14 MCP tools in `mcp/almighty.py` follow Artem's principle, "few levers, each reaching
+the job then releases it. The 14 MCP tools (`assets/almighty/mcp/tools.json`, routed by `mcp/Tools`) follow Artem's principle, "few levers, each reaching
 all the way down": `status` (+ player), `entities`, `command` (commands or function lines), `say`, `script`, `rule`
 (add/remove/list/types), `events`, `view` (map/look/blocks/eye), `build` (+ undo), `area`, `job` (+ cancel), `bot`
 (spawn/remove/list/state/act), `notes`, `call` (any method). Before adding something, consider a script or rule;
@@ -190,7 +191,15 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
   a file or `/reload`. JSON macro parameters: integers as `IntTag`/`LongTag` (`NbtOps` would turn a number into `5.0`).
 - PNG uses our own writer (`Png`, Deflater): a server image may lack AWT and fonts. Encode on the bridge thread,
   not the server thread.
-- MCP SDK: 1.x (`mcp>=1.2,<2`); 2.x renames `FastMCP`, and the adapter targets 1.x.
+- MCP (`mcp/`): `POST /mcp` on the bridge port, hand-written on the bridge's `HttpServer` (the Java SDK's modern
+  server rejects legacy `initialize` and needs a servlet container). Both eras on one endpoint without sessions:
+  legacy `initialize` (Codex CLI 0.172: 2025-06-18; Claude Code channels need it) and modern 2026-07-28 (Claude
+  Code 2.1.332 probes `server/discover` first and stays modern). Modern headers must match the body (400, -32020);
+  unknown versions 400, -32022. `McpProtocolTest` replays requests recorded from both clients
+  (`src/test/resources/mcp/`); re-record with a new client release. Tool argument checks live in `Tools.route`
+  (the bridge would ignore unknown parameters); tool errors are `isError` results, not protocol errors.
+  Instructions: the core rule in the first 512 characters (Codex and ChatGPT read only those), notes one line each,
+  under 3,000 characters (Claude Code cuts at 4,096). `?profile=compact` (6 tools) and `?images=false` per URL.
 - Groovy 4 ships as a nested jar (`jarJar`; dedicated NeoForge servers load it into the game layer, exposing game
   and mod classes). Gradle runs use `additionalRuntimeClasspath` (nested jars are not read there). Each script has
   its own `GroovyClassLoader` over the mod's loader; call `Compiled.close` after the last run, or classes never unload.
@@ -204,7 +213,7 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
 - Script calls must finish within the script. Never give script closures or objects to the game (tickets,
   comparators, bus listeners, deferred tasks): later game calls run without a deadline (an infinite loop trips the
   tick watchdog), errors crash the tick, and the script loader never unloads. This cannot be reliably prohibited
-  (a closure coerces to any Java interface), so it is a rule in `mcp/almighty.py` hints; use rules (`rule.add`) for
+  (a closure coerces to any Java interface), so it is a rule in the `script` tool description and the `scripts_and_rules` note; use rules (`rule.add`) for
   reactions. Scripts must not load chunks (custom `TicketType`, `level.getChunk`); prepare distant locations with
   `area.prepare` (mods loading their own areas do not need this).
 - The first script run links Groovy calls: 5–80 ms (GameTest). Rules therefore omit the first run from timing and

@@ -2,28 +2,20 @@ package ua.zentix.almighty.policy;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.server.permission.PermissionAPI;
-import net.neoforged.neoforge.server.permission.events.PermissionGatherEvent;
-import net.neoforged.neoforge.server.permission.exceptions.UnregisteredPermissionException;
-import net.neoforged.neoforge.server.permission.nodes.PermissionNode;
-import net.neoforged.neoforge.server.permission.nodes.PermissionTypes;
-import ua.zentix.almighty.Almighty;
+import ua.zentix.almighty.platform.Platform;
 
-import java.util.EnumMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
- * The {@link Node}s as NeoForge permission nodes ({@code almighty.<id>}), so the server's permission handler decides
- * for players: LuckPerms (groups, temporary grants) when installed, otherwise each node's default resolver, which
+ * The {@link Node}s as the loader's permission nodes ({@code almighty.<id>}; NeoForge's permission API, on Fabric
+ * lucko's fabric-permissions-api), so the server's permission handler decides for players: LuckPerms (groups, temporary grants) when installed, otherwise each node's default resolver, which
  * answers from the role ladder: owners from the policy (verified UUIDs only), operators of level 3+ as admins, level 2
  * as builders, every other verified player at the preset's player role (member on friends, guest otherwise),
  * unverified players as guests.
  */
 public final class Nodes {
-    private static final Map<Node, PermissionNode<Boolean>> NODES = new EnumMap<>(Node.class);
     /** The running server and its policy; null between servers (the resolver then answers false). */
     private static volatile MinecraftServer server;
     private static volatile Supplier<Policy> policy = Policy::defaults;
@@ -55,17 +47,11 @@ public final class Nodes {
     /** Extra roles (the ladder of step 9: {@code /almighty role}); none yet. */
     private static volatile java.util.function.Function<UUID, Role> granted = id -> null;
 
-    static {
-        for (Node n : Node.values()) {
-            NODES.put(n, new PermissionNode<>(Almighty.ID, n.nodeName(), PermissionTypes.BOOLEAN,
-                    (player, id, context) -> role(id).atLeast(n.defaultRole())));
-        }
-    }
-
     private Nodes() {}
 
-    public static void register(IEventBus bus) {
-        bus.addListener((PermissionGatherEvent.Nodes e) -> e.addNodes(NODES.values().toArray(new PermissionNode<?>[0])));
+    /** A node's default answer for a player when no permission plugin decides: the role ladder. */
+    public static boolean byDefault(UUID id, Node n) {
+        return role(id).atLeast(n.defaultRole());
     }
 
     public static void start(MinecraftServer s, Supplier<Policy> p) {
@@ -121,18 +107,9 @@ public final class Nodes {
         Handler h = handler;
         Boolean forced = h == null ? null : h.get(id, node);
         if (forced != null) return forced;
-        PermissionNode<Boolean> pn = NODES.get(node);
-        try {
-            ServerPlayer player = server == null ? null : online.get(id);
-            Boolean v = player != null ? PermissionAPI.getPermission(player, pn) : PermissionAPI.getOfflinePermission(id, pn);
-            return Boolean.TRUE.equals(v);
-        } catch (UnregisteredPermissionException | IllegalStateException e) {
-            // No handler yet (unit tests) or nodes not gathered: the ladder answers.
-            return ladder.atLeast(node.defaultRole());
-        }
-    }
-
-    public static PermissionNode<Boolean> node(Node n) {
-        return NODES.get(n);
+        ServerPlayer player = server == null ? null : online.get(id);
+        // No platform (unit tests), no handler yet, or nodes not gathered: the ladder answers.
+        Boolean v = Platform.present() ? Platform.get().permission(id, player, node) : null;
+        return v != null ? v : ladder.atLeast(node.defaultRole());
     }
 }

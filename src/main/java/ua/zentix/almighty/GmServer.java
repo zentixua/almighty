@@ -5,7 +5,6 @@ import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
-import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 import ua.zentix.almighty.bot.Bots;
 import ua.zentix.almighty.bridge.Agents;
@@ -99,7 +98,7 @@ public final class GmServer {
         this.server = server;
         this.jobs = new Jobs(feed, () -> clock.getAsLong());
         this.areas = new Areas(GmConfig.MAX_CHUNKS.get());
-        this.rules = new Rules(server, NeoForge.EVENT_BUS, feed, state,
+        this.rules = new Rules(server, ua.zentix.almighty.platform.Platform.get().events(), feed, state,
                 server.getWorldPath(LevelResource.ROOT).resolve("almighty").resolve("rules.json"));
         this.bots = new Bots(this);
         this.journal = new Journal(server.getWorldPath(LevelResource.ROOT).resolve("almighty").resolve("changes"));
@@ -413,22 +412,12 @@ public final class GmServer {
             }
 
             /** The event's place: a block event's position, else its entity's; null for an event without one. */
-            private Object[] place(net.neoforged.bus.api.Event e) {
-                // An interaction's place is the block it targets, not where the player stands.
-                if (e instanceof net.neoforged.neoforge.event.entity.player.PlayerInteractEvent pi && pi.getLevel() instanceof net.minecraft.server.level.ServerLevel l) {
-                    return new Object[]{l, pi.getPos()};
-                }
-                if (e instanceof net.neoforged.neoforge.event.level.BlockEvent b && b.getLevel() instanceof net.minecraft.server.level.ServerLevel l) {
-                    return new Object[]{l, b.getPos()};
-                }
-                if (e instanceof net.neoforged.neoforge.event.entity.EntityEvent ee && ee.getEntity() != null
-                        && ee.getEntity().level() instanceof net.minecraft.server.level.ServerLevel l) {
-                    return new Object[]{l, ee.getEntity().blockPosition()};
-                }
-                return null;
+            private Object[] place(Object e) {
+                ua.zentix.almighty.platform.GameEvents.Place at = ua.zentix.almighty.platform.Platform.get().events().place(e);
+                return at == null ? null : new Object[]{at.level(), at.pos()};
             }
 
-            public String cancel(ua.zentix.almighty.rules.Declarative.Creator c, net.neoforged.bus.api.Event e) {
+            public String cancel(ua.zentix.almighty.rules.Declarative.Creator c, Object e) {
                 if (owner(c)) return null;
                 Object[] at = place(e);
                 if (at == null) return "this event has no place in the world; server-wide cancels need the owner";
@@ -457,7 +446,7 @@ public final class GmServer {
                 ua.zentix.almighty.act.Chat.say(server, new ua.zentix.almighty.bridge.Args(p));
             }
 
-            public void command(ua.zentix.almighty.rules.Declarative.Creator c, net.neoforged.bus.api.Event e, String command) throws RpcException {
+            public void command(ua.zentix.almighty.rules.Declarative.Creator c, Object e, String command) throws RpcException {
                 Object[] at = place(e);
                 net.minecraft.server.level.ServerLevel level = at == null ? server.overworld() : (net.minecraft.server.level.ServerLevel) at[0];
                 net.minecraft.world.phys.Vec3 pos = net.minecraft.world.phys.Vec3.atBottomCenterOf(at == null ? level.getSharedSpawnPos() : (net.minecraft.core.BlockPos) at[1]);

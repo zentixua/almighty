@@ -1,6 +1,5 @@
 package ua.zentix.almighty.rules;
 
-import net.neoforged.bus.api.Event;
 import ua.zentix.almighty.bridge.RpcException;
 
 /**
@@ -13,13 +12,13 @@ public interface Guard {
     String lacks(Declarative.Creator c, ua.zentix.almighty.policy.Node node);
 
     /** Null if the creator may cancel this event: where they may build, or anywhere for the owner. */
-    String cancel(Declarative.Creator c, Event event);
+    String cancel(Declarative.Creator c, Object event);
 
     /** Say as the rule (text already filled in). */
     void say(Declarative.Creator c, String text, String to, String style) throws RpcException;
 
     /** Run a command as the creator (deny list, zones, the creator's own permission level). */
-    void command(Declarative.Creator c, Event event, String command) throws RpcException;
+    void command(Declarative.Creator c, Object event, String command) throws RpcException;
 
     /** Whether the creator is the owner (no TTL, no re-checks). */
     boolean owner(Declarative.Creator c);
@@ -29,13 +28,13 @@ public interface Guard {
             return null;
         }
 
-        public String cancel(Declarative.Creator c, Event event) {
+        public String cancel(Declarative.Creator c, Object event) {
             return null;
         }
 
         public void say(Declarative.Creator c, String text, String to, String style) {}
 
-        public void command(Declarative.Creator c, Event event, String command) {}
+        public void command(Declarative.Creator c, Object event, String command) {}
 
         public boolean owner(Declarative.Creator c) {
             return true;

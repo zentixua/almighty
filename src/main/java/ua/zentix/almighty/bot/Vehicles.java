@@ -14,7 +14,6 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PlayerRideableJumping;
 import net.minecraft.world.entity.vehicle.Boat;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.fml.util.ObfuscationReflectionHelper;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.compat.Compat;
 
@@ -39,10 +38,10 @@ final class Vehicles {
      * add a mod vehicle to the tag only after checking that it behaves like vanilla.
      */
     static final TagKey<EntityType<?>> DRIVEN_BY_RIDER = TagKey.create(Registries.ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath(Almighty.ID, "driven_by_rider"));
-    private static final Method BOAT_STATUS = ObfuscationReflectionHelper.findMethod(Boat.class, "getStatus");
-    private static final Field STATUS = ObfuscationReflectionHelper.findField(Boat.class, "status");
-    private static final Field DELTA_ROTATION = ObfuscationReflectionHelper.findField(Boat.class, "deltaRotation");
-    private static final Field LAND_FRICTION = ObfuscationReflectionHelper.findField(Boat.class, "landFriction");
+    private static final Method BOAT_STATUS = ua.zentix.almighty.platform.Reflect.method(Boat.class, "getStatus");
+    private static final Field STATUS = ua.zentix.almighty.platform.Reflect.field(Boat.class, "status");
+    private static final Field DELTA_ROTATION = ua.zentix.almighty.platform.Reflect.field(Boat.class, "deltaRotation");
+    private static final Field LAND_FRICTION = ua.zentix.almighty.platform.Reflect.field(Boat.class, "landFriction");
 
     private final Bot bot;
     /** Drivers for installed vehicle mods (compatibility), separate for each bot. */

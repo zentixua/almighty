@@ -313,7 +313,7 @@ final class Controls {
         ItemStack before = stack.copy();
         InteractionResult r;
         if (at != null) {
-            r = net.neoforged.neoforge.common.CommonHooks.onInteractEntityAt(p, entity, at, hand);
+            r = ua.zentix.almighty.platform.Platform.get().interactEntityAt(p, entity, at, hand);
             if (r == null) r = entity.interactAt(p, at, hand);
         } else {
             r = p.interactOn(entity, hand);

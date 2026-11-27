@@ -1,6 +1,5 @@
 package ua.zentix.almighty.knowledge;
 
-import com.electronwill.nightconfig.core.UnmodifiableConfig;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.mojang.brigadier.CommandDispatcher;
@@ -19,13 +18,9 @@ import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.properties.Property;
-import net.neoforged.fml.ModList;
-import net.neoforged.fml.config.IConfigSpec;
-import net.neoforged.fml.config.ModConfig;
-import net.neoforged.fml.config.ModConfigs;
-import net.neoforged.neoforgespi.language.IModInfo;
 import ua.zentix.almighty.bridge.RpcException;
-import ua.zentix.almighty.rules.EventTypes;
+import ua.zentix.almighty.platform.GameEvents;
+import ua.zentix.almighty.platform.Platform;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -174,8 +169,8 @@ public final class Catalog {
             case "biomes" -> registry(kind, access.registryOrThrow(Registries.BIOME), b -> new JsonObject());
             case "events" -> {
                 List<Entry> out = new ArrayList<>();
-                EventTypes.all().forEach((className, mod) -> {
-                    String name = EventTypes.shortName(className);
+                Platform.get().events().all().forEach((className, mod) -> {
+                    String name = GameEvents.shortName(className);
                     out.add(new Entry(kind, name, className + " " + mod, () -> {
                         JsonObject d = new JsonObject();
                         d.addProperty("class", className);
@@ -191,14 +186,14 @@ public final class Catalog {
 
     private static List<Entry> mods() {
         List<Entry> out = new ArrayList<>();
-        for (IModInfo mod : ModList.get().getMods()) {
-            String description = Notes.shorten(mod.getDescription(), MAX_TEXT);
-            out.add(new Entry("mods", mod.getModId(), mod.getDisplayName() + " " + description, () -> {
+        for (Platform.ModInfo mod : Platform.get().mods()) {
+            String description = Notes.shorten(mod.description(), MAX_TEXT);
+            out.add(new Entry("mods", mod.id(), mod.name() + " " + description, () -> {
                 JsonObject d = new JsonObject();
-                d.addProperty("name", mod.getDisplayName());
-                d.addProperty("version", mod.getVersion().toString());
+                d.addProperty("name", mod.name());
+                d.addProperty("version", mod.version());
                 if (!description.isEmpty()) d.addProperty("description", description);
-                mod.getModURL().ifPresent(url -> d.addProperty("url", url.toString()));
+                if (mod.url() != null) d.addProperty("url", mod.url());
                 return d;
             }));
         }
@@ -307,37 +302,24 @@ public final class Catalog {
         return List.copyOf(out);
     }
 
-    /** Mods' NeoForge config values (common and server), without keys that look like secrets. */
+    /** Mods' loaded common and server config values, without keys that look like secrets. */
     private static List<Entry> config() {
-        List<Entry> out = new ArrayList<>();
-        for (IModInfo mod : ModList.get().getMods()) {
-            for (ModConfig config : ModConfigs.getModConfigs(mod.getModId())) {
-                if (config.getType() == ModConfig.Type.CLIENT) continue;
-                IConfigSpec.ILoadedConfig loaded = config.getLoadedConfig();
-                if (loaded == null) continue;
-                flatten(mod.getModId(), config.getFileName(), "", loaded.config(), out);
-            }
-        }
-        return List.copyOf(out);
+        return configEntries(Platform.get().modConfigValues());
     }
 
-    static void flatten(String mod, String file, String prefix, UnmodifiableConfig config, List<Entry> out) {
-        for (UnmodifiableConfig.Entry e : config.entrySet()) {
-            String key = prefix.isEmpty() ? e.getKey() : prefix + "." + e.getKey();
-            Object value = e.getValue();
-            if (value instanceof UnmodifiableConfig sub) {
-                flatten(mod, file, key, sub, out);
-                continue;
-            }
+    static List<Entry> configEntries(List<Platform.ConfigValue> values) {
+        List<Entry> out = new ArrayList<>();
+        for (Platform.ConfigValue v : values) {
+            String key = v.key(), file = v.file();
             boolean secret = SECRET.matcher(key).matches();
-            String shown = secret ? "(hidden: looks like a secret)" : Notes.shorten(String.valueOf(value), MAX_TEXT);
-            String id = mod + ":" + key;
-            out.add(new Entry("config", id, file, () -> {
+            String shown = secret ? "(hidden: looks like a secret)" : Notes.shorten(String.valueOf(v.value()), MAX_TEXT);
+            out.add(new Entry("config", v.mod() + ":" + key, file, () -> {
                 JsonObject d = new JsonObject();
                 d.addProperty("file", file);
                 d.addProperty("value", shown);
                 return d;
             }));
         }
+        return List.copyOf(out);
     }
 }

@@ -39,8 +39,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import net.neoforged.neoforge.common.CommonHooks;
-import net.neoforged.neoforge.network.connection.ConnectionType;
 import ua.zentix.almighty.bridge.Args;
 import ua.zentix.almighty.bridge.RpcException;
 import ua.zentix.almighty.world.Observe;
@@ -322,7 +320,7 @@ final class Steps {
         public boolean tick(Bot bot, ServerPlayer p, JsonObject out) {
             out.addProperty("do", "payload");
             out.addProperty("id", id.toString());
-            RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(data.length + 64), p.server.registryAccess(), ConnectionType.NEOFORGE);
+            RegistryFriendlyByteBuf buf = ua.zentix.almighty.platform.Platform.get().registryBuffer(Unpooled.buffer(data.length + 64), p.server.registryAccess());
             ServerboundCustomPayloadPacket packet;
             int left;
             try {
@@ -444,7 +442,7 @@ final class Steps {
                 }
             } else if (unsigned) {
                 out.addProperty("unsigned", true);
-                Component decorated = CommonHooks.getServerChatSubmittedDecorator().decorate(p, Component.literal(text));
+                Component decorated = ua.zentix.almighty.platform.Platform.get().decorateChat(p, Component.literal(text));
                 if (decorated != null) server.getPlayerList().broadcastChatMessage(PlayerChatMessage.system(text).withUnsignedContent(decorated), p, ChatType.bind(ChatType.CHAT, p));
             } else {
                 bot.send(new ServerboundChatPacket(text, bot.chatTime(), 0L, null, new LastSeenMessages.Update(bot.takeChatAcks(), new BitSet())));

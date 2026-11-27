@@ -21,11 +21,6 @@ import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.player.ChatVisiblity;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.entity.SkullBlockEntity;
-import net.neoforged.bus.api.EventPriority;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.util.ObfuscationReflectionHelper;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.network.connection.ConnectionType;
 import org.slf4j.Logger;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.GmConfig;
@@ -223,7 +218,7 @@ public final class Bots {
         if (textures != null) profile.getProperties().put("textures", textures);
         // Like an ordinary client: all skin layers, right hand, listed among server players.
         ClientInformation info = new ClientInformation("en_us", 8, ChatVisiblity.FULL, true, 0x7F, HumanoidArm.RIGHT, false, true);
-        CommonListenerCookie cookie = new CommonListenerCookie(profile, 0, info, false, ConnectionType.NEOFORGE);
+        CommonListenerCookie cookie = ua.zentix.almighty.platform.Platform.get().cookie(profile, info);
         ServerLevel level = spec.dimension() != null ? Dims.level(server, spec.dimension()) : server.overworld();
         // Like player login (getPlayerForLogin): use the Overworld; the constructor searches near spawn, while in another
         // dimension with a sky it would search by loading chunks synchronously in the tick.
@@ -429,13 +424,7 @@ public final class Bots {
         return gm.server().getTickCount();
     }
 
-    // --- Markers and name protection: game bus events ---
-
-    public static void register(IEventBus bus) {
-        bus.addListener(EventPriority.LOW, Bots::onTabName);
-        bus.addListener(EventPriority.LOW, Bots::onName);
-        bus.addListener(EventPriority.HIGHEST, Bots::onLogin);
-    }
+    // --- Markers and name protection: the loader calls these from its name and login events ---
 
     private static Bot botOf(net.minecraft.world.entity.player.Player player) {
         if (!(player instanceof ServerPlayer sp)) return null;
@@ -447,24 +436,22 @@ public final class Bots {
         return Component.literal(GmConfig.BOTS_MARKER.get() + " ").withStyle(ChatFormatting.GRAY).append(name.copy().withStyle(ChatFormatting.WHITE));
     }
 
-    /** Tab line: marker before the name. */
-    private static void onTabName(PlayerEvent.TabListNameFormat e) {
-        Bot bot = botOf(e.getEntity());
-        if (bot == null || !bot.marked || GmConfig.BOTS_MARKER.get().isBlank()) return;
-        Component current = e.getDisplayName();
-        e.setDisplayName(marked(current != null ? current : e.getEntity().getName()));
+    /** Tab line: marker before the name; null leaves the line as it is. */
+    public static Component tabName(net.minecraft.world.entity.player.Player player, Component current) {
+        Bot bot = botOf(player);
+        if (bot == null || !bot.marked || GmConfig.BOTS_MARKER.get().isBlank()) return null;
+        return marked(current != null ? current : player.getName());
     }
 
-    /** Name in chat and server messages (join, death), with a marker. */
-    private static void onName(PlayerEvent.NameFormat e) {
-        Bot bot = botOf(e.getEntity());
-        if (bot == null || !bot.marked || GmConfig.BOTS_MARKER.get().isBlank()) return;
-        e.setDisplayname(marked(e.getDisplayname()));
+    /** Name in chat and server messages (join, death), with a marker; null leaves it as it is. */
+    public static Component displayName(net.minecraft.world.entity.player.Player player, Component current) {
+        Bot bot = botOf(player);
+        if (bot == null || !bot.marked || GmConfig.BOTS_MARKER.get().isBlank()) return null;
+        return marked(current);
     }
 
     /** A real player logged in with a bot's name: the bot leaves; no two players on the server share a name. */
-    private static void onLogin(PlayerEvent.PlayerLoggedInEvent e) {
-        if (!(e.getEntity() instanceof ServerPlayer player)) return;
+    public static void onLogin(ServerPlayer player) {
         GmServer gm = GmServer.of(player.server);
         if (gm == null || gm.bots().of(player) != null) return;
         Bot bot = gm.bots().find(player.getGameProfile().getName());
@@ -503,10 +490,10 @@ public final class Bots {
             if (broken) return false;
             if (byNameField != null) return true;
             try {
-                byNameField = ObfuscationReflectionHelper.findField(GameProfileCache.class, "profilesByName");
-                byUuidField = ObfuscationReflectionHelper.findField(GameProfileCache.class, "profilesByUUID");
+                byNameField = ua.zentix.almighty.platform.Reflect.field(GameProfileCache.class, "profilesByName");
+                byUuidField = ua.zentix.almighty.platform.Reflect.field(GameProfileCache.class, "profilesByUUID");
                 Class<?> info = Class.forName(GameProfileCache.class.getName() + "$GameProfileInfo");
-                profileField = ObfuscationReflectionHelper.findField(info, "profile");
+                profileField = ua.zentix.almighty.platform.Reflect.field(info, "profile");
                 return true;
             } catch (ReflectiveOperationException | RuntimeException e) {
                 broken = true;

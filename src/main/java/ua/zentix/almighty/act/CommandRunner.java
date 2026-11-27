@@ -32,7 +32,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.fml.util.ObfuscationReflectionHelper;
 import org.slf4j.Logger;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.GmConfig;
@@ -220,7 +219,7 @@ public final class CommandRunner {
     @SuppressWarnings("unchecked")
     private static ThreadLocal<Object> currentExecution() {
         try {
-            return (ThreadLocal<Object>) ObfuscationReflectionHelper.findField(Commands.class, "CURRENT_EXECUTION_CONTEXT").get(null);
+            return (ThreadLocal<Object>) ua.zentix.almighty.platform.Reflect.field(Commands.class, "CURRENT_EXECUTION_CONTEXT").get(null);
         } catch (RuntimeException | IllegalAccessException e) {
             LOG.error("GM: Commands.CURRENT_EXECUTION_CONTEXT not found; commands of a rule that runs inside another command will join that command's queue", e);
             return null;

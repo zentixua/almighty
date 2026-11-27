@@ -7,9 +7,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.MinecraftServer;
-import net.neoforged.bus.api.Event;
-import net.neoforged.bus.api.EventPriority;
-import net.neoforged.bus.api.IEventBus;
+import ua.zentix.almighty.platform.GameEvents;
+import ua.zentix.almighty.platform.GameEvents.Priority;
 import org.slf4j.Logger;
 import ua.zentix.almighty.GmConfig;
 import ua.zentix.almighty.bot.Bot;
@@ -33,7 +32,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Consumer;
 
 /**
  * GM rules: reactions to any game-bus event directly on the server, in the same tick. Without a script, event
@@ -59,7 +57,7 @@ public final class Rules {
     public static final int MAX_SCRIPT = 64 * 1024;
 
     private final MinecraftServer server;
-    private final IEventBus bus;
+    private final GameEvents bus;
     private final Feed feed;
     private final Map<String, Object> state;
     private final Path store;
@@ -85,7 +83,7 @@ public final class Rules {
         this.paused = paused;
     }
 
-    public Rules(MinecraftServer server, IEventBus bus, Feed feed, Map<String, Object> state, Path store) {
+    public Rules(MinecraftServer server, GameEvents bus, Feed feed, Map<String, Object> state, Path store) {
         this.server = server;
         this.bus = bus;
         this.feed = feed;
@@ -94,8 +92,8 @@ public final class Rules {
     }
 
     /** Parsed rule: original parameters (for persistence), event and script. */
-    public record Spec(JsonObject params, EventTypes.Found event, String code, Scripts.Compiled script, String name, int every,
-                       long limit, EventPriority priority, boolean canceled, double budgetMs, boolean persist,
+    public record Spec(JsonObject params, GameEvents.Found event, String code, Scripts.Compiled script, String name, int every,
+                       long limit, Priority priority, boolean canceled, double budgetMs, boolean persist,
                        Declarative.Decl decl, Declarative.Creator creator, long expires) {}
 
     /** TTL of a rule made below owner (plan 4.12): 7 days at most. */
@@ -136,14 +134,14 @@ public final class Rules {
         long expires = ttlHours > 0 ? now + (long) (ttlHours * 3_600_000) : 0;
         if (creator.agent() != null) params.add("creator", creator.json());
         if (expires > 0) params.addProperty("expires", expires);
-        EventTypes.Found event = EventTypes.resolve(a.string("event"));
+        GameEvents.Found event = ua.zentix.almighty.platform.Platform.get().events().resolve(a.string("event"));
         String name = a.string("name", null);
         if (name != null && (name.isBlank() || name.length() > 64)) throw RpcException.badRequest("name: 1 to 64 characters");
         int every = a.integer("every", 0, 0, 72_000);
         long limit = a.longValue("limit", 0, 0, 1_000_000_000L);
-        EventPriority priority;
+        Priority priority;
         try {
-            priority = EventPriority.valueOf(a.string("priority", "lowest").toUpperCase(Locale.ROOT));
+            priority = Priority.valueOf(a.string("priority", "lowest").toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw RpcException.badRequest("priority: highest, high, normal, low or lowest");
         }
@@ -340,7 +338,7 @@ public final class Rules {
         final long id;
         final Spec spec;
         final ScriptApi api;
-        Consumer<? extends Event> listener;
+        Object listener;
         String off;
         long fired, emitted, errors;
         int errorsInRow;
@@ -363,22 +361,16 @@ public final class Rules {
         }
 
         void listen() {
-            listener = subscribe(spec.event().type());
-        }
-
-        private <T extends Event> Consumer<T> subscribe(Class<T> type) {
-            Consumer<T> c = this::fire;
-            bus.addListener(spec.priority(), spec.canceled(), type, c);
-            return c;
+            listener = bus.subscribe(spec.event().type(), spec.priority(), spec.canceled(), this::fire);
         }
 
         void unlisten() {
-            if (listener != null) bus.unregister(listener);
+            if (listener != null) bus.unsubscribe(listener);
             listener = null;
             if (spec.script() != null) spec.script().close();
         }
 
-        void fire(Event event) {
+        void fire(Object event) {
             if (off != null || running) return;
             // Paused: scripts stop, and so do rules made below the owner (they act for an agent or a player).
             if (paused.getAsBoolean() && (spec.script() != null || !ownerMade())) return;
@@ -497,16 +489,16 @@ public final class Rules {
         }
 
         /** Declarative actions, in order; a refused or failed action is a rule error (10 in a row turn it off). */
-        private void act(Event event, JsonObject fields, long tick) {
+        private void act(Object event, JsonObject fields, long tick) {
             Declarative.Creator c = spec.creator();
             try {
                 for (Declarative.Action a : spec.decl().then()) {
                     switch (a.kind()) {
                         case "cancel" -> {
-                            if (!(event instanceof net.neoforged.bus.api.ICancellableEvent ce)) throw new IllegalStateException(spec.event().name() + " cannot be canceled");
+                            if (!bus.cancellable(event)) throw new IllegalStateException(spec.event().name() + " cannot be canceled");
                             String why = guard.cancel(c, event);
                             if (why != null) throw new IllegalStateException("not canceled: " + why);
-                            ce.setCanceled(true);
+                            bus.cancel(event);
                         }
                         case "emit" -> emit(fields);
                         case "say" -> guard.say(c, Declarative.fill(a.text(), fields, false), a.to() == null ? null : Declarative.fill(a.to(), fields, true), a.style());
@@ -563,7 +555,7 @@ public final class Rules {
         void turnOff(String reason) {
             if (off != null) return;
             off = reason;
-            if (listener != null) bus.unregister(listener);
+            if (listener != null) bus.unsubscribe(listener);
             listener = null;
             LOG.warn("GM rule #{} turned off: {}", id, reason);
             JsonObject d = who();

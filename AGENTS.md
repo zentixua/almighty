@@ -61,7 +61,16 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 
 ## Architecture (`ua.zentix.almighty`)
 
-- `Almighty`: subscriptions; `GmServer`: state of one server run (`ServerStartedEvent` … `ServerStoppedEvent`):
+- Common core and loaders: everything is vanilla Minecraft and plain Java except `neoforge/` (later `fabric/`), which
+  holds the loader: `AlmightyNeoForge` (`@Mod` entry: sets the `Platform`, routes NeoForge events to the core's plain
+  methods `FeedListeners.on*`, `Bots.tabName|displayName|onLogin`, the commands' `register(dispatcher)` and the
+  lifecycle hooks in `Almighty`), `NeoForgeConfig` (binds `GmConfig`'s declared `Setting`s to a `ModConfigSpec`),
+  `NeoForgePlatform` (paths, mod list, mod config values, permission nodes, the bot connection hooks) and
+  `NeoForgeEvents` + `EventTypes` (the rules' bus and FML scan data). `platform/` is the seam: `Platform` (one per
+  loader, `Platform.get()`; absent in unit tests, so callers there use `Platform.present()`), `GameEvents` (events
+  are plain objects to the core: subscribe, cancel, place, base class), `Setting`, `Reflect` (Mojang-named members;
+  no loader remapping helper). Only `neoforge/` and `compat/` import a loader or another mod.
+- `Almighty`: the mod id, version and lifecycle hooks; `GmServer`: state of one server run (`ServerStartedEvent` … `ServerStoppedEvent`):
   feed, jobs, chunks, bridge. The bridge runs only on a dedicated server (`isDedicatedServer`), not in singleplayer or GameTest.
 - `mcp/`: the MCP endpoint (`McpEndpoint`), both protocol eras (`McpProtocol`), tool definitions and routing (`Tools`).
 - `mcp/signin/`: keyless sign-in, the mod as a minimal OAuth 2.1 server on the bridge port (`/.well-known/*`,
@@ -215,7 +224,7 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 - `script/`: Groovy scripts (`Scripts`: compilation with a deadline, execution), scripts' `gm` variable (`ScriptApi`),
   values ↔ JSON (`Json`: position `[x, y, z]`, block string as in `/setblock`, NBT as SNBT, event via its `getX()`).
 - `rules/`: rules (`Rules`), subscribing to any game-bus event, budgets, persistence with the world
-  (`<world>/almighty/rules.json`); `EventTypes`: all NeoForge and mod events from FML scan data.
+  (`<world>/almighty/rules.json`); `neoforge/EventTypes`: all NeoForge and mod events from FML scan data.
 - `bot/`: player bots (`Bots`: login, logout, markers, name protection; `Bot`: connection, packet reception, inbox,
   hearing; `BotPlayer`: bot player class; `Controls`: client keyboard and mouse; `Vehicles`: the bot's vehicle;
   `VehicleDriver`: mod vehicle driver; `Steps`/`Program`: `bot.act` steps; `Eye`: vision without an image).
@@ -412,7 +421,7 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
   average over 20 ticks: timing is wall-clock; a GC pause inside a run would otherwise disable rules.
 - FML scan data (`EventTypes`): `module-info` (present in many mod jars) has no parent, so `ClassData.parent()` is
   null. Without a null check, every `rule.add` crashes (absent in the cloud with only the GM mod, present on a modpack server).
-- Rules attach to the static `NeoForge.EVENT_BUS`: remove them in `GmServer.stop` (the bus outlives singleplayer
+- Rules attach to the loader's static bus (`NeoForge.EVENT_BUS` through `GameEvents`): remove them in `GmServer.stop` (the bus outlives singleplayer
   worlds). Reentry into the same rule (its script triggers the same event) does not run it again.
 - The bridge grants operator level 4 and, with scripts (`scripts.enabled`, default true), arbitrary code in the
   server JVM as its OS user (files, processes). Listen only on loopback or a host-only network (`bridge.host`).

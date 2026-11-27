@@ -1,6 +1,7 @@
 package ua.zentix.almighty.knowledge;
 
 import com.electronwill.nightconfig.core.Config;
+import ua.zentix.almighty.platform.Platform;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -18,8 +19,9 @@ class CatalogTest {
         config.set(List.of("discord", "bot_token"), "s3cr3t");
         config.set(List.of("discord", "channel"), "general");
         config.set(List.of("port"), 25565);
-        List<Catalog.Entry> out = new ArrayList<>();
-        Catalog.flatten("mymod", "mymod-common.toml", "", config, out);
+        List<Platform.ConfigValue> values = new ArrayList<>();
+        ua.zentix.almighty.neoforge.NeoForgePlatform.flatten("mymod", "mymod-common.toml", "", config, values);
+        List<Catalog.Entry> out = Catalog.configEntries(values);
         assertEquals(3, out.size());
         for (Catalog.Entry e : out) {
             String value = e.show().get("value").getAsString();

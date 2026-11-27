@@ -22,7 +22,7 @@ on:
         options: [draft, submit, release]
         default: draft
       version:
-        description: GitHub release without "v" (0.4.0); empty means latest
+        description: GitHub release without "v" (1.0.0); empty means latest
         type: string
         required: false
 

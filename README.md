@@ -4,11 +4,11 @@
 
 <p align="center"><b>An AI game master for your Minecraft server.</b><br>
 Connect Claude Code, Codex (also in the ChatGPT desktop app), Cursor, VS Code or a local model, and it plays game
-master on your NeoForge server: it sees the world, talks to players, builds with undo, runs events and drives its own
+master on your NeoForge or Fabric server: it sees the world, talks to players, builds with undo, runs events and drives its own
 bot players.</p>
 
 <p align="center">
-Minecraft 1.21.1 · NeoForge 21.1.264+ · server-side only, players install nothing · GPL-3.0<br>
+Minecraft 1.21.1, 26.1.2, 26.3 · NeoForge, Fabric (26.x) · server-side only, players install nothing · GPL-3.0<br>
 English · <a href="README.ru.md">Русский</a>
 </p>
 
@@ -52,7 +52,8 @@ More: [Getting started](docs/guide/getting-started.md) · [Connect your app](doc
   contents of block entities such as chests.
 - Load the chunks of a place where nobody is, without ticking them, to view or build there.
 - Run Groovy scripts on the server thread, with a time limit.
-- Add rules: a reaction to any NeoForge event of the game or of any mod. A rule runs on the server in the same tick,
+- Add rules: a reaction to any event of the game or of any mod (on NeoForge any event; on Fabric any Fabric API or
+  mod callback, which cannot reach vanilla code paths without one). A rule runs on the server in the same tick,
   can cancel the event and can be saved with the world. A rule turns itself off when it goes over its time budget,
   fails 10 times in a row or floods the feed.
 - Below the owner, rules are declarative: conditions on the event's fields and actions (cancel, write to the feed,
@@ -105,8 +106,10 @@ note at the same path; an empty file removes it. Without Almighty the file is ig
 
 ## Install
 
-1. Use a Minecraft 1.21.1 server with NeoForge 21.1.264 or newer. Put `almighty-<version>.jar` from the
-   [releases](https://github.com/zentixua/almighty/releases) into the server's `mods/` folder and start it.
+1. Pick the jar for your server from the [releases](https://github.com/zentixua/almighty/releases):
+   `almighty-<version>+<game version>-<loader>.jar`. Minecraft 1.21.1 with NeoForge 21.1.264 or newer (Java 21);
+   26.1.2 with NeoForge 26.1.2.130+ or Fabric Loader 0.20.1+ and Fabric API; 26.3 with NeoForge 26.3.0.118+ or Fabric
+   Loader 0.20.1+ and Fabric API (Java 25). Put it into the server's `mods/` folder and start the server.
 2. Tell your agent app: `connect to my Minecraft server at http://127.0.0.1:25650/mcp`, or add it yourself as its
    page says ([Connect your agent](docs/guide/connect/README.md)).
 3. Approve the sign-in with the code from the page: `/almighty approve <code>`.
@@ -197,10 +200,15 @@ access to the bridge like shell access to the server machine.
 Almighty depends on no other mod. Its support for these mods loads only when they are installed:
 
 - [Immersive Aircraft](https://modrinth.com/mod/immersive-aircraft): bots fly its aircraft with the same controls as a
-  player. Checked with versions 1.5.2, 1.6.0 and 1.7.0 for Minecraft 1.21.1.
+  player. Checked with versions 1.5.2, 1.6.0 and 1.7.0 for Minecraft 1.21.1 and 1.7.0 for 26.1.2 (NeoForge and
+  Fabric); it has no 26.3 build yet.
 - Sable, the physics mod behind Create Aeronautics: the `ships` method and `gm.ship(name)` in scripts give a ship's
   position, rotation, velocity and bounds. A build or a prepared area on a ship plot is refused, because Sable
-  manages those chunks.
+  manages those chunks. Sable has a 1.21.1 build only.
+- [Open Parties and Claims](https://modrinth.com/mod/open-parties-and-claims) (every version) and FTB Chunks (1.21.1,
+  26.1.2): the game master never builds in a claim the requester may not build in.
+- LuckPerms: the permission nodes `almighty.*` (NeoForge's permission API; on Fabric through fabric-permissions-api,
+  which LuckPerms provides).
 
 ## Building
 
@@ -213,4 +221,5 @@ the internals, every bridge method and the known pitfalls is [AGENTS.md](AGENTS.
 ## License
 
 Almighty is written by ZentixUA and licensed under the GNU General Public License, version 3 only
-([LICENSE](LICENSE)). The jar bundles Groovy 4, which is licensed under the Apache License 2.0.
+([LICENSE](LICENSE)). The jar bundles Groovy 4, which is licensed under the Apache License 2.0; the Fabric jars also bundle NightConfig
+(LGPL-3.0) for the TOML config files.

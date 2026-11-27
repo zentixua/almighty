@@ -75,7 +75,7 @@ public final class FeedListeners {
     /** A command about to run (the loader's command event, before execution). */
     public static void onCommand(ParseResults<CommandSourceStack> parse) {
         // Only commands typed by the player: a GM command as the player (commandAs) is not their command.
-        if (!(parse.getContext().getSource().source instanceof ServerPlayer p)) return;
+        if (!(Mc.typedBy(parse.getContext().getSource()) instanceof ServerPlayer p)) return;
         String command = parse.getReader().getString();
         String root = command.strip().split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
         if (root.startsWith("/")) root = root.substring(1);

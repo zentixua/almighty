@@ -269,7 +269,7 @@ public final class AlmightyCommand {
             source.sendFailure(Component.literal("No change " + id));
             return 0;
         }
-        boolean mine = source.source instanceof net.minecraft.server.level.ServerPlayer p && meta.has("requester")
+        boolean mine = Mc.typedBy(source) instanceof net.minecraft.server.level.ServerPlayer p && meta.has("requester")
                 && p.getUUID().toString().equals(meta.get("requester").getAsString()) && !meta.get("method").getAsString().equals("undo");
         if (!mine && !Mc.has(source, 4)) {
             source.sendFailure(Component.literal("Change " + id + " was not made for you"));
@@ -299,7 +299,7 @@ public final class AlmightyCommand {
         if (gm == null) return 0;
         ua.zentix.almighty.policy.Role granter;
         String by;
-        if (source.source instanceof net.minecraft.server.level.ServerPlayer p) {
+        if (Mc.typedBy(source) instanceof net.minecraft.server.level.ServerPlayer p) {
             granter = ua.zentix.almighty.policy.Identity.verified(p.getUUID()) ? ua.zentix.almighty.policy.Nodes.role(p.getUUID())
                     : ua.zentix.almighty.policy.Role.GUEST;
             by = Mc.name(p.getGameProfile());

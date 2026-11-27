@@ -279,7 +279,15 @@ public final class CommandRunner {
         if (json.isJsonArray()) {
             ListTag out = new ListTag();
             for (JsonElement e : json.getAsJsonArray()) {
+                //? if >=26.1 {
+                /*// 26.x lists may mix types; macro arguments keep 1.21.1's rule (one element type per list).
+                Tag t = tag(e);
+                if (!out.isEmpty() && out.get(0).getId() != t.getId() || !out.addTag(out.size(), t)) {
+                    throw RpcException.badRequest("args: all elements of an NBT list must have the same type");
+                }
+                *///?} else {
                 if (!out.addTag(out.size(), tag(e))) throw RpcException.badRequest("args: all elements of an NBT list must have the same type");
+                //?}
             }
             return out;
         }

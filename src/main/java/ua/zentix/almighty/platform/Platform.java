@@ -64,6 +64,12 @@ public interface Platform {
     /** A login cookie as for a client of this loader. */
     CommonListenerCookie cookie(GameProfile profile, ClientInformation info);
 
+    /**
+     * The loader's "player data loaded" event for a player about to log in (NeoForge: {@code PlayerEvent.LoadFromFile}).
+     * 1.21.1's login fires it itself; 26.x fires it in its pre-login step, which bots skip ({@code Bots}).
+     */
+    void playerLoaded(ServerPlayer player);
+
     /** A registry-aware buffer as the loader's network layer creates it. */
     RegistryFriendlyByteBuf registryBuffer(ByteBuf buf, RegistryAccess access);
 

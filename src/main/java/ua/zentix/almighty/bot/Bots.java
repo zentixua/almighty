@@ -228,9 +228,30 @@ public final class Bots {
         //?}
         CommonListenerCookie cookie = ua.zentix.almighty.platform.Platform.get().cookie(profile, info);
         ServerLevel level = spec.dimension() != null ? Dims.level(server, spec.dimension()) : server.overworld();
+        //? if >=26.1 {
+        /*// 26.x loads a player's data before login (PrepareSpawnTask, which a bot connection skips): the saved level,
+        // position and rotation, else the world spawn (no search: it would load chunks; the bot then waits for them).
+        ServerPlayer player;
+        try (var reporter = new net.minecraft.util.ProblemReporter.ScopedCollector(LOG)) {
+            var input = server.getPlayerList().loadPlayerData(new net.minecraft.server.players.NameAndId(profile))
+                    .map(tag -> net.minecraft.world.level.storage.TagValueInput.create(reporter, server.registryAccess(), tag));
+            // The fields of ServerPlayer.SavedPosition.
+            ServerLevel home = input.flatMap(i -> i.read("Dimension", net.minecraft.world.level.Level.RESOURCE_KEY_CODEC))
+                    .map(server::getLevel).orElse(server.overworld());
+            net.minecraft.world.phys.Vec3 pos = input.flatMap(i -> i.read("Pos", net.minecraft.world.phys.Vec3.CODEC))
+                    .orElseGet(() -> net.minecraft.world.phys.Vec3.atBottomCenterOf(Mc.spawnPos(home)));
+            net.minecraft.world.phys.Vec2 rot = input.flatMap(i -> i.read("Rotation", net.minecraft.world.phys.Vec2.CODEC))
+                    .orElse(net.minecraft.world.phys.Vec2.ZERO);
+            player = new BotPlayer(server, home, profile, info);
+            input.ifPresent(player::load);
+            ua.zentix.almighty.platform.Platform.get().playerLoaded(player);
+            player.snapTo(pos, rot.x, rot.y);
+        }
+        *///?} else {
         // Like player login (getPlayerForLogin): use the Overworld; the constructor searches near spawn, while in another
         // dimension with a sky it would search by loading chunks synchronously in the tick.
         ServerPlayer player = new BotPlayer(server, server.overworld(), profile, info);
+        //?}
         Bot bot = new Bot(this, profile, spec.marker(), spec.autoRespawn());
         // Before login: the tab name is computed during login, and the event must already know the bot.
         byName.put(key(spec.name()), bot);

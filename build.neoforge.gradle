@@ -80,6 +80,14 @@ neoForge {
     }
 }
 neoForge.addModdingDependenciesTo(sourceSets.devtest)
+// 26.x game classes read the loader while initializing (SharedConstants asks FMLEnvironment): unit tests there run
+// with FML loaded, as moddev's unit-test support sets it up. 1.21.1 classes need no loader in plain JUnit.
+if (!minecraft_version.startsWith('1.21.1')) {
+    neoForge.unitTest {
+        enable()
+        testedMod = neoForge.mods.almighty
+    }
+}
 // Bridge and build-plan unit tests keep data in game classes (Gson, BlockPos).
 neoForge.addModdingDependenciesTo(sourceSets.test)
 

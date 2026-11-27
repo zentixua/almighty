@@ -177,7 +177,7 @@ public final class GmGameTests {
         GmServer.clock = () -> t.addAndGet(1_000_000L);
         BlockPos chest = new BlockPos(20, 2, 20), gold = new BlockPos(21, 2, 20);
         h.setBlock(chest, Blocks.CHEST);
-        ChestBlockEntity be = h.getBlockEntity(chest);
+        ChestBlockEntity be = Gt.blockEntity(h, chest, ChestBlockEntity.class);
         be.setItem(0, new ItemStack(Items.DIAMOND, 3));
         h.setBlock(gold, Blocks.GOLD_BLOCK);
         loadNow(h, 16, 16, 31, 31);
@@ -214,7 +214,7 @@ public final class GmGameTests {
                     check(gm(h).jobs().get(id.get()).retained() == 0 && undoRetained == r.get("changed").getAsLong(),
                             "retained positions: build " + gm(h).jobs().get(id.get()).retained() + ", undo " + undoRetained + ", expected 0 and " + r.get("changed"));
                     h.assertBlockPresent(Blocks.CHEST, chest);
-                    ChestBlockEntity back = h.getBlockEntity(chest);
+                    ChestBlockEntity back = Gt.blockEntity(h, chest, ChestBlockEntity.class);
                     check(back.getItem(0).is(Items.DIAMOND) && back.getItem(0).getCount() == 3, "chest after undo: " + back.getItem(0));
                     h.assertBlockPresent(Blocks.GOLD_BLOCK, gold);
                     h.assertBlockPresent(Blocks.AIR, new BlockPos(16, 2, 16));
@@ -472,6 +472,9 @@ public final class GmGameTests {
         // Client with all server mods: mods send their packets on login (Immersive Aircraft).
         NetworkRegistry.configureMockConnection(connection);
         h.getLevel().getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
+        // 26.x: as the client's ServerboundPlayerLoadedPacket.
+        //? if >=26.1
+        /*player.connection.markClientLoaded();*/
         return player;
     }
 
@@ -490,7 +493,7 @@ public final class GmGameTests {
         h.getLevel().getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack(), "list");
         // Private GM channel: its own event, not a command. Keep Unicode text to check delivery.
         h.getLevel().getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack(), "gm привет, ведущий");
-        player.hurt(player.damageSources().genericKill(), Float.MAX_VALUE);
+        Gt.hurt(player, player.damageSources().genericKill(), Float.MAX_VALUE);
         h.getLevel().getServer().getPlayerList().remove(player);
         JsonArray events = gm.feed().read(after, 100, 0).getAsJsonArray("events");
         StringBuilder types = new StringBuilder();

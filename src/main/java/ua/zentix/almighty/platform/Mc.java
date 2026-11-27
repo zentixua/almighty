@@ -130,6 +130,18 @@ public final class Mc {
         //?}
     }
 
+    /**
+     * The player whose own typing a command source is: not {@code execute as}, a function or the GM speaking as
+     * them; null otherwise (1.21.1: the player is the source's output; 26.x: the player's own command source).
+     */
+    public static ServerPlayer typedBy(CommandSourceStack source) {
+        //? if >=26.1 {
+        /*return source.getEntity() instanceof ServerPlayer p && source.source == p.commandSource() ? p : null;
+        *///?} else {
+        return source.source instanceof ServerPlayer p ? p : null;
+        //?}
+    }
+
     /** Selected hotbar slot. */
     public static int selectedSlot(net.minecraft.world.entity.player.Inventory inventory) {
         //? if >=26.1 {

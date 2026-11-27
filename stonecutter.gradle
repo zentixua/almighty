@@ -28,4 +28,13 @@ stonecutter.parameters {
     replacements.string(v26) { replace 'absRotateTo', 'absSnapRotationTo' }
     replacements.string(v26) { replace 'ClickType', 'ContainerInput' }
     replacements.string(v26) { replace 'GameProfileCache', 'CachedUserNameToIdResolver' }
+    // GameTest (src/devtest): 26.x registers tests in registries instead of scanning annotations. The test classes keep
+    // their 1.21.1 annotations; on 26.x they name look-alikes in gametest/v26 (whose sources are 26.x-only conditions),
+    // which gametest/v26/GmTestRegistry registers.
+    replacements.string(v26) { replace 'import net.minecraft.gametest.framework.GameTest;', 'import ua.zentix.almighty.gametest.v26.GameTest;' }
+    replacements.string(v26) { replace 'net.neoforged.neoforge.gametest.GameTestHolder', 'ua.zentix.almighty.gametest.v26.GameTestHolder' }
+    replacements.string(v26) { replace 'net.neoforged.neoforge.gametest.PrefixGameTestTemplate', 'ua.zentix.almighty.gametest.v26.PrefixGameTestTemplate' }
+    replacements.string(v26) { replace 'new GameTestAssertException(', 'new ua.zentix.almighty.gametest.v26.Failure(' }
+    // 26.x day time is a world clock: `time query daytime` became `time query time` (GameTest command fixtures).
+    replacements.string(v26) { replace 'time query daytime', 'time query time' }
 }

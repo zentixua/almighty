@@ -9,6 +9,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import ua.zentix.almighty.GmConfig;
 import ua.zentix.almighty.GmServer;
+import ua.zentix.almighty.platform.Mc;
 
 /**
  * A player's private channel to the game master: any player can use {@code /gm <text>}. The text enters the feed
@@ -31,7 +32,7 @@ public final class GmCommand {
         ServerPlayer player = source.getPlayerOrException();
         // Only what the player typed: "execute as <player> run gm …" (from the GM, a function or another player)
         // would otherwise speak, and mint a ticket, in that player's name.
-        if (source.source != player) {
+        if (Mc.typedBy(source) != player) {
             source.sendFailure(Component.literal("/gm speaks only for the player who types it"));
             return 0;
         }

@@ -14,6 +14,7 @@ import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.Agents;
 import ua.zentix.almighty.bridge.Caller;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.policy.Node;
 import ua.zentix.almighty.policy.Nodes;
 import ua.zentix.almighty.policy.Policy;
@@ -134,8 +135,9 @@ public final class GmLadderGameTests {
                     return "test claims";
                 }
 
+                // The chunk of the build below (at.north(2), which is in another chunk than at when at.z % 16 < 2).
                 public boolean mayBuild(UUID player, net.minecraft.server.level.ServerLevel level, int cx, int cz) {
-                    return cx != (at.getX() >> 4) || cz != (at.getZ() >> 4);
+                    return cx != (at.north(2).getX() >> 4) || cz != (at.north(2).getZ() >> 4);
                 }
             });
             // The claim check is a world call: under a tight tick budget (slow CI) it runs on a later tick.
@@ -201,13 +203,13 @@ public final class GmLadderGameTests {
                     + "deny = [\"bots\"]"));
             String m1 = refused(gm, "bot.spawn", params(creative)).getMessage();
             check(m1.contains("Zone spawn"), "bots denies bots.admin: " + m1);
-            BlockPos spawn = h.getLevel().getServer().overworld().getSharedSpawnPos();
+            BlockPos spawn = Mc.spawnPos(h.getLevel().getServer().overworld());
             gm.policies().set(Policy.parse("preset = \"private\"\n[agents.gm]\nfloor = \"admin\"\n[zones.spawn]\n" + box(spawn.offset(-1, -400, -1), spawn.offset(1, 400, 1))
                     + "deny = [\"bots\"]"));
             check(refused(gm, "bot.spawn", params("{\"name\":\"zonebot\"}")).getMessage().contains("Zone spawn"), "no pos: checked at spawn");
             // An operator (level 4) who is not an owner cannot make owners or agent tokens; the console can.
             var almighty = h.getLevel().getServer().getCommands().getDispatcher().getRoot().getChild("almighty");
-            var op = builder.createCommandSourceStack().withPermission(4);
+            var op = Mc.withLevel(builder.createCommandSourceStack(), 4);
             for (String sub : new String[]{"owner", "agent", "revoke"}) {
                 check(!almighty.getChild(sub).canUse(op), "an operator who is not an owner: /almighty " + sub);
                 check(almighty.getChild(sub).canUse(h.getLevel().getServer().createCommandSourceStack()), "the console: /almighty " + sub);

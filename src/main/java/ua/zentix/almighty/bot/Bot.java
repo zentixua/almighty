@@ -94,6 +94,11 @@ public final class Bot {
     /** A teleport not yet acknowledged by the bot: waits for the destination chunk ({@link #acceptTeleport}). */
     private int teleportId;
     private boolean teleportPending;
+    //? if >=26.1 {
+    /*// 26.x: the server ignores a player's input, attacks and use, and keeps them invulnerable, until the client
+    // reports its level loaded (ServerboundPlayerLoadedPacket, after login and each respawn; ClientPacketListener).
+    private boolean levelLoading;
+    *///?}
     private Instant lastChat = Instant.EPOCH;
     private String leftReason;
     /** A stop requested outside the bot tick (its controlling rule turned off): apply at the next tick start. */
@@ -224,6 +229,8 @@ public final class Bot {
             drain();
             acceptTeleport();
             ServerPlayer p = player();
+            //? if >=26.1
+            /*reportLoaded();*/
             if (p.isDeadOrDying()) {
                 if (++deadTicks >= 20 && autoRespawn) {
                     deadTicks = 0;
@@ -344,7 +351,19 @@ public final class Bot {
     /** Immediately after login or teleport: acknowledge the teleport without waiting for a tick. */
     void settle() {
         drain();
+        //? if >=26.1
+        /*reportLoaded();*/
     }
+
+    //? if >=26.1 {
+    /*// As the client: loaded once the chunks around the player are there (a bot waits for them on the server).
+    private void reportLoaded() {
+        if (levelLoading && !teleportPending && Controls.ready(player())) {
+            levelLoading = false;
+            send(new net.minecraft.network.protocol.game.ServerboundPlayerLoadedPacket());
+        }
+    }
+    *///?}
 
     /** Everything the server has written to the "client" so far. */
     private void drain() {
@@ -395,6 +414,10 @@ public final class Bot {
                 if (source != null) hear(sound.getSound().getRegisteredName(), sound.getSource().getName(), source.position(),
                         EntityType.getKey(source.getType()).toString(), sound.getVolume());
             }
+            //? if >=26.1 {
+            /*case net.minecraft.network.protocol.game.ClientboundLoginPacket login -> levelLoading = true;
+            case net.minecraft.network.protocol.game.ClientboundRespawnPacket respawn -> levelLoading = true;
+            *///?}
             // The bot cannot reconfigure its connection: silently ignoring it would hang the bot while the server awaited a reply.
             case ClientboundStartConfigurationPacket ignored -> connection.disconnect(Component.literal("bots do not support connection reconfiguration"));
             default -> {}

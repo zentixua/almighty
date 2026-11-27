@@ -8,8 +8,6 @@ import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.Blocks;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import ua.zentix.almighty.Almighty;
@@ -72,9 +70,7 @@ public final class GmRuleGameTests {
     }
 
     private static boolean breaks(GameTestHelper h, BlockPos at, ServerPlayer by) {
-        BlockEvent.BreakEvent e = new BlockEvent.BreakEvent(h.getLevel(), at, Blocks.STONE.defaultBlockState(), by);
-        NeoForge.EVENT_BUS.post(e);
-        return !e.isCanceled();
+        return Gt.breaks(h.getLevel(), at, Blocks.STONE.defaultBlockState(), by);
     }
 
     private static String state(GmServer gm, String name) {
@@ -97,13 +93,13 @@ public final class GmRuleGameTests {
             gm.policies().set(Policy.parse(String.format(Locale.ROOT, "preset = \"friends\"\nidentity = \"proxy\"\n[zones.spawn]\nfrom = [%d, %d, %d]\nto = [%d, %d, %d]\ndeny = [\"build\"]",
                     spawn.getX() - 1, spawn.getY() - 1, spawn.getZ() - 1, spawn.getX() + 1, spawn.getY() + 1, spawn.getZ() + 1)));
             // Unasked, the agent is a member on a friends' server: no rules (builder).
-            check(refused(gm, "rule.add", "{\"event\":\"BlockEvent.BreakEvent\",\"name\":\"keep\",\"then\":[\"cancel\"]}").status() == 403, "member floor: no rules");
+            check(refused(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"keep\",\"then\":[\"cancel\"]}").status() == 403, "member floor: no rules");
             check(gm.roles().set(id, "rule-builder", Role.BUILDER, null, Role.OWNER, "test") == null, "role");
             String t = ticket(h, gm, builder);
             // An event with no place cannot be canceled everywhere below owner.
             check(refused(gm, "rule.add", "{\"event\":\"ServerChatEvent\",\"name\":\"mute\",\"then\":[\"cancel\"],\"for\":\"" + t + "\"}")
                     .getMessage().contains("needs the owner"), "server-wide cancel");
-            JsonObject added = call(gm, "rule.add", "{\"event\":\"BlockEvent.BreakEvent\",\"name\":\"keep\",\"when\":" + when
+            JsonObject added = call(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"keep\",\"when\":" + when
                     + ",\"then\":[\"cancel\"],\"for\":\"" + t + "\"}").getAsJsonObject();
             check(added.has("expires") && added.get("for").getAsString().contains("rule-builder"), "bound to its creator, with a TTL: " + added);
             check(!breaks(h, mine, builder), "canceled where the creator may build");
@@ -118,26 +114,26 @@ public final class GmRuleGameTests {
             check(state(gm, "keep").equals("off"), "turned off, still listed: " + state(gm, "keep"));
             // TTL: a rule made below owner expires.
             gm.roles().set(id, "rule-builder", Role.BUILDER, null, Role.OWNER, "test");
-            call(gm, "rule.add", "{\"event\":\"BlockEvent.BreakEvent\",\"name\":\"short\",\"when\":" + when
+            call(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"short\",\"when\":" + when
                     + ",\"then\":[\"cancel\"],\"ttl_hours\":0.00001,\"for\":\"" + t + "\"}");
             Thread.sleep(80);
             check(breaks(h, mine, builder), "expired");
             check(state(gm, "short").equals("gone"), "an expired rule is removed");
             // A same name does not replace someone else's rule (here the owner's).
-            gm.dispatch().invoke(Caller.INTERNAL, "rule.add", params("{\"event\":\"BlockEvent.BreakEvent\",\"name\":\"owners\",\"then\":[\"emit\"]}"));
-            check(refused(gm, "rule.add", "{\"event\":\"BlockEvent.BreakEvent\",\"name\":\"owners\",\"then\":[\"emit\"],\"for\":\"" + t + "\"}").status() == 403,
+            gm.dispatch().invoke(Caller.INTERNAL, "rule.add", params("{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"owners\",\"then\":[\"emit\"]}"));
+            check(refused(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"owners\",\"then\":[\"emit\"],\"for\":\"" + t + "\"}").status() == 403,
                     "the owner's rule is not replaced by name");
             // Rule commands get the same checks as command calls below owner.
             check(refused(gm, "rule.add", "{\"event\":\"PlayerEvent.PlayerLoggedInEvent\",\"name\":\"click\",\"then\":[{\"command\":"
                     + "\"tellraw @a {\\\"text\\\":\\\"x\\\",\\\"clickEvent\\\":{\\\"action\\\":\\\"run_command\\\",\\\"value\\\":\\\"/op me\\\"}}\"}],\"for\":\"" + t + "\"}")
                     .status() == 403, "no click events in rule commands");
             // The owner's own ttl_hours expires too.
-            gm.dispatch().invoke(Caller.INTERNAL, "rule.add", params("{\"event\":\"BlockEvent.BreakEvent\",\"name\":\"ownerShort\",\"then\":[\"emit\"],\"ttl_hours\":0.00001}"));
+            gm.dispatch().invoke(Caller.INTERNAL, "rule.add", params("{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"ownerShort\",\"then\":[\"emit\"],\"ttl_hours\":0.00001}"));
             Thread.sleep(80);
             breaks(h, mine, builder);
             check(state(gm, "ownerShort").equals("gone"), "an owner's rule with ttl_hours expires");
             // Bound to its creator: the agent unasked cannot remove the player's rule.
-            call(gm, "rule.add", "{\"event\":\"BlockEvent.BreakEvent\",\"name\":\"theirs\",\"when\":" + when + ",\"then\":[\"cancel\"],\"for\":\"" + t + "\"}");
+            call(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"theirs\",\"when\":" + when + ",\"then\":[\"cancel\"],\"for\":\"" + t + "\"}");
             gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\n[agents.gm]\nfloor = \"builder\""));
             check(refused(gm, "rule.remove", "{\"name\":\"theirs\"}").status() == 403, "only its creator or an admin removes it");
         } finally {

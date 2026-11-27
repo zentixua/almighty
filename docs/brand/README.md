@@ -1,6 +1,8 @@
 # Almighty brand kit: pixel-art directions
 
-**Round eight (current):** blind scoring pool, name + icon only: [`scores.png`](scores.png), ranking and reads in [`scores.md`](scores.md).
+**Round nine (current):** combos against controls: [`scores2.png`](scores2.png), ranking and reads in [`scores2.md`](scores2.md).
+
+**Round eight:** blind scoring pool, name + icon only: [`scores.png`](scores.png), ranking and reads in [`scores.md`](scores.md).
 
 **Round seven:** four face treatments for the cloud on strings: [`cloud-faces.png`](cloud-faces.png), reads in [`cloud-faces.md`](cloud-faces.md).
 

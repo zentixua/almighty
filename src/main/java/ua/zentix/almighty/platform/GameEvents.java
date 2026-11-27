@@ -16,8 +16,15 @@ import java.util.function.Consumer;
 public interface GameEvents {
     enum Priority { HIGHEST, HIGH, NORMAL, LOW, LOWEST }
 
-    /** A discovered event type: class, short name and source mod. */
-    record Found(Class<?> type, String name, String mod) {}
+    /**
+     * A discovered event type: its class (NeoForge: the event class; Fabric: the callback interface), short name, source
+     * mod, and the loader's own handle for subscribing (NeoForge: none; Fabric: the {@code Event} field).
+     */
+    record Found(Class<?> type, String name, String mod, Object handle) {
+        public Found(Class<?> type, String name, String mod) {
+            this(type, name, mod, null);
+        }
+    }
 
     /** Event by short or full name; {@code tick} is the end of each server tick. Missing or ambiguous: an error naming similar ones. */
     Found resolve(String name) throws RpcException;
@@ -37,7 +44,7 @@ public interface GameEvents {
      * Subscribe {@code listener} to {@code type}; returns the handle for {@link #unsubscribe}.
      * @throws IllegalArgumentException if the bus does not accept the type
      */
-    Object subscribe(Class<?> type, Priority priority, boolean receiveCanceled, Consumer<Object> listener);
+    Object subscribe(Found event, Priority priority, boolean receiveCanceled, Consumer<Object> listener);
 
     void unsubscribe(Object handle);
 

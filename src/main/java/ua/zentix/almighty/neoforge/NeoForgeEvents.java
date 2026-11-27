@@ -36,8 +36,8 @@ final class NeoForgeEvents implements GameEvents {
     }
 
     @Override
-    public Object subscribe(Class<?> type, Priority priority, boolean receiveCanceled, Consumer<Object> listener) {
-        return add(type.asSubclass(Event.class), EventPriority.valueOf(priority.name()), receiveCanceled, listener);
+    public Object subscribe(Found event, Priority priority, boolean receiveCanceled, Consumer<Object> listener) {
+        return add(event.type().asSubclass(Event.class), EventPriority.valueOf(priority.name()), receiveCanceled, listener);
     }
 
     private <T extends Event> Consumer<T> add(Class<T> type, EventPriority priority, boolean receiveCanceled, Consumer<Object> listener) {

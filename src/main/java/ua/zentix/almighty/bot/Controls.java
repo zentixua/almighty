@@ -302,7 +302,12 @@ final class Controls {
     }
 
     private boolean sameTarget(ServerPlayer p, BlockPos pos) {
+        //? if neoforge {
         return pos.equals(destroyPos) && !destroyingItem.shouldCauseBlockBreakReset(p.getMainHandItem());
+        //?} else {
+        /*// Vanilla's client check (MultiPlayerGameMode.sameDestroyTarget); NeoForge lets items refine it.
+        return pos.equals(destroyPos) && ItemStack.isSameItemSameComponents(destroyingItem, p.getMainHandItem());
+        *///?}
     }
 
     private void action(ServerboundPlayerActionPacket.Action action, BlockPos pos, Direction face) {
@@ -486,7 +491,10 @@ final class Controls {
 
     /** Sprinting: held while the key is pressed and moving forward, with enough food, no blindness and no wall collision. */
     private void sprint(ServerPlayer p, float forward) {
+        //? if neoforge {
         boolean able = (p.getFoodData().getFoodLevel() > 6 || p.mayFly()) && !p.isUsingItem()
+        //?} else
+        /*boolean able = (p.getFoodData().getFoodLevel() > 6 || p.getAbilities().mayfly) && !p.isUsingItem()*/
                 && !p.hasEffect(MobEffects.BLINDNESS) && !p.isFallFlying() && !p.isPassenger();
         boolean want = held.contains(Key.SPRINT) && forward >= 0.8F && !p.isShiftKeyDown() && !(p.horizontalCollision && !p.minorHorizontalCollision);
         if (want && able) {

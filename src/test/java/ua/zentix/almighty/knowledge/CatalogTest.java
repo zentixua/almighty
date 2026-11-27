@@ -1,10 +1,8 @@
 package ua.zentix.almighty.knowledge;
 
-import com.electronwill.nightconfig.core.Config;
 import ua.zentix.almighty.platform.Platform;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,12 +13,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CatalogTest {
     @Test
     void flattenedConfigHidesSecretValues() {
-        Config config = Config.inMemory();
-        config.set(List.of("discord", "bot_token"), "s3cr3t");
-        config.set(List.of("discord", "channel"), "general");
-        config.set(List.of("port"), 25565);
-        List<Platform.ConfigValue> values = new ArrayList<>();
-        ua.zentix.almighty.neoforge.NeoForgePlatform.flatten("mymod", "mymod-common.toml", "", config, values);
+        // As a loader lists them (NeoForge: NeoForgePlatform.flatten, tested in NeoForgeFlattenTest).
+        List<Platform.ConfigValue> values = List.of(
+                new Platform.ConfigValue("mymod", "mymod-common.toml", "discord.bot_token", "s3cr3t"),
+                new Platform.ConfigValue("mymod", "mymod-common.toml", "discord.channel", "general"),
+                new Platform.ConfigValue("mymod", "mymod-common.toml", "port", 25565));
         List<Catalog.Entry> out = Catalog.configEntries(values);
         assertEquals(3, out.size());
         for (Catalog.Entry e : out) {

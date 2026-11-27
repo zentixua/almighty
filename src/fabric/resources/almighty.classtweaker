@@ -1,0 +1,4 @@
+classTweaker	v1	official
+# What NeoForge's access transformers open and the common core uses (Fabric: the same members, opened here).
+accessible	field	net/minecraft/commands/CommandSourceStack	source	Lnet/minecraft/commands/CommandSource;
+accessible	method	net/minecraft/server/level/ServerPlayer	checkRidingStatistics	(DDD)V

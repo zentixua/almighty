@@ -1,7 +1,7 @@
 {
   "slug": "almighty",
   "title": "Almighty: AI Game Master",
-  "description": "Server-side NeoForge mod that lets an AI agent run your Minecraft server as game master: it sees the world, follows events, runs commands, builds with undo, adds rules on game events and spawns bot players.",
+  "description": "An AI game master for your Minecraft server: connect Claude Code, Codex or any MCP app and it sees the world, talks to players, builds with undo, runs events and drives bot players. Server-side, with per-player permissions.",
   "categories": [
     "management",
     "utility"
@@ -14,12 +14,17 @@
   "issues_url": "https://github.com/zentixua/almighty/issues",
   "wiki_url": null,
   "discord_url": null,
-  "icon": "docs/media/icon.png",
+  "icon": "docs/brand/icon/icon-512.png",
   "gallery": [
     {
-      "file": "docs/media/eye.png",
-      "title": "What a bot sees: the eye view of an airport, with the crosshair in the middle",
+      "file": "docs/brand/store/modrinth-cover-1920x1080.png",
+      "title": "Almighty: an AI game master for your Minecraft server",
+      "description": "Hand-made pixel art, drawn by a small program",
       "featured": true
+    },
+    {
+      "file": "docs/media/eye.png",
+      "title": "What a bot sees: the eye view of an airport, with the crosshair in the middle"
     },
     {
       "file": "docs/media/map.png",

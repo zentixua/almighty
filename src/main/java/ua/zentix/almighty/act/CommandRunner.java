@@ -145,6 +145,20 @@ public final class CommandRunner {
         return run(server, level, pos, as, commands, quiet, As.GM);
     }
 
+    /** The lowest permission level above {@code at} at which the command parses completely; 0 if none does (a real typo). */
+    static int levelNeeded(MinecraftServer server, CommandSourceStack source, String command, int at) {
+        var dispatcher = server.getCommands().getDispatcher();
+        if (complete(dispatcher.parse(command, source))) return 0;
+        for (int l = at + 1; l <= 4; l++) {
+            if (complete(dispatcher.parse(command, Mc.withLevel(source, l)))) return l;
+        }
+        return 0;
+    }
+
+    private static boolean complete(com.mojang.brigadier.ParseResults<CommandSourceStack> parse) {
+        return !parse.getReader().canRead() && parse.getExceptions().isEmpty() && parse.getContext().getCommand() != null;
+    }
+
     private static JsonArray run(MinecraftServer server, ServerLevel level, Vec3 pos, Entity as, List<String> commands, boolean quiet, As who) {
         JsonArray results = new JsonArray();
         for (String command : commands) {
@@ -164,7 +178,19 @@ public final class CommandRunner {
             }
             CommandSourceStack from = source.withCallback(capture.callback());
             outsideCurrentExecution(() -> server.getCommands().performPrefixedCommand(from, command));
-            results.add(capture.describe("command", command));
+            JsonObject result = capture.describe("command", command);
+            if (!result.get("ok").getAsBoolean() && who.level() < 4) {
+                // Vanilla hides a command the source may not use ("Unknown or incomplete command"): say that it is a
+                // permission level, not a typo, so the agent asks the right person instead of retrying the syntax.
+                int needs = levelNeeded(server, source, text, who.level());
+                if (needs > 0) {
+                    result.addProperty("needs_level", needs);
+                    result.addProperty("hint", "This command needs permission level " + needs + "; this call runs at level "
+                            + who.level() + ". Unasked, the agent acts at its trust floor (policy.toml); a player's request"
+                            + " runs at that player's level.");
+                }
+            }
+            results.add(result);
         }
         return results;
     }

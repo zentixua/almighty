@@ -130,6 +130,8 @@ processResources {
     var replaceProperties = [
         minecraft_version_range: minecraft_version_range, fabric_loader_version: fabric_loader_version,
         mod_version: mod_version, mod_license: mod_license, mod_authors: mod_authors, mod_url: mod_url,
+        // At least the Fabric API built against (its version without the "+<game>" build part).
+        fabric_api_min: fabric_api_version.split('\\+')[0],
     ]
     inputs.properties replaceProperties
     filesMatching('fabric.mod.json') { expand replaceProperties }

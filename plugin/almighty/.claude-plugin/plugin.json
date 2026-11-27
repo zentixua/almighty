@@ -1,10 +1,10 @@
 {
   "name": "almighty",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "description": "Game master skills for Minecraft servers running the Almighty mod: how to run the server as its GM, build, drive bots, write scripts and rules, and learn unknown mods.",
   "author": { "name": "zentixua", "url": "https://github.com/zentixua" },
   "homepage": "https://github.com/zentixua/almighty",
   "repository": "https://github.com/zentixua/almighty",
   "license": "GPL-3.0-only",
-  "keywords": ["minecraft", "game-master", "mcp", "neoforge"]
+  "keywords": ["minecraft", "game-master", "mcp", "neoforge", "fabric"]
 }

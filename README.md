@@ -71,43 +71,44 @@ More: [Getting started](docs/guide/getting-started.md) · [Connect your app](doc
   `bridge.allowed_origins`. Five wrong tokens within a minute lock the sending address out for a while.
 - The world is read and changed only on the server thread: between ticks, or by jobs that get a fixed time per tick
   (`work.ms_per_tick`, 3 ms by default). Large builds and pictures do not stall the server.
-- The agent connects through the MCP adapter [`mcp/almighty.py`](mcp/almighty.py). It has 14 tools: `status`,
-  `entities`, `command`, `say`, `script`, `rule`, `events`, `view`, `build`, `area`, `job`, `bot`, `notes`, and `call`
-  for any bridge method by name. The 32 bridge methods are listed in [AGENTS.md](AGENTS.md) (in English).
+- The same port serves MCP at `/mcp` (Streamable HTTP, both the current and the earlier protocol versions), so any
+  MCP app connects by address, with no adapter. Apps sign in with the standard MCP login: the server shows a
+  four-digit code on its sign-in page and the owner types `/almighty approve <code>`. The agent gets 14 tools:
+  `status`, `entities`, `command`, `say`, `script`, `rule`, `events`, `view`, `build`, `area`, `job`, `bot`, `notes`,
+  and `call` for any bridge method by name ([Tools](docs/guide/tools.md)). The bridge methods are listed in
+  [AGENTS.md](AGENTS.md) (in English).
 - Any player can write to the game master privately with `/gm <text>`. Other players and operators do not see the
   message, and the agent can answer that player alone. If the game master is unavailable, the reply follows the
   player's language: Russian for `ru_ru`, English otherwise, without a client mod. The server itself decides which
   chat lines are meant for the game master (its name, an ongoing conversation, or a player alone online), limits each
   player to 20 such messages an hour, and tells the player when the game master is away. With several agents,
   `/gm @<agent> <text>` picks one.
-- [`mcp/gm/`](mcp/gm/README.md) is a kit for running the game master as one Claude Code session: a chat channel that
-  wakes the session when players address it, a hook that blocks calls known to crash a server, and recipes.
+- The [Almighty plugin](plugin/almighty/README.md) (optional, for Claude Code, Codex, Cursor and VS Code) brings the
+  game master skills and the server entry. [`mcp/gm/`](mcp/gm/README.md) adds, for Claude Code only, a chat channel
+  that wakes the session the moment a player writes. Its crash-guard hook and recipe runner are no longer needed:
+  the server refuses crash-prone calls for every app itself.
 
 ## Notes for other mods
 
-A mod or datapack can leave the agent a note on how to use its mechanics: its commands, rules and pitfalls. The note
-is a Markdown file `data/<namespace>/almighty/notes/<name>.md` in the mod's or datapack's data, with the id
-`<namespace>:<name>`. The adapter appends the server's notes to its instructions when it connects, and the `notes`
-tool returns the current ones, for example after `/reload`. A datapack overrides a mod's note by using the same path;
-an empty file removes the note. The mod does not depend on Almighty: without it, the file is ignored.
+The agent learns any modpack from the running server: `notes {query: "<mod id>"}` returns the mod's blocks with
+states, items, recipes, commands, events and config values. A mod or datapack can also leave the agent a note on how
+to use its mechanics: a Markdown file `data/<namespace>/almighty/notes/<name>.md`, optionally with Agent Skills front
+matter (`name`, `description`). Agents see an index and read a note when they need it; a datapack overrides a mod's
+note at the same path; an empty file removes it. Without Almighty the file is ignored. Details:
+[For mod and datapack authors](docs/guide/for-mod-authors.md).
 
 ## Install
 
 1. Use a Minecraft 1.21.1 server with NeoForge 21.1.264 or newer. Put `almighty-<version>.jar` from the
-   [releases](https://github.com/zentixua/almighty/releases) into the server's `mods/` folder.
-2. Start the server once. It creates `config/almighty-common.toml` and `config/almighty/token`.
-3. On the agent's machine, install [uv](https://docs.astral.sh/uv/), get the adapter from the repository at the
-   release tag, and add it to Claude Code:
-   ```sh
-   git clone --branch v<version> https://github.com/zentixua/almighty
-   claude mcp add almighty -e ALMIGHTY_TOKEN_FILE=/path/to/server/config/almighty/token \
-     -- uv run /path/to/almighty/mcp/almighty.py mcp
-   ```
-   Keep the name `almighty`: the hook and the chat channel in `mcp/gm` match tools named `mcp__almighty__*`.
-   If the bridge runs on another machine, add `-e ALMIGHTY_URL=http://<address>:25650`. The token can also be passed
-   directly in `ALMIGHTY_TOKEN`.
+   [releases](https://github.com/zentixua/almighty/releases) into the server's `mods/` folder and start it.
+2. Tell your agent app: `connect to my Minecraft server at http://127.0.0.1:25650/mcp`, or add it yourself as its
+   page says ([Connect your agent](docs/guide/connect/README.md)).
+3. Approve the sign-in with the code from the page: `/almighty approve <code>`.
 
-The adapter also works from the command line, with the same environment variables:
+For scripts and CI without a browser, give an agent a token (`/almighty agent add <name>`) and pass it from an
+environment variable ([headless](docs/guide/connect/headless.md)). The command line
+[`mcp/almighty.py`](mcp/almighty.py) (`call`, `follow`, and a stdio relay for apps without HTTP) is optional and needs
+[uv](https://docs.astral.sh/uv/):
 
 ```sh
 uv run mcp/almighty.py call status                                      # one call, JSON answer
@@ -124,6 +125,7 @@ uv run mcp/almighty.py follow                                           # event 
 | `bridge.enabled` | `true` | Start the HTTP bridge on a dedicated server. |
 | `bridge.host` | `"127.0.0.1"` | Address the bridge listens on. |
 | `bridge.port` | `25650` | Bridge port. |
+| `bridge.public_url` | `""` | The public HTTPS address when a reverse proxy or tunnel puts the bridge on the internet (cloud apps). |
 | `work.ms_per_tick` | `3.0` | Time per server tick for builds, undos and pictures, in ms (0.5 to 20). |
 | `work.build_max_blocks` | `2000000` | Maximum number of block positions in one build. |
 | `work.max_chunks` | `1500` | Maximum number of chunks the agent keeps loaded at once: builds and prepared areas, counting a ring of neighbouring chunks. |

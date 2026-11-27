@@ -115,6 +115,7 @@ public final class Gate implements Dispatch.Check {
             case "bot.act" -> payload(p) ? Node.BOTS_ADMIN : Node.BOTS;
             case "bot.remove" -> Node.BOTS;
             case "audit" -> Node.AUDIT;
+            case "give" -> Node.GIVE_SELF;
             default -> null;
         };
     }

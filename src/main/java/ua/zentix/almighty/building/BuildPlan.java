@@ -119,6 +119,8 @@ public final class BuildPlan<B> {
             try {
                 op = op(new Args(e.getAsJsonObject()), cached);
             } catch (RpcException x) {
+                // Keep a refusal a refusal (403 policy); only parse errors become 400.
+                if (x.status() != 400) throw new RpcException(x.status(), x.code(), "ops[" + i + "]: " + x.getMessage());
                 throw RpcException.badRequest("ops[" + i + "]: " + x.getMessage());
             }
             int[] b = op.bounds();

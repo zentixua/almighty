@@ -112,6 +112,35 @@ public final class Api {
                 return CommandRunner.function(server, a, as);
             });
         });
+        m.put("give", a -> {
+            // Items for the requester only (plan P9): a plain item id, no components, never #almighty:never_give.
+            String item = a.string("item");
+            int count = a.integer("count", 1, 1, 64);
+            if (a.caller().agent() != null && a.caller().requester() == null) {
+                throw RpcException.badRequest("give: only for the player who asked (for: their ticket)");
+            }
+            net.minecraft.resources.ResourceLocation id = net.minecraft.resources.ResourceLocation.tryParse(item);
+            if (id == null || item.contains("[") || item.contains("{")) throw RpcException.badRequest("item: a plain item id such as minecraft:bread (no components)");
+            java.util.UUID to = a.caller().requester();
+            boolean owner = a.caller().agent() == null
+                    || gm.gate().rights(a.caller(), a.raw()).effective() == ua.zentix.almighty.policy.Role.OWNER;
+            return gm.onMain(() -> {
+                var holder = server.registryAccess().lookupOrThrow(Registries.ITEM).get(net.minecraft.resources.ResourceKey.create(Registries.ITEM, id))
+                        .orElseThrow(() -> RpcException.notFound("No item " + item));
+                if (!owner && holder.is(ua.zentix.almighty.policy.ContentLimits.NEVER_GIVE)) {
+                    throw new RpcException(403, "policy", item + " is never given (#almighty:never_give)");
+                }
+                ServerPlayer p = to == null ? null : server.getPlayerList().getPlayer(to);
+                if (p == null) throw RpcException.conflict("The player who asked is offline");
+                net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(holder, count);
+                if (!p.getInventory().add(stack)) p.drop(stack, false);
+                JsonObject out = new JsonObject();
+                out.addProperty("player", p.getGameProfile().getName());
+                out.addProperty("item", id.toString());
+                out.addProperty("count", count);
+                return out;
+            });
+        });
         m.put("pending", a -> gm.decisions().pending(a.caller().name(), a.string("id"), a.integer("wait", 0, 0, MAX_WAIT))
                 .thenApply(o -> (JsonElement) o));
         m.put("say", a -> gm.onMain(() -> Chat.say(server, a)));
@@ -393,9 +422,13 @@ public final class Api {
         MinecraftServer server = gm.server();
         ServerLevel level = Dims.level(server, a);
         HolderLookup<Block> blocks = server.registryAccess().lookupOrThrow(Registries.BLOCK);
+        // Below owner: block states only, never #almighty:never_build (plan 4.3).
+        boolean limited = a.caller().agent() != null
+                && gm.gate().rights(a.caller(), a.raw()).effective() != ua.zentix.almighty.policy.Role.OWNER;
         BuildPlan<BlockInput> plan = BuildPlan.parse(a.array("ops"), s -> {
             try {
                 BlockStateParser.BlockResult r = BlockStateParser.parseForBlock(blocks, s, true);
+                if (limited) ua.zentix.almighty.policy.ContentLimits.block(s, r.blockState(), r.nbt() != null);
                 return new BlockInput(r.blockState(), r.properties().keySet(), r.nbt());
             } catch (CommandSyntaxException e) {
                 throw RpcException.badRequest("block \"" + s + "\": " + e.getMessage());

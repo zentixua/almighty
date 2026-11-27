@@ -8,7 +8,8 @@ The mod presents itself to players as "An almighty AI for your Minecraft server"
 
 A server-side NeoForge mod for Minecraft 1.21.1 through which an AI agent (game master, GM) sees and acts in the
 world: an HTTP bridge on the server that also serves MCP itself (`/mcp`); `mcp/almighty.py` is an optional CLI and stdio relay. No custom blocks, items, packets
-or registry entries (the only custom data is the entity tag `almighty:driven_by_rider`); clients need not install it.
+or registry entries (the only custom data are the tags `almighty:driven_by_rider` (entities), `almighty:never_build`
+(blocks) and `almighty:never_give` (items)); clients need not install it.
 No dependencies on other mods: a mod's compatibility module (`compat/`) loads only when that mod is installed.
 Public repository: https://github.com/zentixua/almighty. The bridge runs on the Open Skies modpack server
 (zentixua/open-skies-friends, `side = "server"`).
@@ -160,6 +161,11 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   polls `pending {id, wait?}`; every state change is a `confirmation` feed event. 5 policy refusals of one player's
   requests in 10 minutes cool
   their `/gm` down for 10 minutes (`Inbox.refused`).
+- Content limits (step 7, `policy/ContentLimits`): below owner (the call's effective role), `build` takes block
+  states only (any NBT → 403) and never a block in `#almighty:never_build` (command, structure, jigsaw blocks,
+  spawners); `give {item, count ≤ 64, for}` gives the requester a plain item (no components) and never one in
+  `#almighty:never_give`; creative/spectator/unmarked/skinned bots and `payload` need `bots.admin` (step 5).
+  Datapacks may add to both tags. `BuildPlan` keeps a refusal's status (403) instead of turning it into 400.
 - `policy/DenyList`: built-in deny list (from `crash_guard.py`), refused for every agent and harness: `stop`, `reload`,
   `save-off`, `save-all flush`, `forceload add`, `tick rate` > 100, `almighty …` (agents and policy are the owner's),
   far commands, builds, areas and bot spawns at Sable plot coordinates (|x| or |z| ≥ 20 000 000), bot chat commands;
@@ -234,7 +240,9 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 `see {name | uuid | at+yaw+pitch, image? (yes), width?, height?, fov?, distance?, radius?, sounds_ticks?}`,
 `ships {name?, center+radius?}` (Sable ships; 503 without Sable),
 `notes {id? | query?+kind?+offset?+limit? | id: "world:<name>"+text}` → index `{notes: [{id, source, description}], catalog}`,
-one note, or `{entries, total, next_offset?, notes}`.
+one note, or `{entries, total, next_offset?, notes}`; `audit {limit?, agent?, method?}`, `pending {id, wait?}`,
+`give {item, count?, for}`. Any call may carry `for` (the ticket of the player's message it answers) and, on `/rpc`,
+a top-level idempotency `key`.
 
 All accept `dimension` (Overworld by default); long operations accept `wait` (default 30 s, up to 50): if the job
 has not finished, return its description and continue with `job`. A snapshot image is returned once (`png_base64`);
@@ -353,6 +361,9 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 ## Checks
 
+- Content limits: GameTest `GmLimitsGameTests` (command block, jigsaw and a sign with data refused below owner, a
+  plain sign built, the owner builds a command block; bread given to the requester, `never_give`, components and
+  no requester refused; a creative bot at the member floor refused).
 - Confirmations: `ConfirmationsTest` (what is irreversible for others, only the requester decides, first answer,
   expiry, admin merge and limits); GameTest `GmConfirmGameTests` (a request's command runs at the player's level,
   unasked at the floor's; an irreversible request waits for its requester; ask_admin only for listed kinds, then

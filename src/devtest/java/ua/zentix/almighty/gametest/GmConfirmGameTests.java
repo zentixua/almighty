@@ -80,6 +80,11 @@ public final class GmConfirmGameTests {
             // Unasked, the agent runs commands at its floor (member: level 0).
             JsonArray floor = gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"time set day\"]}")).join().getAsJsonArray();
             check(!floor.get(0).getAsJsonObject().get("ok").getAsBoolean(), "unasked at the member floor: " + floor);
+            // Vanilla calls it unknown; the answer says it is a permission level (time needs 2), not a typo.
+            check(floor.get(0).getAsJsonObject().has("needs_level") && floor.get(0).getAsJsonObject().get("needs_level").getAsInt() == 2,
+                    "refusal names the level the command needs: " + floor);
+            JsonArray typo = gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"tiem set day\"]}")).join().getAsJsonArray();
+            check(!typo.get(0).getAsJsonObject().has("needs_level"), "a real typo gets no level hint: " + typo);
         } finally {
             deop(h, alex);
             gm.policies().set(before);

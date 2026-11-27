@@ -189,7 +189,8 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
 - Origins and confirmations (step 6): `command`/`function` run as `GmServer.commandAs(rights)`: in-process level 4;
   unasked at the floor's level (`Role.commandLevel`: owner 4, admin 3, builder 2, else 0); for a request as that
   player's own source (`withSource` keeps output captured and the feed quiet) at max(op level, role level) capped by
-  the ceiling; the requester must be online. So node `command` is guest and vanilla's `requires` decide.
+  the ceiling; the requester must be online. So node `command` is guest and vanilla's `requires` decide; a command that fails only for its level gets
+  `needs_level` and a `hint` in its result (`CommandRunner.levelNeeded`: the lowest level at which it parses).
   `Caller.requester` (from a valid `for`, set in `Dispatch`) travels with the call: jobs record `requester`, and a
   receipt ("[Almighty] Done for you: … [Undo]") reaches that player after any call with effects; `/almighty undo
   <job>` works for that player or level 4. `policy/Confirmations` + `Decisions` + `Prompts`: a request's command

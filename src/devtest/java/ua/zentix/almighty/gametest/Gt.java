@@ -12,13 +12,10 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.neoforge.common.NeoForge;
 //? if >=26.1 {
 /*import net.minecraft.world.entity.vehicle.boat.Boat;
-import net.neoforged.neoforge.event.level.block.BreakBlockEvent;
 *///?} else {
 import net.minecraft.world.entity.vehicle.Boat;
-import net.neoforged.neoforge.event.level.BlockEvent;
 //?}
 
 /**
@@ -28,11 +25,25 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 final class Gt {
     private Gt() {}
 
-    /** An oak boat (26.x: one entity type per wood). */
-    //? if >=26.1 {
+    /** Entity types the tests spawn: an oak boat (26.x: one entity type per wood); 26.3 keeps the constants in EntityTypes. */
+    //? if >=26.3 {
+    /*static final EntityType<Boat> BOAT = net.minecraft.world.entity.EntityTypes.OAK_BOAT;
+    static final EntityType<net.minecraft.world.entity.animal.equine.Horse> HORSE = net.minecraft.world.entity.EntityTypes.HORSE;
+    static final EntityType<net.minecraft.world.entity.animal.pig.Pig> PIG = net.minecraft.world.entity.EntityTypes.PIG;
+    static final EntityType<net.minecraft.world.entity.monster.zombie.Zombie> ZOMBIE = net.minecraft.world.entity.EntityTypes.ZOMBIE;
+    static final EntityType<net.minecraft.world.entity.Marker> MARKER = net.minecraft.world.entity.EntityTypes.MARKER;
+    *///?} else if >=26.1 {
     /*static final EntityType<Boat> BOAT = EntityType.OAK_BOAT;
+    static final EntityType<net.minecraft.world.entity.animal.equine.Horse> HORSE = EntityType.HORSE;
+    static final EntityType<net.minecraft.world.entity.animal.pig.Pig> PIG = EntityType.PIG;
+    static final EntityType<net.minecraft.world.entity.monster.zombie.Zombie> ZOMBIE = EntityType.ZOMBIE;
+    static final EntityType<net.minecraft.world.entity.Marker> MARKER = EntityType.MARKER;
     *///?} else {
     static final EntityType<Boat> BOAT = EntityType.BOAT;
+    static final EntityType<net.minecraft.world.entity.animal.horse.Horse> HORSE = EntityType.HORSE;
+    static final EntityType<net.minecraft.world.entity.animal.Pig> PIG = EntityType.PIG;
+    static final EntityType<net.minecraft.world.entity.monster.Zombie> ZOMBIE = EntityType.ZOMBIE;
+    static final EntityType<net.minecraft.world.entity.Marker> MARKER = EntityType.MARKER;
     //?}
 
     /** An entity's scoreboard tags as a Groovy script reads them ({@code entity.tags}; 26.x: {@code entityTags()}). */
@@ -42,22 +53,86 @@ final class Gt {
     static final String SCRIPT_TAGS = "tags";
     //?}
 
-    /** The rule event a block break fires, by the name the bridge gives it ({@code rule.add}). */
-    //? if >=26.1 {
+    // Rule events by the names the bridge gives them (rule.add, event.types). NeoForge: any event on its bus; Fabric:
+    // Fabric API callbacks (FabricEvents), cancelled by returning their "stop" value.
+
+    /** The cancellable event a player's block break fires, and the mod that declares it. */
+    //? if fabric {
+    /*static final String BREAK_EVENT = "PlayerBlockBreakEvents.BEFORE";
+    static final String BREAK_EVENT_MOD = "fabric-events-interaction-v0";
+    *///?} else if >=26.1 {
     /*static final String BREAK_EVENT = "BreakBlockEvent";
+    static final String BREAK_EVENT_MOD = "neoforge";
     *///?} else {
     static final String BREAK_EVENT = "BlockEvent.BreakEvent";
+    static final String BREAK_EVENT_MOD = "neoforge";
     //?}
 
-    /** Post a block-break event as a player breaking {@code state} at {@code pos} would; true if nobody cancelled it. */
-    static boolean breaks(ServerLevel level, BlockPos pos, BlockState state, Player by) {
-        //? if >=26.1 {
-        /*BreakBlockEvent e = new BreakBlockEvent(level, pos, state, by);
+    /** An entity joining a level, as a rule names it. */
+    //? if fabric {
+    /*static final String JOIN_EVENT = "ServerEntityEvents.ENTITY_LOAD";
+    *///?} else
+    static final String JOIN_EVENT = "EntityJoinLevelEvent";
+
+    /**
+     * The event a guard rule cancels to keep a zombie unharmed by its arrival: NeoForge cancels its joining the level;
+     * Fabric API has no cancellable entity-join callback, so the Fabric guard cancels damage to it ({@link #guarded}).
+     */
+    //? if fabric {
+    /*static final String GUARD_EVENT = "ServerLivingEntityEvents.ALLOW_DAMAGE";
+    *///?} else
+    static final String GUARD_EVENT = JOIN_EVENT;
+
+    /** Spawn a zombie at a relative position under a guard rule on {@link #GUARD_EVENT}; fail unless the guard held. */
+    static void guarded(GameTestHelper h, int x, int y, int z) {
+        //? if fabric {
+        /*Entity zombie = h.spawn(ZOMBIE, x, y, z);
+        float health = ((net.minecraft.world.entity.LivingEntity) zombie).getHealth();
+        hurt(zombie, zombie.damageSources().generic(), 5);
+        if (((net.minecraft.world.entity.LivingEntity) zombie).getHealth() != health) throw new ua.zentix.almighty.gametest.v26.Failure("guard did not cancel the zombie's damage");
+        zombie.discard();
         *///?} else {
-        BlockEvent.BreakEvent e = new BlockEvent.BreakEvent(level, pos, state, by);
+        h.spawn(ZOMBIE, x, y, z);
+        h.assertEntityNotPresent(ZOMBIE);
         //?}
-        NeoForge.EVENT_BUS.post(e);
+    }
+
+    /** A chat message event (short and fully qualified name, declaring mod). */
+    //? if fabric {
+    /*static final String CHAT_EVENT = "ServerMessageEvents.CHAT_MESSAGE";
+    static final String CHAT_EVENT_FULL = "net.fabricmc.fabric.api.message.v1.ServerMessageEvents.CHAT_MESSAGE";
+    static final String CHAT_EVENT_MOD = "fabric-message-api-v1";
+    *///?} else {
+    static final String CHAT_EVENT = "ServerChatEvent";
+    static final String CHAT_EVENT_FULL = "net.neoforged.neoforge.event.ServerChatEvent";
+    static final String CHAT_EVENT_MOD = "neoforge";
+    //?}
+
+    /** A cancellable server-wide event with no place in the world: chat (on Fabric the sender is the one who acts, not a place). */
+    //? if fabric {
+    /*static final String UNPLACED_EVENT = "ServerMessageEvents.ALLOW_CHAT_MESSAGE";
+    *///?} else
+    static final String UNPLACED_EVENT = "ServerChatEvent";
+
+    /** A player's login. */
+    //? if fabric {
+    /*static final String LOGIN_EVENT = "ServerPlayerEvents.JOIN";
+    *///?} else
+    static final String LOGIN_EVENT = "PlayerEvent.PlayerLoggedInEvent";
+
+    /** Fire the block-break event as a player breaking {@code state} at {@code pos} would; true if nobody cancelled it. */
+    static boolean breaks(ServerLevel level, BlockPos pos, BlockState state, Player by) {
+        //? if fabric {
+        /*return net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents.BEFORE.invoker().beforeBlockBreak(level, by, pos, state, level.getBlockEntity(pos));
+        *///?} else if >=26.1 {
+        /*var e = new net.neoforged.neoforge.event.level.block.BreakBlockEvent(level, pos, state, by);
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(e);
         return !e.isCanceled();
+        *///?} else {
+        var e = new net.neoforged.neoforge.event.level.BlockEvent.BreakEvent(level, pos, state, by);
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(e);
+        return !e.isCanceled();
+        //?}
     }
 
     /** Saddle a horse (or another saddleable mount). */

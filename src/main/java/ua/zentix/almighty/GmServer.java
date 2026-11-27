@@ -212,8 +212,12 @@ public final class GmServer {
         Nodes.refresh(server);
         ua.zentix.almighty.policy.Identity.onlineMode(server.usesAuthentication());
         gm.rules.load();
+        // GameTest never runs the bridge (Fabric API's test server calls itself dedicated).
+        boolean gametest = server instanceof net.minecraft.gametest.framework.GameTestServer;
         boolean integrated = !server.isDedicatedServer();
-        if (integrated && GmConfig.BRIDGE_INTEGRATED.get() && !loopback(GmConfig.BRIDGE_HOST.get())) {
+        if (gametest) {
+            LOG.info("Almighty bridge: off on a GameTest server");
+        } else if (integrated && GmConfig.BRIDGE_INTEGRATED.get() && !loopback(GmConfig.BRIDGE_HOST.get())) {
             LOG.error("Almighty bridge: bridge.integrated works only on loopback; bridge.host is {}", GmConfig.BRIDGE_HOST.get());
         } else if ((!integrated || GmConfig.BRIDGE_INTEGRATED.get()) && GmConfig.BRIDGE_ENABLED.get()) {
             try {

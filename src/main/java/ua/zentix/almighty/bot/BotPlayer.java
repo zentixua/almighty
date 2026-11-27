@@ -31,4 +31,20 @@ public final class BotPlayer extends ServerPlayer {
         return !Vehicles.local(this);
     }
     *///?}
+    //? if fabric {
+    /*// Fabric has no name-format events: the bot marks its own tab line and chat name (NeoForge: AlmightyNeoForge).
+    @Override
+    public net.minecraft.network.chat.Component getTabListDisplayName() {
+        net.minecraft.network.chat.Component current = super.getTabListDisplayName();
+        net.minecraft.network.chat.Component marked = Bots.tabName(this, current);
+        return marked != null ? marked : current;
+    }
+
+    @Override
+    public net.minecraft.network.chat.Component getDisplayName() {
+        net.minecraft.network.chat.Component current = super.getDisplayName();
+        net.minecraft.network.chat.Component marked = Bots.displayName(this, current);
+        return marked != null ? marked : current;
+    }
+    *///?}
 }

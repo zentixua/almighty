@@ -5,8 +5,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
 import com.mojang.util.UndashedUuid;
+//? if ia {
 import immersive_aircraft.entity.EngineVehicle;
 import immersive_aircraft.network.c2s.CommandMessage;
+//?}
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.core.BlockPos;
@@ -50,8 +52,6 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
-import net.neoforged.neoforge.network.connection.ConnectionType;
-import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.Api;
 import ua.zentix.almighty.GmConfig;
@@ -373,7 +373,8 @@ public final class GmBotGameTests {
                 })
                 .thenWaitUntil(() -> finished(walk.get()))
                 .thenExecute(() -> {
-                    check(bot.player().position().distanceTo(start.get()) > 1.0, "not walking after respawn");
+                    check(bot.player().position().distanceTo(start.get()) > 1.0, "not walking after respawn: from " + start.get()
+                            + " to " + bot.player().position() + ", on ground " + bot.player().onGround() + ", " + bot.describe(0));
                     leave(h, "GmTestPhoenix");
                 })
                 .thenSucceed();
@@ -408,7 +409,7 @@ public final class GmBotGameTests {
     @GameTest(template = "floor", batch = "gm_bot_horse", timeoutTicks = 300, skyAccess = true)
     public static void botRidesHorse(GameTestHelper h) {
         Bot bot = spawn(h, "GmTestRider", 10.5, 10.5, ",\"gamemode\":\"survival\"");
-        Horse horse = h.spawn(EntityType.HORSE, new Vec3(10.5, GROUND, 10.5));
+        Horse horse = h.spawn(Gt.HORSE, new Vec3(10.5, GROUND, 10.5));
         horse.setTamed(true);
         Gt.saddle(horse);
         horse.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.3);
@@ -486,6 +487,8 @@ public final class GmBotGameTests {
                 .thenSucceed();
     }
 
+    // Immersive Aircraft (a node with its build, compat_ia): planes, airship, its client packet.
+    //? if ia {
     /**
      * A bot that leaves while riding comes back in its vehicle (saved with its player data), as a player does: the
      * vehicle leaves with the bot and returns with it; it is never lost.
@@ -655,20 +658,6 @@ public final class GmBotGameTests {
         return null;
     }
 
-    //? if >=26.1 {
-    /*// IA 26.x messages are not payloads themselves: its NeoForge network handler wraps each one (createPayload), as its client does.
-    // (Object: test classes are also on the unit-test mod classpath, where Immersive Aircraft is absent.)
-    private static net.minecraft.network.protocol.common.custom.CustomPacketPayload iaPayload(Object message) {
-        try {
-            Object handler = ua.zentix.almighty.platform.Reflect.field(immersive_aircraft.cobalt.network.NetworkHandler.class, "INSTANCE").get(null);
-            return (net.minecraft.network.protocol.common.custom.CustomPacketPayload) ua.zentix.almighty.platform.Reflect
-                    .method(handler.getClass(), "createPayload", immersive_aircraft.cobalt.network.Message.class).invoke(handler, message);
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Immersive Aircraft payload: " + e, e);
-        }
-    }
-
-    *///?}
     /**
      * Client mod packet: the bot sends Immersive Aircraft dismount bytes like the IA client; the mod dismounts it
      * through its own handler. Unknown packets and trailing bytes are step errors.
@@ -678,12 +667,8 @@ public final class GmBotGameTests {
         EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(ResourceLocation.fromNamespaceAndPath("immersive_aircraft", "biplane")).orElse(null);
         check(type != null, "GameTest run is missing Immersive Aircraft");
         // Bytes as written by the IA client: serverbound packet codec, id supplied separately.
-        RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), h.getLevel().registryAccess(), ConnectionType.NEOFORGE);
-        //? if >=26.1 {
-        /*ServerboundCustomPayloadPacket.STREAM_CODEC.encode(buf, new ServerboundCustomPayloadPacket(iaPayload(new CommandMessage(CommandMessage.Key.DISMOUNT, Vec3.ZERO))));
-        *///?} else {
-        ServerboundCustomPayloadPacket.STREAM_CODEC.encode(buf, new ServerboundCustomPayloadPacket(new CommandMessage(CommandMessage.Key.DISMOUNT, Vec3.ZERO)));
-        //?}
+        RegistryFriendlyByteBuf buf = ua.zentix.almighty.platform.Platform.get().registryBuffer(Unpooled.buffer(), h.getLevel().registryAccess());
+        ServerboundCustomPayloadPacket.STREAM_CODEC.encode(buf, new ServerboundCustomPayloadPacket(iaDismount()));
         String id = buf.readResourceLocation().toString();
         byte[] body = new byte[buf.readableBytes()];
         buf.readBytes(body);
@@ -714,6 +699,25 @@ public final class GmBotGameTests {
                 .thenExecute(() -> leave(h, "GmTestCourier"))
                 .thenSucceed();
     }
+    //?}
+
+    //? if ia && >=26.1 {
+    /*// IA 26.x messages are not payloads themselves: its NeoForge network handler wraps each one (createPayload), as its client does.
+    private static net.minecraft.network.protocol.common.custom.CustomPacketPayload iaDismount() {
+        Object message = new CommandMessage(CommandMessage.Key.DISMOUNT, Vec3.ZERO);
+        try {
+            Object handler = ua.zentix.almighty.platform.Reflect.field(immersive_aircraft.cobalt.network.NetworkHandler.class, "INSTANCE").get(null);
+            return (net.minecraft.network.protocol.common.custom.CustomPacketPayload) ua.zentix.almighty.platform.Reflect
+                    .method(handler.getClass(), "createPayload", immersive_aircraft.cobalt.network.Message.class).invoke(handler, message);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Immersive Aircraft payload: " + e, e);
+        }
+    }
+    *///?} else if ia {
+    private static net.minecraft.network.protocol.common.custom.CustomPacketPayload iaDismount() {
+        return new CommandMessage(CommandMessage.Key.DISMOUNT, Vec3.ZERO);
+    }
+    //?}
 
     /**
      * Vision: distant crosshair hits a gold wall, zombie to the right in front of the wall is visible and in
@@ -721,10 +725,20 @@ public final class GmBotGameTests {
      */
     @GameTest(template = "floor", batch = "gm_see", timeoutTicks = 200, skyAccess = true)
     public static void botSeesWallAndMobs(GameTestHelper h) {
+        // The picture is lit by the time of day and the weather, and both run through the whole GameTest run (26.x batch
+        // order varies from run to run): take it at clear noon, sky brightness updated at once (rain and thunder fade
+        // out over ticks, so their levels are cleared too).
+        MinecraftServer server = h.getLevel().getServer();
+        server.getCommands().performPrefixedCommand(server.createCommandSourceStack().withSuppressedOutput(), "time set 6000");
+        server.getCommands().performPrefixedCommand(server.createCommandSourceStack().withSuppressedOutput(), "weather clear");
+        h.getLevel().setRainLevel(0);
+        h.getLevel().setThunderLevel(0);
+        h.getLevel().updateSkyBrightness();
+        check(h.getLevel().getSkyDarken() == 0, "noon: sky darkening " + h.getLevel().getSkyDarken());
         for (int y = GROUND; y <= GROUND + 4; y++) for (int z = 4; z <= 16; z++) h.setBlock(new BlockPos(16, y, z), Blocks.GOLD_BLOCK);
-        Zombie zombie = h.spawn(EntityType.ZOMBIE, new Vec3(13.5, GROUND, 12.5));
+        Zombie zombie = h.spawn(Gt.ZOMBIE, new Vec3(13.5, GROUND, 12.5));
         zombie.setNoAi(true);
-        Pig pig = h.spawn(EntityType.PIG, new Vec3(19.5, GROUND, 10.5));
+        Pig pig = h.spawn(Gt.PIG, new Vec3(19.5, GROUND, 10.5));
         pig.setNoAi(true);
         spawn(h, "GmTestWatcher", 10.5, 10.5, ",\"gamemode\":\"creative\"");
         JsonObject quick = now(call(h, "see", params("{\"name\":\"GmTestWatcher\",\"image\":false}"))).getAsJsonObject();
@@ -881,11 +895,11 @@ public final class GmBotGameTests {
             Connection connection = new Connection(PacketFlow.SERVERBOUND);
             new EmbeddedChannel(connection);
             // Client with all server mods: mods send their packets on login (Immersive Aircraft).
-            NetworkRegistry.configureMockConnection(connection);
+            ua.zentix.almighty.platform.Platform.get().configureMockConnection(connection);
             server.getPlayerList().placeNewPlayer(connection, real, cookie);
             // 26.x: as the client's ServerboundPlayerLoadedPacket.
             //? if >=26.1
-            /*real.connection.markClientLoaded();*/
+            /*real.connection.handleAcceptPlayerLoad(new net.minecraft.network.protocol.game.ServerboundPlayerLoadedPacket());*/
             check(gm(h).bots().find("GmTestFriend") == null && !bot.online(), "bot did not yield the name to a player");
         } finally {
             GmConfig.BOTS_ALLOW_DISGUISE.set(disguise);

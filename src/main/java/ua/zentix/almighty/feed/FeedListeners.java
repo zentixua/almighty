@@ -59,9 +59,9 @@ public final class FeedListeners {
 
     public static void onAdvancement(ServerPlayer p, AdvancementHolder advancement) {
         DisplayInfo display = advancement.value().display().orElse(null);
-        if (display == null || !display.shouldAnnounceChat()) return;
+        if (display == null || !ua.zentix.almighty.platform.Mc.announces(display)) return;
         JsonObject d = player(p);
-        d.addProperty("title", display.getTitle().getString());
+        d.addProperty("title", ua.zentix.almighty.platform.Mc.title(display).getString());
         add(p, "advancement", d);
     }
 

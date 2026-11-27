@@ -361,7 +361,7 @@ public final class Rules {
         }
 
         void listen() {
-            listener = bus.subscribe(spec.event().type(), spec.priority(), spec.canceled(), this::fire);
+            listener = bus.subscribe(spec.event(), spec.priority(), spec.canceled(), this::fire);
         }
 
         void unlisten() {

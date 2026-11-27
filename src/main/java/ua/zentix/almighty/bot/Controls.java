@@ -11,7 +11,6 @@ import net.minecraft.network.protocol.game.ServerboundInteractPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -182,7 +181,7 @@ final class Controls {
             }
             case MISS -> miss(p);
         }
-        bot.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+        bot.send(Mc.swingPacket());
         return out;
     }
 
@@ -238,7 +237,7 @@ final class Controls {
         if (missTime > 0 || p.isUsingItem()) return;
         HitResult hit = leftClick ? pick(p) : null;
         if (hit instanceof BlockHitResult block && hit.getType() == HitResult.Type.BLOCK && !p.level().getBlockState(block.getBlockPos()).isAir()) {
-            if (continueDestroyBlock(p, block.getBlockPos(), block.getDirection())) bot.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+            if (continueDestroyBlock(p, block.getBlockPos(), block.getDirection())) bot.send(Mc.swingPacket());
         } else {
             stopDestroyBlock();
         }
@@ -302,7 +301,12 @@ final class Controls {
     }
 
     private boolean sameTarget(ServerPlayer p, BlockPos pos) {
+        //? if neoforge {
         return pos.equals(destroyPos) && !destroyingItem.shouldCauseBlockBreakReset(p.getMainHandItem());
+        //?} else {
+        /*// Vanilla's client check (MultiPlayerGameMode.sameDestroyTarget); NeoForge lets items refine it.
+        return pos.equals(destroyPos) && ItemStack.isSameItemSameComponents(destroyingItem, p.getMainHandItem());
+        *///?}
     }
 
     private void action(ServerboundPlayerActionPacket.Action action, BlockPos pos, Direction face) {
@@ -338,7 +342,7 @@ final class Controls {
         //?}
         if (r.consumesAction()) {
             CriteriaTriggers.PLAYER_INTERACTED_WITH_ENTITY.trigger(p, Mc.usedItem(r) ? before : ItemStack.EMPTY, entity);
-            if (Mc.swings(r)) p.swing(hand, true);
+            if (Mc.swings(r)) Mc.swing(p, hand);
         }
         return r;
     }
@@ -367,7 +371,7 @@ final class Controls {
         if (hit.getDirection() == Direction.UP && !r.consumesAction() && pos.getY() >= top - 1 && stack.getItem() instanceof BlockItem) {
             p.sendSystemMessage(Component.translatable("build.tooHigh", top - 1).withStyle(ChatFormatting.RED), true);
         } else if (Mc.swings(r)) {
-            p.swing(hand, true);
+            Mc.swing(p, hand);
         }
         return r;
     }
@@ -377,7 +381,7 @@ final class Controls {
         ItemStack stack = p.getItemInHand(hand);
         if (stack.isEmpty() || !stack.isItemEnabled(p.level().enabledFeatures())) return InteractionResult.PASS;
         InteractionResult r = p.gameMode.useItem(p, Mc.level(p), stack, hand);
-        if (Mc.swings(r)) p.swing(hand, true);
+        if (Mc.swings(r)) Mc.swing(p, hand);
         return r;
     }
 
@@ -486,7 +490,10 @@ final class Controls {
 
     /** Sprinting: held while the key is pressed and moving forward, with enough food, no blindness and no wall collision. */
     private void sprint(ServerPlayer p, float forward) {
+        //? if neoforge {
         boolean able = (p.getFoodData().getFoodLevel() > 6 || p.mayFly()) && !p.isUsingItem()
+        //?} else
+        /*boolean able = (p.getFoodData().getFoodLevel() > 6 || p.getAbilities().mayfly) && !p.isUsingItem()*/
                 && !p.hasEffect(MobEffects.BLINDNESS) && !p.isFallFlying() && !p.isPassenger();
         boolean want = held.contains(Key.SPRINT) && forward >= 0.8F && !p.isShiftKeyDown() && !(p.horizontalCollision && !p.minorHorizontalCollision);
         if (want && able) {

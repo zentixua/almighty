@@ -126,6 +126,9 @@ public final class GmJournalGameTests {
         // One work unit per tick: the build takes many ticks.
         GmServer.clock = () -> t.addAndGet(1_000_000_000L);
         BlockPos a = h.absolutePos(new BlockPos(0, 2, 0)), b = h.absolutePos(new BlockPos(7, 5, 7));
+        // The build and its neighbour ring ready now (as other build tests): writes start within the ticks below even
+        // when this is the first batch on a fresh world.
+        for (int x = (a.getX() >> 4) - 1; x <= (b.getX() >> 4) + 1; x++) for (int z = (a.getZ() >> 4) - 1; z <= (b.getZ() >> 4) + 1; z++) h.getLevel().getChunk(x, z);
         gm.dispatch().invoke(GM, "build", params("{\"ops\":[{\"op\":\"fill\",\"from\":[%d,%d,%d],\"to\":[%d,%d,%d],\"block\":\"minecraft:stone\"}],\"wait\":0}",
                 a.getX(), a.getY(), a.getZ(), b.getX(), b.getY(), b.getZ()));
         long id = newest(gm);

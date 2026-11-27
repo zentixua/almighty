@@ -27,7 +27,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.core.Direction;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
-import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.Api;
 import ua.zentix.almighty.GmConfig;
@@ -201,7 +200,7 @@ public final class GmGameTests {
                     check(r.get("changed").getAsLong() == 1024, "changed count is not 1024: " + r);
                     id.set(r.get("id").getAsLong());
                     for (int x = 16; x <= 31; x++) for (int y = 2; y <= 5; y++) for (int z = 16; z <= 31; z++) h.assertBlockPresent(Blocks.STONE, x, y, z);
-                    AABB box = new AABB(h.absolutePos(new BlockPos(15, 1, 15)).getCenter(), h.absolutePos(new BlockPos(32, 7, 32)).getCenter());
+                    AABB box = new AABB(net.minecraft.world.phys.Vec3.atCenterOf(h.absolutePos(new BlockPos(15, 1, 15))), net.minecraft.world.phys.Vec3.atCenterOf(h.absolutePos(new BlockPos(32, 7, 32))));
                     check(h.getLevel().getEntitiesOfClass(ItemEntity.class, box).isEmpty(), "chest dropped items");
                     undo.set(call(h, "undo", params("{\"job\":%d,\"wait\":50}", id.get())));
                 })
@@ -470,11 +469,11 @@ public final class GmGameTests {
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
         new EmbeddedChannel(connection);
         // Client with all server mods: mods send their packets on login (Immersive Aircraft).
-        NetworkRegistry.configureMockConnection(connection);
+        ua.zentix.almighty.platform.Platform.get().configureMockConnection(connection);
         h.getLevel().getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
         // 26.x: as the client's ServerboundPlayerLoadedPacket.
         //? if >=26.1
-        /*player.connection.markClientLoaded();*/
+        /*player.connection.handleAcceptPlayerLoad(new net.minecraft.network.protocol.game.ServerboundPlayerLoadedPacket());*/
         return player;
     }
 

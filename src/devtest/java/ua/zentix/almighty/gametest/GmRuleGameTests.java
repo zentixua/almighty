@@ -97,8 +97,14 @@ public final class GmRuleGameTests {
             check(gm.roles().set(id, "rule-builder", Role.BUILDER, null, Role.OWNER, "test") == null, "role");
             String t = ticket(h, gm, builder);
             // An event with no place cannot be canceled everywhere below owner.
-            check(refused(gm, "rule.add", "{\"event\":\"ServerChatEvent\",\"name\":\"mute\",\"then\":[\"cancel\"],\"for\":\"" + t + "\"}")
+            check(refused(gm, "rule.add", "{\"event\":\"" + Gt.UNPLACED_EVENT + "\",\"name\":\"mute\",\"then\":[\"cancel\"],\"for\":\"" + t + "\"}")
                     .getMessage().contains("needs the owner"), "server-wide cancel");
+            //? if fabric {
+            /*// A boolean callback outside Fabric's allow/before convention has no neutral answer: listening alone would
+            // change the game (true = "glide without an elytra"), so no rule may subscribe, not even the owner's.
+            RpcException glide = refused(gm, "rule.add", "{\"event\":\"EntityElytraEvents.CUSTOM\",\"name\":\"glide\",\"for\":\"" + t + "\"}");
+            check(glide.status() == 400 && glide.getMessage().contains("allow/before"), "act-on-true callback: " + glide.getMessage());
+            *///?}
             JsonObject added = call(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"keep\",\"when\":" + when
                     + ",\"then\":[\"cancel\"],\"for\":\"" + t + "\"}").getAsJsonObject();
             check(added.has("expires") && added.get("for").getAsString().contains("rule-builder"), "bound to its creator, with a TTL: " + added);
@@ -124,7 +130,7 @@ public final class GmRuleGameTests {
             check(refused(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"owners\",\"then\":[\"emit\"],\"for\":\"" + t + "\"}").status() == 403,
                     "the owner's rule is not replaced by name");
             // Rule commands get the same checks as command calls below owner.
-            check(refused(gm, "rule.add", "{\"event\":\"PlayerEvent.PlayerLoggedInEvent\",\"name\":\"click\",\"then\":[{\"command\":"
+            check(refused(gm, "rule.add", "{\"event\":\"" + Gt.LOGIN_EVENT + "\",\"name\":\"click\",\"then\":[{\"command\":"
                     + "\"tellraw @a {\\\"text\\\":\\\"x\\\",\\\"clickEvent\\\":{\\\"action\\\":\\\"run_command\\\",\\\"value\\\":\\\"/op me\\\"}}\"}],\"for\":\"" + t + "\"}")
                     .status() == 403, "no click events in rule commands");
             // The owner's own ttl_hours expires too.

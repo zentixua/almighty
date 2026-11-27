@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "almighty",
+  "version": "${mod_version}",
+  "name": "Almighty",
+  "description": "An AI game master for your Minecraft server. A server-side bridge through which an AI agent sees the world, follows events and acts on the server: commands, builds with undo, rules on game events and bot players, with per-player permissions. Serves MCP. Clients need nothing.",
+  "authors": ["${mod_authors}"],
+  "contact": {
+    "homepage": "${mod_url}",
+    "sources": "${mod_url}",
+    "issues": "${mod_url}/issues"
+  },
+  "license": "${mod_license}",
+  "icon": "almighty.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["ua.zentix.almighty.fabric.AlmightyFabric"]
+  },
+  "mixins": ["almighty.mixins.json", "almighty.fabric.mixins.json"],
+  "accessWidener": "almighty.classtweaker",
+  "depends": {
+    "fabricloader": ">=${fabric_loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version_range}",
+    "java": ">=25"
+  }
+}

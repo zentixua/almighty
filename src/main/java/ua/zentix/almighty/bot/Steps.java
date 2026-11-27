@@ -143,6 +143,10 @@ final class Steps {
             if (lines.size() > 4) throw RpcException.badRequest("lines: at most 4 lines");
             String[] four = {"", "", "", ""};
             for (int i = 0; i < lines.size(); i++) four[i] = text(lines.get(i), 384, "lines");
+            //? if >=26.3 {
+            /*return packet("sign", new ServerboundSignUpdatePacket(new BlockPos(pos[0], pos[1], pos[2]), List.of(four),
+                    a.bool("front", true) ? net.minecraft.world.level.block.entity.SignTextSlot.FRONT : net.minecraft.world.level.block.entity.SignTextSlot.BACK));
+            *///?} else
             return packet("sign", new ServerboundSignUpdatePacket(new BlockPos(pos[0], pos[1], pos[2]), a.bool("front", true), four[0], four[1], four[2], four[3]));
         }
         if (a.has("respawn")) return new Respawn();
@@ -452,7 +456,10 @@ final class Steps {
                 Component decorated = ua.zentix.almighty.platform.Platform.get().decorateChat(p, Component.literal(text));
                 if (decorated != null) server.getPlayerList().broadcastChatMessage(PlayerChatMessage.system(text).withUnsignedContent(decorated), p, ChatType.bind(ChatType.CHAT, p));
             } else {
-                //? if >=26.1 {
+                //? if >=26.3 {
+                /*bot.send(new ServerboundChatPacket(text, bot.chatTime(), 0L, java.util.Optional.empty(),
+                        new LastSeenMessages.Update(bot.takeChatAcks(), new BitSet(), LastSeenMessages.Update.IGNORE_CHECKSUM)));
+                *///?} else if >=26.1 {
                 /*bot.send(new ServerboundChatPacket(text, bot.chatTime(), 0L, null,
                         new LastSeenMessages.Update(bot.takeChatAcks(), new BitSet(), LastSeenMessages.Update.IGNORE_CHECKSUM)));
                 *///?} else {

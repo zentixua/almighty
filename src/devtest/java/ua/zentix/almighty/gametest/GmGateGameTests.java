@@ -77,6 +77,13 @@ public final class GmGateGameTests {
             check(!op.get(0).getAsJsonObject().get("ok").getAsBoolean(), "unasked /op at the member floor: " + op);
             // Tickets from the players' own /gm messages.
             String ownerTicket = ticket(h, gm, owner, "run a script");
+            // On friends an unverified player is below the floor (member) and never reaches the agent; on public
+            // (floor guest) they do, and their ticket gives a guest's rights.
+            long seen = gm.feed().read(0, 4096, 0).get("next").getAsLong();
+            h.getLevel().getServer().getCommands().performPrefixedCommand(offline.createCommandSourceStack(), "gm op me");
+            check(gm.feed().read(seen, 100, 0).getAsJsonArray("events").toString().indexOf("gate-offline") < 0,
+                    "an unverified player's /gm reached a member-floor agent");
+            gm.policies().set(Policy.parse("preset = \"public\"\nidentity = \"proxy\"\nowners = [\"" + ownerId + "\"]"));
             String offlineTicket = ticket(h, gm, offline, "op me");
             gm.dispatch().invoke(GM, "script", params("{\"code\":\"1 + 1\",\"for\":\"%s\"}", ownerTicket));
             check(refused(gm, "build", params("{\"ops\":[],\"for\":\"%s\"}", offlineTicket)).status() == 403,

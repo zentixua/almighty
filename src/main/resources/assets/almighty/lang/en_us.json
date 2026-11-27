@@ -1,5 +1,6 @@
 {
   "almighty.gm.unavailable": "The game master is not running on this server",
   "almighty.gm.away": "The game master is away right now; your message is kept.",
+  "almighty.gm.not_heard": "The game master here takes requests only from players trusted with what it can do.",
   "almighty.gm.slow_down": "Too many messages to the game master; try again later."
 }

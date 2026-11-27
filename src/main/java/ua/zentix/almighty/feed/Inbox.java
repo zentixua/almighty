@@ -75,6 +75,12 @@ public final class Inbox {
                 body = parts.length > 1 ? parts[1] : "";
             }
         }
+        // Below the agent's trust floor (private: anyone but an owner): the agent would act on it with more than the
+        // player's rights, so the message never reaches it; the server answers.
+        if (!heard(player, agent)) {
+            player.sendSystemMessage(GmMessages.get("almighty.gm.not_heard", lang(player)).copy().withStyle(ChatFormatting.GRAY));
+            return false;
+        }
         // Cooling down after repeated refusals: answered by the server, so the attempts cost no model tokens either.
         if (cooling(player.getUUID()) || !addressing.allow(player.getUUID(), GmConfig.FEED_GM_MESSAGES.get())) {
             player.sendSystemMessage(GmMessages.get("almighty.gm.slow_down", lang(player)).copy().withStyle(ChatFormatting.GRAY));
@@ -87,8 +93,34 @@ public final class Inbox {
         return true;
     }
 
-    /** A public chat line: addressed to the GM or not, always in the feed (as today). */
+    /**
+     * Whether an agent may hear this player: the player holds every right the agent has unasked (its trust floor;
+     * {@link ua.zentix.almighty.policy.Nodes#covers}). A GM bot is the GM's own voice.
+     */
+    public boolean heard(ServerPlayer player, String agent) {
+        if (bot(player)) return true;
+        return ua.zentix.almighty.policy.Nodes.covers(player.getUUID(), ua.zentix.almighty.policy.Nodes.policy().floor(agent));
+    }
+
+    /** Whether every agent may hear this player (text in the shared feed: chat lines, commands, whispers to bots). */
+    public boolean heardByAll(ServerPlayer player) {
+        if (bot(player)) return true;
+        ua.zentix.almighty.policy.Policy policy = ua.zentix.almighty.policy.Nodes.policy();
+        ua.zentix.almighty.policy.Role floor = policy.floor(GmConfig.FEED_DEFAULT_AGENT.get());
+        Agents known = agents.get();
+        if (known != null) for (String name : known.names()) {
+            ua.zentix.almighty.policy.Role f = policy.floor(name);
+            if (f.compareTo(floor) > 0) floor = f;
+        }
+        return ua.zentix.almighty.policy.Nodes.covers(player.getUUID(), floor);
+    }
+
+    /**
+     * A public chat line: addressed to the GM or not, in the feed, unless its author is below an agent's trust floor
+     * (private: anyone but an owner): then no agent reads it (plan 4.2: other players' text is not fed to it).
+     */
     public void chat(ServerPlayer player, JsonObject d, String text) {
+        if (!heardByAll(player)) return;
         // A GM bot's chat is the GM's own voice, never a message to it.
         Addressing.Via via = bot(player) ? null
                 : addressing.chat(player.getUUID(), text, humans().stream().allMatch(p -> p == player));

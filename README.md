@@ -1,12 +1,39 @@
-# Almighty
+<p align="center"><img src="docs/media/icon.png" width="128" alt="Almighty icon"></p>
 
-English · [Русский](README.ru.md)
+<h1 align="center">Almighty</h1>
 
-An AI game master for your Minecraft server.
+<p align="center"><b>An AI game master for your Minecraft server.</b><br>
+Connect Claude Code, Codex (also in the ChatGPT desktop app), Cursor, VS Code or a local model, and it plays game
+master on your NeoForge server: it sees the world, talks to players, builds with undo, runs events and drives its own
+bot players.</p>
 
-Almighty is a server-side NeoForge mod for Minecraft 1.21.1. It opens a local HTTP bridge through which an AI agent,
-such as Claude Code, runs the game on the server without a game client. Players install nothing: the mod has no
-blocks, items or network packets of its own.
+<p align="center">
+Minecraft 1.21.1 · NeoForge 21.1.264+ · server-side only, players install nothing · GPL-3.0<br>
+English · <a href="README.ru.md">Русский</a>
+</p>
+
+<p align="center">
+<img src="docs/media/eye.png" width="32%" alt="What a bot sees">
+<img src="docs/media/map.png" width="32%" alt="The map view">
+<img src="docs/media/look.png" width="32%" alt="A side view of a building">
+</p>
+
+## Quick start
+
+1. Put `almighty-<version>.jar` from the [releases](https://github.com/zentixua/almighty/releases) into the server's
+   `mods/` folder and start it. The console says: `Almighty ready - tell your AI agent: "connect to my Minecraft
+   server at http://127.0.0.1:25650/mcp"`.
+2. Tell your agent exactly that. It adds the server itself.
+3. Your agent opens a sign-in page with a four-digit code. Type `/almighty approve <code>` in the game (as an
+   operator) or in the console. Done: no tokens, no config files, no extra software.
+
+More: [Getting started](docs/guide/getting-started.md) · [Connect your app](docs/guide/connect/README.md) ·
+[Game master mode](docs/guide/game-master.md) · [Hosting](docs/guide/hosting.md) · [Guide](docs/guide/README.md)
+
+> **Security.** A connected agent has operator rights and, with scripts on, runs code on the server machine. The
+> bridge listens only on `127.0.0.1` by default, every app signs in with a code you type on the server, and known
+> server-crashing commands are refused for every agent. Read [Security](docs/guide/security.md) before opening the
+> server to people you do not know.
 
 ## What the agent can do
 

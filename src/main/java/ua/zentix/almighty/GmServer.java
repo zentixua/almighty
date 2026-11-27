@@ -88,6 +88,7 @@ public final class GmServer {
     }
 
     static GmServer start(MinecraftServer server, Path configDir) {
+        ua.zentix.almighty.policy.Identity.mode(ua.zentix.almighty.policy.Identity.Mode.parse(GmConfig.FEED_IDENTITY.get()));
         GmServer gm = new GmServer(server);
         current = gm;
         gm.rules.load();

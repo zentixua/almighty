@@ -40,9 +40,11 @@ public final class GmCommand {
             source.sendFailure(GmMessages.unavailable(player.clientInformation().language()));
             return 0;
         }
-        // false: only the sender, never broadcast to operators. Shown first: it is the "received" acknowledgement.
+        // Refused (over the hourly limit): the server already told the player; no echo.
+        if (!gm.inbox().gm(player, text)) return 0;
+        // false: only the sender, never broadcast to operators. The "received" acknowledgement.
         source.sendSuccess(() -> Component.literal("→ " + GmConfig.NAME.get() + ": " + text)
                 .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC), false);
-        return gm.inbox().gm(player, text) ? 1 : 0;
+        return 1;
     }
 }

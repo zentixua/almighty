@@ -30,11 +30,14 @@ public final class Addressing {
     private final LongSupplier clockMillis;
     private final Map<UUID, Long> talked = new HashMap<>();
     private final Map<UUID, Deque<Long>> sent = new HashMap<>();
+    private final Map<UUID, Deque<Long>> implicit = new HashMap<>();
     private static final Pattern WORD = Pattern.compile("\\p{L}+");
 
     public Addressing(Collection<String> names, Collection<String> typoNames, LongSupplier clockMillis) {
-        this.typoNames = typoNames.stream().map(Addressing::fold).toList();
-        this.names = java.util.stream.Stream.concat(names.stream().map(Addressing::fold), this.typoNames.stream()).toList();
+        // Blank names (a new list entry in a config editor) would match nothing or throw: dropped.
+        this.typoNames = typoNames.stream().map(Addressing::fold).filter(n -> !n.isBlank()).toList();
+        this.names = java.util.stream.Stream.concat(names.stream().map(Addressing::fold).filter(n -> !n.isBlank()),
+                this.typoNames.stream()).toList();
         this.clockMillis = clockMillis;
     }
 
@@ -63,8 +66,29 @@ public final class Addressing {
 
     /** Count one addressed message; false if the player is over {@code perHour} in the last hour (nothing is counted). */
     public boolean allow(UUID player, int perHour) {
+        return count(sent, player, perHour);
+    }
+
+    /** The separate, larger limit for implicit lines (a solo player's chat, an open conversation). */
+    public boolean allowImplicit(UUID player, int perHour) {
+        return count(implicit, player, perHour);
+    }
+
+    /** Forget counters with nothing in the last hour (they cannot affect a limit any more). */
+    public void prune() {
         long now = clockMillis.getAsLong();
-        Deque<Long> times = sent.computeIfAbsent(player, p -> new ArrayDeque<>());
+        sent.values().removeIf(d -> d.isEmpty() || now - d.peekLast() >= HOUR_MS);
+        implicit.values().removeIf(d -> d.isEmpty() || now - d.peekLast() >= HOUR_MS);
+        talked.values().removeIf(t -> now - t >= CONVERSATION_MS);
+    }
+
+    int tracked() {
+        return sent.size() + implicit.size();
+    }
+
+    private boolean count(Map<UUID, Deque<Long>> table, UUID player, int perHour) {
+        long now = clockMillis.getAsLong();
+        Deque<Long> times = table.computeIfAbsent(player, p -> new ArrayDeque<>());
         while (!times.isEmpty() && now - times.peekFirst() >= HOUR_MS) times.pollFirst();
         if (times.size() >= perHour) return false;
         times.addLast(now);

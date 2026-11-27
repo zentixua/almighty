@@ -61,4 +61,15 @@ class AddressingTest {
         now.addAndGet(Addressing.HOUR_MS);
         assertTrue(a.allow(sam, 20), "the window slides");
     }
+
+    @Test
+    void blankNamesIgnoredAndCountersPruned() {
+        Addressing x = new Addressing(List.of("", " "), List.of(""), now::get);
+        assertNull(x.chat(sam, "hello", false), "a blank name neither matches nor throws");
+        x.allow(sam, 20);
+        x.allowImplicit(UUID.randomUUID(), 100);
+        now.addAndGet(Addressing.HOUR_MS);
+        x.prune();
+        assertEquals(0, x.tracked(), "counters of an hour ago are dropped: no growth over uptime");
+    }
 }

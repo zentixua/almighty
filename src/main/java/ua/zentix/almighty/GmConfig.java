@@ -22,6 +22,7 @@ public final class GmConfig {
     public static final ModConfigSpec.IntValue FEED_GM_MESSAGES;
     public static final ModConfigSpec.ConfigValue<String> FEED_DEFAULT_AGENT;
     public static final ModConfigSpec.IntValue FEED_AWAY_SECONDS;
+    public static final ModConfigSpec.ConfigValue<String> FEED_IDENTITY;
     public static final ModConfigSpec.BooleanValue SCRIPTS_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> NAME;
     public static final ModConfigSpec.IntValue BOTS_MAX;
@@ -55,10 +56,10 @@ public final class GmConfig {
                 .defineInRange("lag_ms", 1000, 100, 60_000);
         FEED_NAMES = b.comment("Words that address the game master in public chat (any case; repeated letters are ignored). Empty: the",
                         "game master's name (name below).")
-                .defineListAllowEmpty("names", java.util.List.of(), () -> "", o -> o instanceof String);
+                .defineListAllowEmpty("names", java.util.List.of(), () -> "claude", o -> o instanceof String t && !t.isBlank());
         FEED_TYPO_NAMES = b.comment("Longer names also recognized with one typo (first letter exact). Use only names with no real word one",
                         "letter away.")
-                .defineListAllowEmpty("typo_names", java.util.List.of(), () -> "", o -> o instanceof String);
+                .defineListAllowEmpty("typo_names", java.util.List.of(), () -> "claude", o -> o instanceof String t && !t.isBlank());
         FEED_GM_MESSAGES = b.comment("How many messages one player may address to the game master per hour; more are answered by the server",
                         "(\"slow down\") and never reach the agent.")
                 .defineInRange("gm_messages", 20, 1, 10_000);
@@ -67,6 +68,9 @@ public final class GmConfig {
         FEED_AWAY_SECONDS = b.comment("If the agent has not read a message this many seconds after it arrived, the server tells the player",
                         "the game master is away (the message is kept).")
                 .defineInRange("away_seconds", 30, 5, 3600);
+        FEED_IDENTITY = b.comment("Which player identities count as verified: auto (Mojang and Floodgate accounts), mojang (Mojang only),",
+                        "proxy (behind Velocity modern forwarding; like auto), offline (every name: only for a LAN of people you know).")
+                .define("identity", "auto", o -> o instanceof String t && java.util.Set.of("auto", "mojang", "proxy", "offline").contains(t));
         b.pop();
         b.push("scripts");
         SCRIPTS_ENABLED = b.comment("Game master scripts (Groovy): the script method and rules with a script. Turn off if a rule disrupts the",

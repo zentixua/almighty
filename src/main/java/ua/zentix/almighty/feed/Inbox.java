@@ -40,7 +40,11 @@ public final class Inbox {
     /** Players whose messages reached the GM and await a reply (a reply to everyone answers them). */
     private final Set<UUID> waiting = new HashSet<>();
 
-    private record Awaiting(long seq, Agent agent, UUID player, long deadline) {}
+    private record Awaiting(long seq, String agent, UUID player, long deadline) {}
+
+    /** At most one "away" line per player in this many ms. */
+    static final long AWAY_EVERY_MS = 300_000;
+    private final java.util.Map<UUID, Long> toldAway = new java.util.HashMap<>();
 
     public Inbox(MinecraftServer server, Feed feed, Tickets tickets, Supplier<Agents> agents) {
         this.server = server;
@@ -61,13 +65,13 @@ public final class Inbox {
         String agent = GmConfig.FEED_DEFAULT_AGENT.get();
         String body = text.strip();
         if (body.startsWith("@")) {
+            // "@<agent> …" routes to that agent; "@everyone …" or any other word is just text for the default agent.
             String[] parts = body.substring(1).split("\\s+", 2);
-            agent = parts[0].toLowerCase(java.util.Locale.ROOT);
-            body = parts.length > 1 ? parts[1] : "";
+            String named = parts[0].toLowerCase(java.util.Locale.ROOT);
             Agents known = agents.get();
-            if (known != null && known.get(agent) == null) {
-                player.sendSystemMessage(GmMessages.get("almighty.gm.no_agent", lang(player), agent).copy().withStyle(ChatFormatting.GRAY));
-                return false;
+            if (known == null || known.get(named) != null) {
+                agent = named;
+                body = parts.length > 1 ? parts[1] : "";
             }
         }
         if (!addressing.allow(player.getUUID(), GmConfig.FEED_GM_MESSAGES.get())) {
@@ -83,10 +87,16 @@ public final class Inbox {
 
     /** A public chat line: addressed to the GM or not, always in the feed (as today). */
     public void chat(ServerPlayer player, JsonObject d, String text) {
-        boolean alone = humans().stream().allMatch(p -> p == player);
-        Addressing.Via via = addressing.chat(player.getUUID(), text, alone);
-        if (via != null && !addressing.allow(player.getUUID(), GmConfig.FEED_GM_MESSAGES.get())) {
+        // A GM bot's chat is the GM's own voice, never a message to it.
+        Addressing.Via via = bot(player) ? null
+                : addressing.chat(player.getUUID(), text, humans().stream().allMatch(p -> p == player));
+        if (via == Addressing.Via.NAME && !addressing.allow(player.getUUID(), GmConfig.FEED_GM_MESSAGES.get())) {
             player.sendSystemMessage(GmMessages.get("almighty.gm.slow_down", lang(player)).copy().withStyle(ChatFormatting.GRAY));
+            via = null;
+        } else if ((via == Addressing.Via.ALONE || via == Addressing.Via.CONVERSATION)
+                && !addressing.allowImplicit(player.getUUID(), GmConfig.FEED_GM_MESSAGES.get() * 5)) {
+            // Ordinary chat of a solo player or an open conversation: over its own, larger limit it quietly stops
+            // reaching the GM; the player is never told off for chatting.
             via = null;
         }
         if (via == null) {
@@ -109,29 +119,41 @@ public final class Inbox {
         long seq = feed.add(type, d);
         tickets.mint(id, player.getUUID(), player.getGameProfile().getName(), agentName, seq, verified);
         Agents known = agents.get();
-        if (known == null) return;
+        // Away replies only for messages the player clearly meant for the GM (/gm or its name).
+        if (known == null || (via != Addressing.Via.GM && via != Addressing.Via.NAME)) return;
         Agent agent = known.get(agentName);
         if (agent == null || !agent.present(PRESENT_MS)) away(player);
-        else awaiting.add(new Awaiting(seq, agent, player.getUUID(), System.currentTimeMillis() + GmConfig.FEED_AWAY_SECONDS.get() * 1000L));
+        else awaiting.add(new Awaiting(seq, agentName, player.getUUID(), System.currentTimeMillis() + GmConfig.FEED_AWAY_SECONDS.get() * 1000L));
     }
 
     private void away(ServerPlayer player) {
+        long now = System.currentTimeMillis();
+        Long last = toldAway.get(player.getUUID());
+        if (last != null && now - last < AWAY_EVERY_MS) return;
+        toldAway.put(player.getUUID(), now);
         player.sendSystemMessage(GmMessages.get("almighty.gm.away", lang(player)).copy().withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
     }
 
     /** Once a second: tell players whose message their agent has not read in time that it is away. */
     public void tick(int tickCount) {
+        if (tickCount % 1200 == 0) {
+            addressing.prune();
+            long now = System.currentTimeMillis();
+            toldAway.values().removeIf(t -> now - t >= AWAY_EVERY_MS);
+        }
         if (tickCount % 20 != 0 || awaiting.isEmpty()) return;
         long now = System.currentTimeMillis();
-        Set<UUID> told = new HashSet<>();
+        Agents known = agents.get();
         for (Iterator<Awaiting> it = awaiting.iterator(); it.hasNext(); ) {
             Awaiting a = it.next();
-            if (a.agent.readUpTo() >= a.seq) {
+            // Looked up again: a rotated token makes a new Agent object.
+            Agent agent = known == null ? null : known.get(a.agent);
+            if (agent != null && agent.readUpTo() >= a.seq) {
                 it.remove();
             } else if (now >= a.deadline) {
                 it.remove();
                 ServerPlayer p = server.getPlayerList().getPlayer(a.player);
-                if (p != null && told.add(a.player)) away(p);
+                if (p != null) away(p);
             }
         }
     }
@@ -150,11 +172,12 @@ public final class Inbox {
 
     private List<ServerPlayer> humans() {
         List<ServerPlayer> out = new ArrayList<>();
-        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
-            JsonObject d = FeedListeners.player(p);
-            if (!d.has("bot")) out.add(p);
-        }
+        for (ServerPlayer p : server.getPlayerList().getPlayers()) if (!bot(p)) out.add(p);
         return out;
+    }
+
+    private boolean bot(ServerPlayer p) {
+        return ua.zentix.almighty.GmServer.of(server) instanceof ua.zentix.almighty.GmServer gm && gm.bots().of(p) != null;
     }
 
     static String lang(ServerPlayer p) {

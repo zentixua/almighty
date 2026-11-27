@@ -3,12 +3,13 @@
 #   modrinth.sh page draft          absent project: draft (is_draft, no versions); existing: fields, icon, gallery;
 #                                   only while hidden (draft, rejected, processing)
 #   modrinth.sh page release        same for a reviewed project (not draft or rejected); never creates a project
-#   modrinth.sh jar <jar>           one node's jar: writes the project id, and upload=true unless the jar (by sha1)
-#                                   is already in the project, to GITHUB_OUTPUT
+#   modrinth.sh uploaded <jar>      upload=true to GITHUB_OUTPUT unless the jar (by sha1) is already in the project
 #   modrinth.sh submit              submit a draft (or rejected project) for review: status processing
+# page writes the project id to GITHUB_OUTPUT. A release has one jar per game version and loader; the workflow
+# calls uploaded and uploads once per jar.
 # Fields: docs/store/modrinth.json (missing key leaves the site field untouched; null clears it); page text:
-# docs/store/modrinth.md (English then Russian, assembled by scripts/store.py). Skip icon/gallery files absent
-# from the repository and already-uploaded images
+# docs/store/modrinth.md (English then Russian, from scripts/store.py). Skip icon/gallery files absent from the
+# repository and already-uploaded images
 # (their file sha1 appears in the Modrinth CDN URL): reruns add only new images and remove site images
 # no longer listed.
 # Look up the project by slug using the token: only the team can see a draft.
@@ -165,35 +166,31 @@ page() {
     fi
   done < <(jq -r '.gallery[]?.url // empty' "$tmp/project.json")
 
+  echo "id=$id" >> "$OUT"
   echo "Modrinth: [$slug](https://modrinth.com/mod/$slug), $(jq -r .status "$tmp/project.json"), step $step" >> "$SUMMARY"
 }
 
-# One node's jar: if it is already in the project, do not upload it again (retry after a failure).
-jar() {
-  local file=$1 id sha
-  if [ "$status" = none ]; then
-    echo "::error::Modrinth has no project $slug — run draft first"
-    exit 1
-  fi
+# Version: if the jar is already in the project, do not upload it again (retry after a failure).
+uploaded() {
+  local jar=$1 id sha upload=true
+  [ "$status" != none ] || { echo "::error::Modrinth has no project $slug"; exit 1; }
   id=$(jq -r .id "$tmp/project.json")
-  sha=$(sha1sum "$file" | cut -d' ' -f1)
+  sha=$(sha1sum "$jar" | cut -d' ' -f1)
   call GET "/version_file/$sha?algorithm=sha1" "200 404"
-  local upload=true
   if [ "$code" = 200 ]; then
     if [ "$(jq -r .project_id "$tmp/body")" != "$id" ]; then
-      echo "::error::$(basename "$file") is already uploaded to Modrinth in another project: $(jq -r .project_id "$tmp/body")"
+      echo "::error::$(basename "$jar") is already uploaded to Modrinth in another project: $(jq -r .project_id "$tmp/body")"
       exit 1
     fi
     upload=false
-    echo "::notice::Modrinth: $(basename "$file") is already uploaded — version $(jq -r .version_number "$tmp/body")"
+    echo "::notice::Modrinth: $(basename "$jar") is already uploaded — version $(jq -r .version_number "$tmp/body")"
   fi
-
   { echo "id=$id"; echo "upload=$upload"; } >> "$OUT"
 }
 
 case ${1:-} in
   page) page "${2:?draft or release}" ;;
-  jar) jar "${2:?jar}" ;;
+  uploaded) uploaded "${2:?jar}" ;;
   submit) submit ;;
-  *) echo "usage: $0 page draft|release | jar <jar> | submit" >&2; exit 2 ;;
+  *) echo "usage: $0 page draft|release | uploaded <jar> | submit" >&2; exit 2 ;;
 esac

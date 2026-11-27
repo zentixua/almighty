@@ -1,13 +1,14 @@
 {
   "slug": "almighty",
   "title": "Almighty: AI Game Master",
-  "description": "An AI game master for your Minecraft server: it sees the world, talks to players, builds with undo and plays alongside you, within the rights you set. Server-side; players install nothing.",
+  "description": "An AI game master for your Minecraft server: connect Claude Code, Codex or any MCP app, and it sees the world, talks to players, builds with undo and plays alongside you, within the rights you set. Server-side.",
   "categories": [
     "management",
-    "utility",
+    "utility"
+  ],
+  "additional_categories": [
     "game-mechanics"
   ],
-  "additional_categories": [],
   "client_side": "unsupported",
   "server_side": "required",
   "license_id": "GPL-3.0-only",
@@ -20,8 +21,8 @@
   "gallery": [
     {
       "file": "docs/brand/store/modrinth-cover-1920x1080.png",
-      "title": "Almighty",
-      "description": "An AI game master for your Minecraft server.",
+      "title": "Almighty: an AI game master for your Minecraft server",
+      "description": "Pixel art drawn by a small program, with no image generation.",
       "featured": true
     },
     {

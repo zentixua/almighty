@@ -18,6 +18,7 @@ how much of that it may do, for whom and where. Players install nothing.
   `/gm <text>`, or address it by name in chat ("Claude" by default).
 - **Build:** from a few blocks up to two million, placed a little each tick so the server keeps running.
 - **Run the game:** commands, items for players, and rules that react to events of the game and of other mods.
+- **Learn your modpack:** blocks, items, recipes and commands of every installed mod, read from the running server.
 - **Play alongside you:** bot players that walk, mine, build, open chests, ride horses, camels, pigs, striders and
   boats, and fly Immersive Aircraft planes. A bot uses only what a real player's client can send.
 
@@ -28,16 +29,20 @@ how much of that it may do, for whom and where. Players install nothing.
 ### You decide what it may do
 
 - **A request is not an order:** when a player asks for something, the game master acts with that player's rights,
-  not its own.
-- **Confirmation:** a command that would affect other players waits until the player who asked presses [Allow] in
-  chat. A request beyond their rights can go to an admin instead.
+  never more.
 - **Presets:** a new server starts as `friends`: anyone may talk to the game master, and on its own it acts as a
-  member would. `private` and `public` are one line away.
+  member would. On a public server, use `public`: on its own it acts as a guest would. On `private`, only the owners
+  talk to it.
+- **Confirmation:** something that affects other players and cannot be undone waits until the player who asked
+  presses [Allow] in chat. A request beyond the player's rights is refused, unless you list its kind under
+  `ask_admin`; then an admin can approve it with one click.
 - **Roles:** owner, admin, builder, member and guest. Give one for a while with `/almighty role <player> builder 3h`,
   or let LuckPerms decide through the `almighty.*` permissions.
 - **Zones, quotas and claims:** keep spawn free of building, give the game master an arena, limit blocks and items
   per player per hour. With Open Parties and Claims or FTB Chunks it builds for a player only where that player may
   build.
+- **Limits:** command blocks, spawners, barriers and similar blocks are never built for a player, and items go only
+  to the player who asked.
 - **Ask in words:** tell the game master "deny building at spawn" and it changes the policy for you. Anything it
   proposes on its own that grants more waits for your confirmation.
 
@@ -48,10 +53,23 @@ how much of that it may do, for whom and where. Players install nothing.
   "Done for you … [Undo]" line in chat.
 - **Pause:** `/almighty pause` stops one agent or all of them at once. `/almighty log` shows what they did and what
   was refused.
-- **Bots are marked:** `[bot]` before their names in the tab list and chat. Unless you allow it, a bot cannot take the name
-  or skin of a player your server knows.
+- **Bots are marked:** `[bot]` before their names in the tab list and chat. Unless you allow it, a bot cannot take
+  the name or skin of a player your server knows.
 - **No lag:** game master work gets 3 ms per tick, and a quarter of that while the server lags. Commands known to
   crash or freeze a server are refused for every agent.
+
+## What it is, plainly
+
+Almighty is remote control of your server by an AI agent that you, the owner, run. It opens a small web endpoint on
+the server, by default only on `127.0.0.1`, the server machine itself. An app you choose connects to it and signs in
+with a four-digit code that you type on the server; no app gets in without it, and you can revoke one at any time
+with `/almighty revoke`. The endpoint is reachable from the internet only if you put it there: use your own HTTPS
+reverse proxy or tunnel, or give it your certificate, and never open a plain port.
+
+Running Groovy scripts is for the owner only, on every preset. With scripts on, the owner's agent can run any code
+on the server machine with the rights of the user running the server: files, processes, network. Set
+`scripts.enabled = false` if you do not need them. The server itself goes online only to read a signing-in app's
+public description and to look up a Minecraft skin when the agent asks for a bot with a player's skin.
 
 ## Getting started
 
@@ -87,11 +105,6 @@ bridge between the app and your server.
 **Client or server?** Server only. It starts on dedicated servers; for a single-player or LAN world, set
 `bridge.integrated = true` in `config/almighty-common.toml`.
 
-**Is it safe?** An app you approve as `owner` has an operator's power, and with scripts on it can run code on the
-server machine. The bridge listens only on `127.0.0.1` by default, and every app must be approved with a code typed
-on the server. Read [Security](https://github.com/zentixua/almighty/blob/main/docs/guide/security.md) before you let
-anyone else reach it.
-
 **How demanding is it?** Game master work is capped at 3 ms per tick and backs off while the server lags. Each bot
 costs about as much as a player.
 
@@ -104,11 +117,18 @@ Parties and Claims or FTB Chunks, claims are respected. Blocks the game master c
 running server. To explain more, ship a note at `data/<namespace>/almighty/notes/<name>.md`; see
 [For mod and datapack authors](https://github.com/zentixua/almighty/blob/main/docs/guide/for-mod-authors.md).
 
-## Made with AI
+## AI disclosure
 
-Almighty is designed by ZentixUA and written with Claude Code: the code, the guides and this page are written by an
-AI agent and reviewed by the author. The pixel art is drawn by code. The mod exists so AI agents can run Minecraft
-servers, and it runs on the author's own server, where an AI game master plays with friends.
+- **AI-generated code and text:** Almighty's code, documentation and this page are written by an AI (Anthropic's
+  Claude, through Claude Code) under the author's direction, review and testing. The author, ZentixUA, designs it,
+  decides every behaviour and runs it on a server with friends.
+- **AI functionality:** the mod exists so that an AI agent, chosen and run by the server owner, can act on the
+  server. The mod itself contains no AI model and sends nothing to any AI service.
+- **External system interactions:** the web endpoint described above; the sign-in, which reads the signing-in app's
+  public HTTPS description; Mojang profile lookups for bot skins given as an account name; and code on the server
+  machine through Groovy scripts, on by default for the owner's agent only.
+- **Images:** the icon and banners are pixel art drawn by small programs, with no image generation; the other
+  pictures are rendered by the mod itself on a server.
 
 ## Links
 

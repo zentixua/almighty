@@ -45,10 +45,10 @@ and CurseForge), and the house style of Artem's Incoming, which this page follow
 - **Slug:** `almighty` on Modrinth. On CurseForge `almighty` is taken by a 2023 Fabric modpack named "Almighty"
   (https://www.curseforge.com/minecraft/modpacks/almighty), so use `almighty-game-master` there; the title with
   "AI Game Master" keeps the two apart.
-- **Summary** (188 of 256 characters; the same on both sites):
+- **Summary** (210 of 256 characters; one sentence, as CurseForge prefers; the same on both sites):
 
   ```
-  An AI game master for your Minecraft server: it sees the world, talks to players, builds with undo and plays alongside you, within the rights you set. Server-side; players install nothing.
+  An AI game master for your Minecraft server: connect Claude Code, Codex or any MCP app, and it sees the world, talks to players, builds with undo and plays alongside you, within the rights you set. Server-side.
   ```
 
 ## Classification
@@ -56,7 +56,7 @@ and CurseForge), and the house style of Artem's Incoming, which this page follow
 | Field | Modrinth | CurseForge |
 |---|---|---|
 | Project type | Mod | Mod |
-| Categories | Management, Utility, Game Mechanics | Server Utility (main), Utility & QoL |
+| Categories | Management (primary), Utility; Game Mechanics as an additional (search-only) category | Server Utility (main), Utility & QoL |
 | Loaders | NeoForge, Fabric | NeoForge, Fabric |
 | Game versions | 1.21.1, 26.1.2, 26.3 (per file, see below) | the same |
 | Environment | Client: unsupported. Server: required ("server only") | Server |
@@ -66,7 +66,9 @@ Category ids are checked against `GET https://api.modrinth.com/v2/tag/category` 
 filter (27.11.2026); `scripts/store.py` keeps Modrinth's list. The mod has no blocks, items or network packets, so
 clients never need it.
 
-Files, one per node (`versions/<node>`), each its own Modrinth version `<version>+<node>`:
+Files: a release carries one jar per node (`versions/<node>`), `almighty-<version>+<game version>-<loader>.jar`. The
+publish workflow uploads each as its own file named `Almighty <version> (<game version> <loader>)`, version number
+`<version>+<game version>-<loader>`, Release type, changelog `docs/releases/<version>.md` from the branch it runs on:
 
 | File | Loader | Minecraft | Java | Required | Optional |
 |---|---|---|---|---|---|
@@ -76,24 +78,35 @@ Files, one per node (`versions/<node>`), each its own Modrinth version `<version
 | `almighty-<v>+26.1.2-fabric.jar` | Fabric Loader 0.20.1+ | 26.1.2 | 25 | Fabric API | LuckPerms, Immersive Aircraft, Open Parties and Claims, FTB Chunks |
 | `almighty-<v>+26.3-fabric.jar` | Fabric Loader 0.20.1+ | 26.3 | 25 | Fabric API | LuckPerms, Open Parties and Claims |
 
-The optional list comes from each node's `compat_*` keys (`.github/scripts/release_nodes.sh`). FTB Chunks is not on
+Java and the optional list come from each node's `gradle.properties` (`java_version`, `compat_*` keys; the publish
+workflow's `plan` job). FTB Chunks is not on
 Modrinth, so it is listed on CurseForge only (`ftb-chunks-forge` for NeoForge, `ftb-chunks-fabric` for Fabric).
 
 ## Disclosure
 
-Say it plainly: the code, the documentation and the page texts are written with Claude Code under Artem's direction
-and review; the artwork is pixel art drawn by code from the same sessions (`scripts/brand/`, no image generation);
-the mod exists for AI agents. The page says so in "Made with AI, for AI".
+Artem's decision D5: full disclosure. The page's "AI disclosure" section states the same facts, so CurseForge (which
+has no such field) shows them too. On Modrinth, set by hand in Settings → Disclosures before the first `submit`:
 
-On Modrinth, set by hand in the project's Settings before the first `submit` (the API has no documented field for it):
+- *AI-generated content*: **Code** and **Text** (the code, the documentation and the page texts are written by
+  Claude through Claude Code under the author's direction, review and tests). Not **Assets**: the icon, banners and
+  gallery are code-drawn pixel art and the mod's own renders, with no image generation (`docs/brand/README.md`).
+- *AI functionality*: yes. The mod exists for an external AI agent the owner runs; it contains no model and calls
+  no AI service.
+- *External system interactions*: yes. An HTTP/MCP endpoint (loopback by default), OAuth sign-in (the server fetches
+  the signing-in app's public HTTPS client metadata), Mojang profile lookups for bot skins, and owner-only code
+  execution (Groovy scripts, on by default; `scripts.enabled`) on the server machine.
+- *Telemetry*: none.
 
-- AI-generated code (`ai_content_code`), AI-generated text (`ai_content_text`), AI-generated assets
-  (`ai_content_assets`: the brand art is drawn by code an agent wrote), AI functionality (`ai_functionality`: the mod
-  is a bridge for AI agents).
-- System interactions (`system_interactions`): the bridge opens a network port, and scripts, when on, can reach files
-  and processes as the server's user.
+Modrinth's rule against projects "primarily or entirely a product of AI output" (§6.2.2) may still lead to a
+refusal; D5 accepts that risk.
 
-CurseForge has no such field; the page text covers it.
+**CurseForge review note** (paste into the first file's changelog; plan 10.1): the page says plainly, under "What it
+is, plainly", that this is owner-operated remote control: a code-gated HTTP listener on loopback by default, code
+execution only for the owner's own agent, and a switch to turn scripts off. This is what a static scan of a network
+listener plus Groovy class loading otherwise looks like.
+
+**Third-party distribution** (CurseForge, License tab): **on**, so server installers and Docker images can fetch the
+server-only jar (D5).
 
 ## License and links
 
@@ -119,7 +132,7 @@ as its first image:
 
 | File | Title | Description |
 |---|---|---|
-| `docs/brand/store/modrinth-cover-1920x1080.png` | Almighty | An AI game master for your Minecraft server. |
+| `docs/brand/store/modrinth-cover-1920x1080.png` | Almighty: an AI game master for your Minecraft server | Pixel art drawn by a small program, with no image generation. |
 | `docs/media/eye.png` | Through a bot's eyes | The first-person picture the agent gets from a bot at an airport, drawn by the server, with the crosshair in the middle. |
 | `docs/media/map.png` | Map view | An airport from above, drawn by the server like a vanilla map. |
 | `docs/media/look.png` | Box view | An airport terminal from the side; the checkerboard marks chunks that are not loaded, which the agent never loads by looking. |
@@ -159,23 +172,25 @@ Secrets and variable, in Settings → Secrets and variables → Actions:
 Without `MODRINTH_TOKEN` the workflow skips Modrinth, and without `CURSEFORGE_TOKEN` or `CURSEFORGE_ID` it skips
 CurseForge. The run does not fail because of that.
 
-To start it: Actions → publish → Run workflow, choose the step, enter the version (for example `0.5.0`; empty means
-the latest GitHub release) and press Run workflow. The first job resolves the release and updates the page; then one
-job per node uploads that node's jar (`almighty-<version>+<node>.jar`; a node missing from the release is skipped).
+To start it: Actions → publish → Run workflow, choose the step, enter the version (for example `1.0.0`; empty means
+the latest GitHub release) and press Run workflow. `plan` downloads the release's jars and the changelog, `page`
+updates the Modrinth page, then one job per jar uploads it, one at a time: every file to Modrinth first, then to
+CurseForge.
 
 - `draft`: creates the Modrinth project as a draft, or updates the draft: the fields, the page text from
-  [modrinth.md](modrinth.md), the icon and the gallery from `modrinth.json`, and every node's jar. Only the
+  [modrinth.md](modrinth.md), the icon and the gallery from `modrinth.json`, and the release's jars. Only the
   project members see a draft and its versions. Run it again after changing the images or the texts: it uploads
   only new images and skips jars already uploaded.
-- `submit`: sends the Modrinth draft for review and uploads every jar to CurseForge. On CurseForge the first file
+- `submit`: sends the Modrinth draft for review, then uploads every jar to CurseForge. On CurseForge the first file
   sends a new project for review. Set the Modrinth disclosures by hand before the first `submit`.
 - `release`: for later versions, after Modrinth has approved the project: updates the Modrinth page and uploads
   every jar to Modrinth and CurseForge.
 
 Each file is marked server-only, with its node's loader, game version, Java and dependencies (table above). An image
 removed from `gallery` is removed from the site on the next `draft` or `release`; captions of uploaded images are
-changed on the site. If a node's job fails, use **Re-run failed jobs**: re-running the whole run uploads the other
-nodes' files to CurseForge again (Modrinth skips jars it has).
+changed on the site. A Modrinth failure on any file stops the run before CurseForge gets anything. After a failed
+CurseForge upload, use **Re-run failed jobs** on that run: starting `submit` or `release` again uploads to CurseForge
+again the files it already has (Modrinth skips jars it already has).
 
 The CurseForge description is not uploaded by the workflow (its API takes files only): paste
 [curseforge.md](curseforge.md) into the project's description in the Markdown editor after

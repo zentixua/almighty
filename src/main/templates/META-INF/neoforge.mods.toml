@@ -3,7 +3,8 @@ loaderVersion = "${loader_version_range}"
 license = "${mod_license}"
 issueTrackerURL = "${mod_url}/issues"
 
-# One mixin: respawn a bot with its own class (mixin/PlayerListMixin); no API exists for this.
+# Two mixins, each where no API exists: respawning a bot with its own class (mixin/PlayerListMixin) and the change
+# journal's hook on block writes (mixin/LevelChunkMixin).
 [[mixins]]
 config = "almighty.mixins.json"
 
@@ -15,9 +16,11 @@ displayName = "Almighty"
 authors = "${mod_authors}"
 displayURL = "${mod_url}"
 logoFile = "almighty.png"
+# Server only: a client without the mod still sees the server as compatible.
+displayTest = "IGNORE_SERVER_VERSION"
 # Pixel-art logo: show it with hard pixels, not smoothed.
 logoBlur = false
-description = '''An AI game master for your Minecraft server. A server-side bridge through which an AI agent sees the world, follows events and acts on the server: commands, builds with undo, Groovy scripts, rules on game events and bot players. Local HTTP API with a token, plus an MCP adapter. Clients need nothing.'''
+description = '''An AI game master for your Minecraft server. A server-side bridge through which an AI agent sees the world, follows events and acts on the server: commands, builds with undo, Groovy scripts, rules on game events and bot players. Serves MCP itself, with keyless sign-in. Clients need nothing.'''
 
 [[dependencies.almighty]]
 modId = "neoforge"

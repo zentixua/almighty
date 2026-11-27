@@ -20,7 +20,7 @@
   "accessWidener": "almighty.classtweaker",
   "depends": {
     "fabricloader": ">=${fabric_loader_version}",
-    "fabric-api": "*",
+    "fabric-api": ">=${fabric_api_min}",
     "minecraft": "${minecraft_version_range}",
     "java": ">=25"
   }

@@ -35,6 +35,12 @@ public final class GmCommand {
 
     static int send(CommandSourceStack source, String text) throws CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
+        // Only what the player typed: "execute as <player> run gm …" (from the GM, a function or another player)
+        // would otherwise speak, and mint a ticket, in that player's name.
+        if (source.source != player) {
+            source.sendFailure(Component.literal("/gm speaks only for the player who types it"));
+            return 0;
+        }
         GmServer gm = GmServer.of(source.getServer());
         if (gm == null) {
             source.sendFailure(GmMessages.unavailable(player.clientInformation().language()));

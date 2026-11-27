@@ -39,20 +39,27 @@ public abstract class Job {
     private String error;
 
     private String agent = "internal";
+    private java.util.UUID requester;
 
     protected Job(String kind) {
         this.kind = kind;
     }
 
-    void assign(long id, String agent) {
+    void assign(long id, String agent, java.util.UUID requester) {
         this.id = id;
         this.agent = agent;
+        this.requester = requester;
         submitted();
     }
 
     /** Whether the job changes the world (builds, undos): only such jobs freeze while their agent is paused. */
     public boolean effects() {
         return false;
+    }
+
+    /** The player whose request started the job (its ticket); null when the agent acted on its own. */
+    public java.util.UUID requester() {
+        return requester;
     }
 
     /** The agent whose call submitted the job ({@code internal} for scripts, rules and tests). */

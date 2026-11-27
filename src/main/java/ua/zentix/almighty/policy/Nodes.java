@@ -46,6 +46,12 @@ public final class Nodes {
         online = Map.copyOf(p);
     }
 
+    /** Whether a name is an online player's (from the snapshot; any thread). */
+    public static boolean online(String name) {
+        for (ServerPlayer p : online.values()) if (p.getGameProfile().getName().equalsIgnoreCase(name)) return true;
+        return false;
+    }
+
     /** Extra roles (the ladder of step 9: {@code /almighty role}); none yet. */
     private static volatile java.util.function.Function<UUID, Role> granted = id -> null;
 

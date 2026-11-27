@@ -56,6 +56,18 @@ public final class Dispatch {
         T get() throws E;
     }
 
+    /** Who asked, from the call's ticket ({@code for}); null if none or not valid (the gate then refuses it). */
+    @FunctionalInterface
+    public interface Requester {
+        java.util.UUID of(Caller caller, JsonObject params);
+    }
+
+    private volatile Requester requester = (c, p) -> null;
+
+    public void requester(Requester r) {
+        this.requester = r;
+    }
+
     /** A check on every call before it runs; throws to refuse. */
     @FunctionalInterface
     public interface Check {
@@ -150,9 +162,11 @@ public final class Dispatch {
     }
 
     /** As {@link #invoke(Caller, String, JsonObject)}, with an idempotency key (null: none). */
-    public CompletableFuture<JsonElement> invoke(Caller caller, String name, JsonObject params, String key) throws RpcException {
+    public CompletableFuture<JsonElement> invoke(Caller agentCaller, String name, JsonObject params, String key) throws RpcException {
         long start = System.nanoTime();
         JsonObject p = params == null ? new JsonObject() : params;
+        Caller caller = agentCaller.agent() != null && agentCaller.requester() == null && p.has("for")
+                ? agentCaller.withRequester(requester.of(agentCaller, p)) : agentCaller;
         // Made here (a bridge thread): the call may end on the server thread, which should not serialize a big plan.
         String text = listeners.isEmpty() ? "" : clipped(p, MAX_PARAMS_TEXT);
         CompletableFuture<JsonElement> out;

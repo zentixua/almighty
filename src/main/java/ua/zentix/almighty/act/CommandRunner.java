@@ -113,14 +113,28 @@ public final class CommandRunner {
         }
     }
 
-    /** {@code commands}: a string or list (with or without {@code /}); {@code dimension}, {@code pos}: the source location. */
+    /**
+     * Who a GM command runs as (plan 4.3): the GM itself at a permission level (unasked: the agent's trust floor), or
+     * the requesting player's own command source at their level capped by the agent's ceiling, so vanilla's
+     * permission checks and any permission mod decide exactly as if the player had typed it.
+     */
+    public record As(int level, net.minecraft.server.level.ServerPlayer player) {
+        public static final As GM = new As(4, null);
+    }
+
+    /** As the GM at level 4: scripts, rules, in-process calls. */
     public static JsonElement commands(MinecraftServer server, Args args) throws RpcException {
+        return commands(server, args, As.GM);
+    }
+
+    /** {@code commands}: a string or list (with or without {@code /}); {@code dimension}, {@code pos}: the source location. */
+    public static JsonElement commands(MinecraftServer server, Args args, As as) throws RpcException {
         List<String> commands = args.strings("commands");
         if (commands.isEmpty() || commands.size() > MAX_COMMANDS) {
             throw RpcException.badRequest("commands: 1 to " + MAX_COMMANDS + " commands");
         }
         ServerLevel level = Dims.level(server, args);
-        return run(server, level, origin(level, args), null, commands, false);
+        return run(server, level, origin(level, args), null, commands, false, as);
     }
 
     /**
@@ -129,6 +143,10 @@ public final class CommandRunner {
      * {@code quiet} logs at DEBUG instead of INFO: a rule may call a command every tick.
      */
     public static JsonArray run(MinecraftServer server, ServerLevel level, Vec3 pos, Entity as, List<String> commands, boolean quiet) {
+        return run(server, level, pos, as, commands, quiet, As.GM);
+    }
+
+    private static JsonArray run(MinecraftServer server, ServerLevel level, Vec3 pos, Entity as, List<String> commands, boolean quiet, As who) {
         JsonArray results = new JsonArray();
         for (String command : commands) {
             // Scripts and rules reach here without the bridge's per-call check: the deny list applies to every GM command.
@@ -141,7 +159,7 @@ public final class CommandRunner {
             String text = command.startsWith("/") ? command.substring(1) : command;
             if (quiet) LOG.debug("GM: /{}", text);
             else LOG.info("GM: /{}", text);
-            CommandSourceStack source = source(server, level, pos, capture);
+            CommandSourceStack source = source(server, level, pos, capture, who);
             if (as != null && as.level() instanceof ServerLevel own) {
                 source = source.withEntity(as).withLevel(own).withPosition(as.position()).withRotation(as.getRotationVector());
             }
@@ -157,13 +175,17 @@ public final class CommandRunner {
      * or an SNBT string for {@code $(...)} macros.
      */
     public static JsonElement function(MinecraftServer server, Args args) throws RpcException {
+        return function(server, args, As.GM);
+    }
+
+    public static JsonElement function(MinecraftServer server, Args args, As who) throws RpcException {
         List<String> lines = args.strings("lines");
         if (lines.size() > MAX_LINES) throw RpcException.badRequest("lines: at most " + MAX_LINES + " lines");
         CompoundTag macro = args.has("args") ? macroArgs(args.raw().get("args")) : null;
         ServerLevel level = Dims.level(server, args);
         Vec3 pos = origin(level, args);
         Capture capture = new Capture();
-        CommandSourceStack source = source(server, level, pos, capture);
+        CommandSourceStack source = source(server, level, pos, capture, who);
         ResourceLocation id = ResourceLocation.fromNamespaceAndPath(Almighty.ID, "inline");
         CommandFunction<CommandSourceStack> function;
         InstantiatedFunction<CommandSourceStack> instance;
@@ -205,9 +227,13 @@ public final class CommandRunner {
         }
     }
 
-    private static CommandSourceStack source(MinecraftServer server, ServerLevel level, Vec3 pos, CommandSource capture) {
+    private static CommandSourceStack source(MinecraftServer server, ServerLevel level, Vec3 pos, CommandSource capture, As who) {
+        if (who.player() != null) {
+            // The requester's own source: their entity, position and name, at their level (output still captured).
+            return who.player().createCommandSourceStack().withSource(capture).withPermission(who.level());
+        }
         String name = GmConfig.NAME.get();
-        return new CommandSourceStack(capture, pos, Vec2.ZERO, level, 4, name, Component.literal(name), server, null);
+        return new CommandSourceStack(capture, pos, Vec2.ZERO, level, who.level(), name, Component.literal(name), server, null);
     }
 
     private static Vec3 origin(ServerLevel level, Args args) throws RpcException {

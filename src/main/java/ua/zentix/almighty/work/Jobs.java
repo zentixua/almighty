@@ -39,7 +39,8 @@ public final class Jobs {
     }
 
     public <J extends Job> J submit(J job) {
-        job.assign(nextId++, ua.zentix.almighty.bridge.Dispatch.current().name());
+        ua.zentix.almighty.bridge.Caller by = ua.zentix.almighty.bridge.Dispatch.current();
+        job.assign(nextId++, by.name(), by.requester());
         active.add(job);
         return job;
     }

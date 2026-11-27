@@ -43,6 +43,14 @@ public final class AlmightyCommand {
         // Owner subcommands need permission level 4 (the console, level-4 operators); whoami is for everyone.
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("almighty");
         root.then(Commands.literal("whoami").executes(c -> whoami(c.getSource())));
+        // Answers to confirmations: anyone may type them; the server checks who may decide (plan 4.8).
+        root.then(Commands.literal("confirm").then(Commands.argument("nonce", StringArgumentType.word())
+                .executes(c -> decide(c.getSource(), StringArgumentType.getString(c, "nonce"), true))));
+        root.then(Commands.literal("deny").then(Commands.argument("nonce", StringArgumentType.word())
+                .executes(c -> decide(c.getSource(), StringArgumentType.getString(c, "nonce"), false))));
+        root.then(Commands.literal("inbox").executes(c -> inbox(c.getSource())));
+        root.then(Commands.literal("undo").then(Commands.argument("job", IntegerArgumentType.integer(1))
+                .executes(c -> undo(c.getSource(), IntegerArgumentType.getInteger(c, "job")))));
         root.then(owner("agents").executes(c -> agents(c.getSource())));
         root.then(owner("agent")
                 .then(Commands.literal("add").then(Commands.argument("name", StringArgumentType.word())
@@ -192,6 +200,61 @@ public final class AlmightyCommand {
             return why == null ? 1 : 0;
         } catch (IOException e) {
             source.sendFailure(Component.literal("Could not read agent tokens: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int decide(CommandSourceStack source, String nonce, boolean allow) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        net.minecraft.server.level.ServerPlayer by = source.getEntity() instanceof net.minecraft.server.level.ServerPlayer p ? p : null;
+        if (by == null && !source.hasPermission(4)) {
+            source.sendFailure(Component.literal("Only a player or the console can answer"));
+            return 0;
+        }
+        String answer = gm.decisions().decide(nonce, by, allow);
+        gm.audit().owner(source.getTextName(), allow ? "confirm" : "deny", answer);
+        source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line(answer), false);
+        return answer.startsWith("Allowed") || answer.startsWith("Denied") ? 1 : 0;
+    }
+
+    /** Admin requests the viewer may decide (the console sees all). */
+    private static int inbox(CommandSourceStack source) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        java.util.UUID id = source.getEntity() instanceof net.minecraft.server.level.ServerPlayer p ? p.getUUID() : null;
+        int n = 0;
+        for (var p : gm.decisions().confirmations().waitingForAdmins()) {
+            if (id == null ? !source.hasPermission(4) : !(ua.zentix.almighty.policy.Identity.verified(id) && ua.zentix.almighty.policy.Nodes.holds(id, p.node))) continue;
+            Component line = ua.zentix.almighty.policy.Prompts.inboxLine(p);
+            source.sendSuccess(() -> line, false);
+            n++;
+        }
+        if (n == 0) source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("No requests wait for you"), false);
+        return n;
+    }
+
+    /** Undo a build: the player it was built for, or the console / a level-4 operator. */
+    private static int undo(CommandSourceStack source, int id) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        var job = gm.jobs().get(id);
+        if (!(job instanceof ua.zentix.almighty.building.BuildJob build)) {
+            source.sendFailure(Component.literal("No build #" + id + " (the history keeps the last 50 jobs)"));
+            return 0;
+        }
+        boolean mine = source.getEntity() instanceof net.minecraft.server.level.ServerPlayer p && p.getUUID().equals(job.requester());
+        if (!mine && !source.hasPermission(4)) {
+            source.sendFailure(Component.literal("Build #" + id + " was not made for you"));
+            return 0;
+        }
+        try {
+            var undo = gm.jobs().submit(ua.zentix.almighty.building.BuildJob.undo(build, 2400));
+            gm.audit().owner(source.getTextName(), "undo", "build #" + id + " → job #" + undo.id());
+            source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("Undoing build #" + id + " (job #" + undo.id() + ")"), false);
+            return 1;
+        } catch (ua.zentix.almighty.bridge.RpcException e) {
+            source.sendFailure(Component.literal(e.getMessage()));
             return 0;
         }
     }

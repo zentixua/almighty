@@ -71,7 +71,9 @@ public final class GmGateGameTests {
             gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\nowners = [\"" + ownerId + "\"]"));
             RpcException e = refused(gm, "script", params("{\"code\":\"1 + 1\"}"));
             check(e.status() == 403 && e.code().equals("policy") && e.details().has("allowed"), "unasked script on friends: " + e.getMessage());
-            check(refused(gm, "command", params("{\"commands\":[\"op gate-offline\"]}")).status() == 403, "unasked command");
+            // Unasked, a command runs at the floor's permission level (member: 0), so vanilla refuses /op itself.
+            JsonArray op = gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"op gate-offline\"]}")).join().getAsJsonArray();
+            check(!op.get(0).getAsJsonObject().get("ok").getAsBoolean(), "unasked /op at the member floor: " + op);
             // Tickets from the players' own /gm messages.
             String ownerTicket = ticket(h, gm, owner, "run a script");
             String offlineTicket = ticket(h, gm, offline, "op me");

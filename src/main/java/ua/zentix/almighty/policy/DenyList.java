@@ -29,6 +29,8 @@ public final class DenyList {
                     "stops or breaks the server; the owner can run it in the console"),
             new Rule(Pattern.compile("^forceload\\s+add\\b", Pattern.CASE_INSENSITIVE),
                     "forceload add loads chunks synchronously and for good: for a distant place use area.prepare"),
+            new Rule(Pattern.compile("^gm\\b", Pattern.CASE_INSENSITIVE),
+                    "/gm is a player's own message to the game master; the GM never speaks in a player's name"),
             new Rule(Pattern.compile("^almighty\\b", Pattern.CASE_INSENSITIVE),
                     "agents, tokens and the policy are the owner's: the owner runs /almighty in the console or in game"));
     private static final Pattern TICK_RATE = Pattern.compile("^tick\\s+rate\\s+(\\d+(?:\\.\\d+)?)", Pattern.CASE_INSENSITIVE);
@@ -36,7 +38,8 @@ public final class DenyList {
             Pattern.CASE_INSENSITIVE);
     private static final Pattern NUMBER = Pattern.compile("(?<![\\w.~^])-?\\d+(?:\\.\\d+)?");
     private static final Pattern RUN = Pattern.compile("\\brun\\s+");
-    private static final Pattern EXECUTE = Pattern.compile("^execute\\b", Pattern.CASE_INSENSITIVE);
+    /** Commands that run another command after {@code run}: {@code execute … run}, {@code return run}. */
+    private static final Pattern EXECUTE = Pattern.compile("^(execute|return)\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern MACRO = Pattern.compile("\\$\\((\\w+)\\)");
 
     private static final List<Rule> SCRIPT = List.of(
@@ -97,7 +100,8 @@ public final class DenyList {
                     for (JsonElement a : p.getAsJsonArray("actions")) {
                         if (a instanceof JsonObject o && o.get("chat") != null && o.get("chat").isJsonPrimitive()) {
                             String chat = o.get("chat").getAsString();
-                            if (chat.startsWith("/")) {
+                            // A bot's own /gm is its own message (rehearsals), not a player's: allowed.
+                            if (chat.startsWith("/") && !chat.matches("(?i)^/gm\\b.*")) {
                                 String why = command(chat);
                                 if (why != null) return why;
                             }
@@ -138,7 +142,7 @@ public final class DenyList {
     }
 
     /** The command and, for {@code execute … run} chains, each command after a {@code run} (chat text is not split). */
-    static List<String> segments(String command) {
+    public static List<String> segments(String command) {
         String c = strip(command);
         List<String> out = new ArrayList<>();
         out.add(c);
@@ -154,7 +158,8 @@ public final class DenyList {
         return s;
     }
 
-    private static String expand(String line, JsonObject args) {
+    /** A function line with its {@code $(name)} macro arguments filled in. */
+    public static String expand(String line, JsonObject args) {
         Matcher m = MACRO.matcher(line);
         StringBuilder out = new StringBuilder();
         while (m.find()) {

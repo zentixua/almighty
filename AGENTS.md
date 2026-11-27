@@ -135,6 +135,31 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   In-process calls (`Caller.INTERNAL`: GameTest, the server) are not gated. Preset `private` with `gm` at ceiling
   owner is today's behaviour; unlisted agents default to ceiling admin. `/almighty whoami` (anyone) shows UUID,
   verification and role.
+- Origins and confirmations (step 6): `command`/`function` run as `GmServer.commandAs(rights)`: in-process level 4;
+  unasked at the floor's level (`Role.commandLevel`: owner 4, admin 3, builder 2, else 0); for a request as that
+  player's own source (`withSource` keeps output captured and the feed quiet) at max(op level, role level) capped by
+  the ceiling; the requester must be online. So node `command` is guest and vanilla's `requires` decide.
+  `Caller.requester` (from a valid `for`, set in `Dispatch`) travels with the call: jobs record `requester`, and a
+  receipt ("[Almighty] Done for you: … [Undo]") reaches that player after any call with effects; `/almighty undo
+  <job>` works for that player or level 4. `policy/Confirmations` + `Decisions` + `Prompts`: a request's command
+  waits for that player's confirmation unless every command in it is in the allowlist `SAFE` (time, weather, say,
+  msg, setblock, fill, clone, place …) or `SELF_ONLY` (tp, give, effect, clear, gamemode, kill …) aimed only at
+  the requester (`@s`, their name or UUID; no other selector, name, UUID or `execute on`); everything else (any
+  mod command, data, summon, function, schedule, ban …) is confirmed. Function macros are expanded before the
+  check and in the prompt. Also any kind in `[safety] confirm_first`. → 202 `pending` with an id; the server asks
+  that player (the exact call, `[Allow]`/`[Deny]` and the typed `/almighty confirm <nonce>`; never clipped: a call
+  too long to show is refused); only that player may answer; at most 3 waiting per player and 20 per agent;
+  2 minutes. A request above the player's rights whose kind is in `[safety] ask_admin` → 202 for an admin (for
+  commands: when the player's own source cannot parse it; the decider needs `almighty.approve`): merged with an
+  identical waiting one, 1 per player per 10 minutes, 20 per hour, one digest line at most every 10 minutes,
+  `/almighty inbox`; it runs as the requester with the admin's rights for that one call (`Pending.decider`; no
+  ticket is minted). Owners' requests apply at once. Below owner, commands may not carry
+  `run_command`/`suggest_command` or `[Almighty]` (forged prompts via tellraw, signs, books). `/gm` and
+  `/almighty confirm|deny` accept only the player's own typing (`source.source == player`); `/gm` is on the deny
+  list for GM commands (a GM bot's own `/gm` chat is allowed); `/almighty …` stays out of the feed. The agent
+  polls `pending {id, wait?}`; every state change is a `confirmation` feed event. 5 policy refusals of one player's
+  requests in 10 minutes cool
+  their `/gm` down for 10 minutes (`Inbox.refused`).
 - `policy/DenyList`: built-in deny list (from `crash_guard.py`), refused for every agent and harness: `stop`, `reload`,
   `save-off`, `save-all flush`, `forceload add`, `tick rate` > 100, `almighty …` (agents and policy are the owner's),
   far commands, builds, areas and bot spawns at Sable plot coordinates (|x| or |z| ≥ 20 000 000), bot chat commands;
@@ -328,6 +353,10 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 ## Checks
 
+- Confirmations: `ConfirmationsTest` (what is irreversible for others, only the requester decides, first answer,
+  expiry, admin merge and limits); GameTest `GmConfirmGameTests` (a request's command runs at the player's level,
+  unasked at the floor's; an irreversible request waits for its requester; ask_admin only for listed kinds, then
+  with the admin's rights).
 - Gate: `PolicyTest` (template = today's behaviour, floors, UUID owners, named mistakes, bad file keeps the last
   good one), `GateTest` (every method has a node, private allows all, no ticket never exceeds the floor, tickets
   narrow to the requester and the ceiling, parameter-dependent nodes); GameTest `GmGateGameTests` (live method

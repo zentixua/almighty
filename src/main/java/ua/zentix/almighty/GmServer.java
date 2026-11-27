@@ -17,6 +17,8 @@ import ua.zentix.almighty.audit.Pause;
 import ua.zentix.almighty.feed.Feed;
 import ua.zentix.almighty.feed.Inbox;
 import ua.zentix.almighty.mcp.Mcp;
+import ua.zentix.almighty.policy.Confirmations;
+import ua.zentix.almighty.policy.Decisions;
 import ua.zentix.almighty.policy.Gate;
 import ua.zentix.almighty.policy.Nodes;
 import ua.zentix.almighty.policy.Policies;
@@ -70,6 +72,7 @@ public final class GmServer {
     private final Pause pause = new Pause();
     private final Policies policies;
     private final Gate gate;
+    private final Decisions decisions;
     private static final java.util.Set<String> PAUSE_ALLOWS = java.util.Set.of("cancel", "area.release", "rule.remove", "bot.remove");
     private final Audit audit;
     private Bridge bridge;
@@ -101,6 +104,9 @@ public final class GmServer {
         this.policies = new Policies(GmServer.configDir == null ? null : GmServer.configDir.resolve("policy.toml"));
         // Bot names from a thread-safe set the bots keep (the gate runs on bridge threads).
         this.gate = new Gate(policies, tickets, Nodes::holds, bots::isBotName);
+        this.decisions = new Decisions(server, new Confirmations(System::currentTimeMillis), tickets, feed);
+        gate.confirmations(decisions.confirmations(), decisions::prompt);
+        Confirmations.players(name -> Nodes.online(name));
         this.dispatch = new Dispatch(Api.methods(this), List.of(
                 (caller, method, params) -> DenyList.check(method, params),
                 (caller, method, params) -> {
@@ -111,8 +117,37 @@ public final class GmServer {
                 },
                 gate),
                 Api::readOnly);
+        decisions.dispatch(dispatch);
+        dispatch.requester((caller, params) -> {
+            try {
+                return params.get("for").isJsonPrimitive() ? tickets.check(params.get("for").getAsString(), caller.name()).player() : null;
+            } catch (RpcException e) {
+                return null;
+            }
+        });
         dispatch.listen((caller, method, params, text, result, error, nanos) ->
                 audit.ended(caller, method, params, text, result, error, nanos, Api.readOnly(method, params)));
+        // Receipts: a player whose request changed something hears it at once, with undo for builds (plan 4.2).
+        dispatch.listen((caller, method, params, text, result, error, nanos) -> {
+            if (caller.requester() == null) return;
+            if (error instanceof RpcException r && r.status() == 403 && r.code().equals("policy")) {
+                server.execute(() -> inbox.refused(caller.requester()));
+                return;
+            }
+            if (error != null || Api.readOnly(method, params)) return;
+            // Commands report per command; a receipt only for what actually happened.
+            if (result instanceof com.google.gson.JsonArray results) {
+                for (var r : results) if (r instanceof JsonObject o && o.has("ok") && !o.get("ok").getAsBoolean()) return;
+            }
+            Long job = result instanceof JsonObject o && o.has("kind") && o.get("id") instanceof com.google.gson.JsonPrimitive id
+                    && id.isNumber() && o.get("kind").getAsString().equals("build") ? id.getAsLong() : null;
+            String what = method.equals("command") || method.equals("function") ? Confirmations.render(method, params)
+                    : job != null ? "build #" + job : method;
+            server.execute(() -> {
+                net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(caller.requester());
+                if (p != null) p.sendSystemMessage(ua.zentix.almighty.policy.Prompts.receipt(what, job));
+            });
+        });
     }
 
     /** This server's game master; null if the server has not started yet or has already stopped. */
@@ -214,6 +249,7 @@ public final class GmServer {
         usedThisTick += System.nanoTime() - jobsStart;
         areas.tick(server.getTickCount());
         inbox.tick(server.getTickCount());
+        decisions.tick(server.getTickCount());
         if (server.getTickCount() % 20 == 0) Nodes.refresh(server);
     }
 
@@ -291,6 +327,65 @@ public final class GmServer {
 
     public Bots bots() {
         return bots;
+    }
+
+    public Decisions decisions() {
+        return decisions;
+    }
+
+    /**
+     * Who a command runs as (plan 4.3): in-process at level 4; unasked at the trust floor's level; for a request, as
+     * that player (their entity, at the higher of their op level and their role's level, capped by the ceiling).
+     */
+    public ua.zentix.almighty.act.CommandRunner.As commandAs(Gate.Rights r) throws RpcException {
+        if (r == null) return ua.zentix.almighty.act.CommandRunner.As.GM;
+        if (r.ticket() == null) return new ua.zentix.almighty.act.CommandRunner.As(r.floor().commandLevel(), null);
+        Confirmations.Pending approved = Confirmations.running();
+        if (approved != null && approved.kind == Confirmations.Kind.ADMIN && approved.decider != null) {
+            // An admin approved this one command: it runs as the player who asked, with the admin's level.
+            net.minecraft.server.level.ServerPlayer asker = server.getPlayerList().getPlayer(approved.requester);
+            net.minecraft.server.level.ServerPlayer admin = server.getPlayerList().getPlayer(approved.decider);
+            if (asker == null) throw RpcException.conflict(approved.requesterName + " is offline");
+            int level = Math.max(admin == null ? 0 : server.getProfilePermissions(admin.getGameProfile()), Nodes.role(approved.decider).commandLevel());
+            return new ua.zentix.almighty.act.CommandRunner.As(Math.min(level, r.ceiling().commandLevel()), asker);
+        }
+        net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(r.ticket().player());
+        if (p == null) throw RpcException.conflict(r.ticket().name() + " is offline: a request runs as its player, who must be online");
+        int level = Math.max(server.getProfilePermissions(p.getGameProfile()), Nodes.role(p.getUUID()).commandLevel());
+        return new ua.zentix.almighty.act.CommandRunner.As(Math.min(level, r.ceiling().commandLevel()), p);
+    }
+
+    /**
+     * {@code ask_admin} for commands (server thread): a request whose command is listed there and which the player's
+     * own source cannot run (vanilla refuses to parse it at their level) waits for an admin holding
+     * {@code almighty.approve}, instead of failing. Everything else runs, or fails, as the player.
+     */
+    public void askAdmin(ua.zentix.almighty.bridge.Caller caller, Gate.Rights r, String method, JsonObject params,
+                         ua.zentix.almighty.act.CommandRunner.As as) throws RpcException {
+        if (r == null || r.ticket() == null || as.player() == null || Confirmations.running() != null) return;
+        java.util.Set<String> listed = policies.current().safety().askAdmin();
+        if (listed.isEmpty()) return;
+        var dispatcher = server.getCommands().getDispatcher();
+        net.minecraft.commands.CommandSourceStack mine = as.player().createCommandSourceStack().withPermission(as.level());
+        for (String c : Confirmations.commands(method, params)) {
+            String text = c.strip().replaceFirst("^[/$]+", "");
+            boolean asked = false;
+            for (String k : Confirmations.kinds("command", commandParams(text))) if (listed.contains(k)) asked = true;
+            if (!asked) continue;
+            var parsed = dispatcher.parse(text, mine);
+            if (parsed.getReader().canRead() || parsed.getContext().getCommand() == null) {
+                Confirmations.Pending p = decisions.confirmations().ask(Confirmations.Kind.ADMIN, caller, method, params, null,
+                        ua.zentix.almighty.policy.Node.APPROVE, r.ticket().player(), r.ticket().name());
+                if (p.count() == 1) decisions.prompt(p);
+                throw Confirmations.waiting(p, "an admin");
+            }
+        }
+    }
+
+    private static JsonObject commandParams(String command) {
+        JsonObject o = new JsonObject();
+        o.addProperty("commands", command);
+        return o;
     }
 
     public Policies policies() {

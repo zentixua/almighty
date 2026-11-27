@@ -25,7 +25,7 @@ import java.util.Set;
  */
 public final class FeedListeners {
     /** Players' private messages to each other are hidden from the GM; {@code /gm} has its own event ({@link GmCommand}). */
-    private static final Set<String> PRIVATE = Set.of("msg", "tell", "w", "teammsg", "tm", GmCommand.NAME);
+    private static final Set<String> PRIVATE = Set.of("msg", "tell", "w", "teammsg", "tm", GmCommand.NAME, "almighty");
 
     private FeedListeners() {}
 

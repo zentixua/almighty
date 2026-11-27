@@ -60,6 +60,17 @@ written for `vcsVersion` (`1.21.1-neoforge`); switch the active node with Stonec
 tasks and switch back to `vcsVersion` before committing (`"Reset active project"`). Gradle runs on Java 25 (Stonecutter
 0.10 needs it, Gradle 9.9); nodes compile with their own toolchain. Jars: `almighty-<mod_version>+<version>-<loader>.jar`.
 
+Game-version differences live in `platform/Mc` (vanilla across versions: profiles, permission sets, heights,
+spawn, NBT, chunk positions, text events, interaction results, registries), in plain renames in `stonecutter.gradle`
+(`ResourceLocation`→`Identifier` …; only renames whose new name never appears in the 1.21.1 source, as a replacement
+also runs in reverse) and in a few local conditions (tickets in `world/Areas`, bot packets, `BuildJob` placement).
+Compat modules exist per node: `compat_<mod>` in the node's properties sets the constant (`//? if ia`) and Stonecutter
+leaves `compat/<mod>/` out where the mod has no build. GameTests: on 26.x the same test classes are registered by
+`gametest/v26/GmTestRegistry` (Stonecutter points the 1.21.1 annotation imports at look-alikes there; one
+`TEST_FUNCTION` and one `FunctionGameTestInstance` per method, one empty environment per batch, the origin moved one
+block down so `absolutePos` means what it means on 1.21.1); version differences of test setup are in `gametest/Gt`.
+New test classes go into the registrar's list.
+
 CI (GitHub Actions) checks every PR and push to `main`: GM toolkit once, then build, unit tests and GameTest for every
 node in parallel (`versions/*`); each node's jar is the `almighty-<node>` artifact; the required check is "Сборка и
 тесты", which waits for all of them. Release: bump `mod_version` (`gradle.properties`) and both `plugin/almighty` manifests (CI checks), write `docs/releases/<version>.md`, merge
@@ -367,6 +378,14 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
 
 ## Pitfalls
 
+- 26.x (found by the GameTests): a player's own command source is not the player (`ServerPlayer.commandSource()`):
+  "typed by the player" checks use `Mc.typedBy`. The server ignores a player's input, attacks and use and keeps them
+  invulnerable until the client reports its level loaded: bots send `ServerboundPlayerLoadedPacket` once their chunks
+  are ready (`Bot.reportLoaded`), mock players call `markClientLoaded()`. Player data is loaded in the configuration
+  phase, which bots skip: `Bots.place` loads it itself (`Platform.playerLoaded` fires the loader's event). Ticket
+  types are registry entries: ours (`Areas.TICKET`, loading only, not saved, no timeout) is registered by the
+  loader. Boats are per-wood entities (`driven_by_rider` lists ids as optional entries). Unit tests of 26.x nodes run
+  under moddev's `unitTest` (game classes need FML at class init).
 - Load chunks only with vanilla radius-0 region tickets (`ServerChunkCache.addRegionTicket`, level 33 = full chunk
   without ticking; `TickingTracker` level 33 does not tick either). Radius above 0 starts ticking immediately,
   before neighbors are ready; NeoForge `TicketController.forceChunk` and `level.getChunk` load synchronously.

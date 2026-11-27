@@ -1,7 +1,7 @@
 # Mission almighty-agent: report
 
 Mission: almighty-agent (plan 1.0 steps 12, 12b, 13, 14, 15: connect any agent, knowledge, skills plugin, docs).
-Tracking PR: #38. Cloud session, 27.11.2026. Every PR: CI green, one review round by a fresh subagent that did not
+Tracking PR: #38. Cloud session, 27.11.2026, about 2 h of work, no GPU. Every PR: CI green, one review round by a fresh subagent that did not
 write the code (from the diff and surrounding code), fixes, then merged by this mission.
 
 ## What was built
@@ -12,7 +12,7 @@ write the code (from the diff and surrounding code), fixes, then merged by this 
 | #42 | **GM skills plugin** (only in this repo, D6): 5 skills shipped in the jar as notes and exported to `plugin/almighty/skills/*/SKILL.md`; one directory in both formats (Agent Plugins `plugin.json`, Claude `.claude-plugin/plugin.json`); marketplaces `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`; CI checks export and versions. | clean; minor fixed |
 | #44 | **MCP served by the mod** at `/mcp`, both protocol eras on one stateless endpoint (legacy `initialize`; modern 2026-07-28 `server/discover`, header checks, version errors), the 14 tools defined once in `tools.json` and routed in Java with the adapter's checks, annotations, short instructions (core rule in the first 512 chars), `?profile=compact`, `?images=false`. Python adapter optional: CLI + stdio relay, no MCP SDK. | 3 blocking found, fixed |
 | #49 | **Keyless sign-in.** The mod as a minimal OAuth 2.1 server (PKCE S256, DCR + Client ID Metadata Documents, RFC 9207 `iss`, refresh rotation); the login page shows a **four-digit code**, the owner types `/almighty approve <code>` in game or console; the app becomes an ordinary agent. `/almighty connect` (address, one line per app, secret-free links), console hint at start, plugin server entry. | 4 blocking (security) found, fixed |
-| TLS PR | **HTTPS from the owner's certificate** (`bridge.tls_cert`/`tls_key`), `bridge.integrated` for single-player/LAN (loopback only). | see the PR |
+| #53 | **HTTPS from the owner's certificate** (`bridge.tls_cert`/`tls_key`, key/cert mismatch refused at start), `bridge.integrated` for single-player/LAN (loopback only), and **the owner's own app**: `/almighty approve <code> <name> owner` gives it ceiling `owner` in `policy.toml` (core's gate otherwise gives signed-in apps `admin`, which cannot run commands or scripts). | 1 blocking (security) found, fixed |
 | #50 | **Docs** en + ru: README first screen (store layout, current icon as placeholder), `docs/guide/` (getting started, one connect page per app, game master mode, hosting, security, mod authors, troubleshooting), generated `tools.md` with a CI drift check; GM kit retirement notes. | 3 blocking found, fixed |
 
 ## Done criteria and evidence
@@ -22,6 +22,10 @@ write the code (from the diff and surrounding code), fixes, then merged by this 
   sequence) and Codex CLI 0.172.0 (`initialize` 2025-06-18); `McpEndpointTest` over real HTTP. On a trial server
   Claude Code stayed modern end to end (`server/discover` → `tools/list` → `tools/call` with an image it described);
   Codex `initialize`/`tools/list` 200.
+- **Under core's gate (steps 1-5 merged meanwhile):** an app approved with `owner` ran a command end to end
+  (`claude -p` → "22334 ticks"); without `owner` the gate refused it (`almighty.command ... acts as admin`).
+- **TLS:** HTTPS on the trial server with a certificate; `claude -p` with `NODE_EXTRA_CA_CERTS` read the status (the
+  plan had this unverified); `TlsTest`.
 - **Keyless sign-in, approve in game or console:** real logins on the trial server, browser played by curl, code typed
   into the server console: Codex ("Successfully logged in", CIMD), Claude Code ("Authenticated", CIMD; then
   `claude -p` with no token anywhere ran `status` and a `say`), opencode ("Authentication successful", DCR). Unit

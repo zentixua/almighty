@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/media/icon.png" width="128" alt="Almighty icon"></p>
+<p align="center"><img src="docs/brand/banner/readme-banner-1280x320.png" alt="Almighty"></p>
 
 <h1 align="center">Almighty</h1>
 

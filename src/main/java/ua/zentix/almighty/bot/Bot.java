@@ -250,6 +250,11 @@ public final class Bot {
                 bots.feed("bot_stopped", d);
             }
             controls.begin(player());
+            //? if >=26.1 {
+            /*// 26.x ignores a player's input until the client reports its level loaded (after login and respawn): the
+            // bot's programs wait for that, as its keys would do nothing before.
+            if (!levelLoading) runPrograms();
+            *///?} else
             runPrograms();
             if (channel.isOpen()) controls.end(player());
             drain();

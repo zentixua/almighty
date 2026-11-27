@@ -546,7 +546,8 @@ public final class Mc {
     /** Swing the hand as the server does after an interaction a client asked for (seen by others and the player). */
     public static void swing(net.minecraft.server.level.ServerPlayer p, net.minecraft.world.InteractionHand hand) {
         //? if >=26.3 {
-        /*p.swing(hand, p.getItemInHand(hand).getInteractAnimation(), true);
+        /*// As the 26.3 server after a client's successful use: swing, and attack strength starts over.
+        p.swingAndResetAttackStrength(hand, p.getItemInHand(hand).getInteractAnimation(), true);
         *///?} else {
         p.swing(hand, true);
         //?}

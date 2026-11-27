@@ -136,9 +136,19 @@ final class FabricEvents implements GameEvents {
         return found;
     }
 
-    private static boolean observable(Method m) {
-        Class<?> r = m.getReturnType();
-        return r == void.class || r == boolean.class || r == InteractionResult.class || r == TriState.class;
+    /**
+     * Whether a rule may subscribe: the dispatcher must have a neutral answer. Nothing, {@link InteractionResult#PASS}
+     * and {@link TriState#DEFAULT} are neutral; for a boolean only Fabric's allow/before convention is known
+     * ({@code ALLOW_*}, {@code BEFORE}, {@code allow…()}, {@code before…()}: {@code true} lets the game go on). Other
+     * boolean callbacks may mean "act" or "handled" by {@code true} ({@code EntityElytraEvents.CUSTOM}), so merely
+     * listening would change the game; they are refused.
+     */
+    static boolean observable(Callback c) {
+        Class<?> r = c.method().getReturnType();
+        if (r == void.class || r == InteractionResult.class || r == TriState.class) return true;
+        if (r != boolean.class) return false;
+        String field = c.field().getName(), method = c.method().getName();
+        return field.startsWith("ALLOW") || field.equals("BEFORE") || method.startsWith("allow") || method.startsWith("before");
     }
 
     // --- GameEvents ---
@@ -156,9 +166,10 @@ final class FabricEvents implements GameEvents {
             else if (tail.size() > 1) throw RpcException.badRequest("Event \"" + name + "\" is ambiguous: " + String.join(", ", tail.stream().limit(10).toList()));
         }
         if (hit == null) throw RpcException.notFound("No event \"" + name + "\" among Fabric callbacks" + similar(name, all) + "; search with event.types");
-        if (!observable(hit.method())) {
+        if (!observable(hit)) {
             throw RpcException.badRequest(hit.name() + " returns " + hit.method().getReturnType().getSimpleName()
-                    + "; rules observe only callbacks that return nothing, a boolean, an InteractionResult or a TriState");
+                    + "; rules observe only callbacks that return nothing, an InteractionResult, a TriState, or a boolean"
+                    + " in Fabric's allow/before convention (ALLOW_*, BEFORE), where listening changes nothing");
         }
         return new Found(hit.listener(), hit.name(), hit.mod(), hit);
     }
@@ -184,8 +195,9 @@ final class FabricEvents implements GameEvents {
             row.put("class", c.field().getDeclaringClass().getName() + "." + c.field().getName());
             row.put("mod", c.mod());
             Class<?> r = c.method().getReturnType();
-            row.put("cancellable", r == boolean.class || r == InteractionResult.class || r == TriState.class);
-            if (!observable(c.method())) row.put("observable", false);
+            boolean observable = observable(c);
+            row.put("cancellable", observable && (r == boolean.class || r == InteractionResult.class || r == TriState.class));
+            if (!observable) row.put("observable", false);
             out.add(row);
         }
         return out;
@@ -243,7 +255,10 @@ final class FabricEvents implements GameEvents {
         Level level = e.getLevel();
         BlockPos pos = e.getPos();
         if (level instanceof ServerLevel l && pos != null) return new Place(l, pos);
-        Entity entity = e.getEntity() != null ? e.getEntity() : e.getPlayer();
+        // An entity the callback is about (declared as an entity, not as the acting player): a callback whose only
+        // place is the player who acts (chat, commands) has none, so a server-wide cancel there needs the owner, as on
+        // NeoForge (ServerChatEvent is no EntityEvent).
+        Entity entity = e.placeEntity();
         if (entity != null && entity.level() instanceof ServerLevel l) return new Place(l, entity.blockPosition());
         return null;
     }
@@ -252,7 +267,7 @@ final class FabricEvents implements GameEvents {
     public boolean placed(Class<?> type) {
         Method m = single(type);
         if (m == null) return false;
-        for (Class<?> p : m.getParameterTypes()) if (BlockPos.class.isAssignableFrom(p) || Entity.class.isAssignableFrom(p)) return true;
+        for (Class<?> p : m.getParameterTypes()) if (FabricEvent.placing(p)) return true;
         return false;
     }
 

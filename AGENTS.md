@@ -100,7 +100,17 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   `NeoForgeEvents` + `EventTypes` (the rules' bus and FML scan data). `platform/` is the seam: `Platform` (one per
   loader, `Platform.get()`; absent in unit tests, so callers there use `Platform.present()`), `GameEvents` (events
   are plain objects to the core: subscribe, cancel, place, base class), `Setting`, `Reflect` (Mojang-named members;
-  no loader remapping helper). Only `neoforge/` and `compat/` import a loader or another mod.
+  no loader remapping helper). Only `neoforge/`, `fabric/` and `compat/` import a loader or another mod.
+  `fabric/` is the same seam on Fabric: `AlmightyFabric` (Fabric API callbacks to the core; `SERVER_STOPPING` in an
+  early phase, so GM tickets go first), `FabricConfig` (the same `almighty-common.toml` through NightConfig, bundled
+  with Groovy as jar-in-jar; reloaded when the file changes, checked every 40 ticks), `FabricPlatform` (permission
+  nodes through lucko's fabric-permissions-api when installed, else the ladder), `FabricEvents` (rules on any static
+  `Event<T>` of Fabric API or a mod: one dispatcher per callback, registered once; only callbacks with a neutral
+  answer: nothing, `InteractionResult.PASS`, `TriState.DEFAULT`, or a boolean in the allow/before convention
+  `ALLOW_*`/`BEFORE` — any other boolean callback is refused, since listening alone would change the game; a
+  callback's place is a block position or hit or an entity it is about, never the acting player, so chat has no
+  place and a server-wide cancel there needs the owner, as on NeoForge) and mixins for what Fabric API has no
+  callback for (advancements, player commands).
 - `Almighty`: the mod id, version and lifecycle hooks; `GmServer`: state of one server run (`ServerStartedEvent` … `ServerStoppedEvent`):
   feed, jobs, chunks, bridge. The bridge runs only on a dedicated server (`isDedicatedServer`), not in singleplayer or GameTest.
 - `mcp/`: the MCP endpoint (`McpEndpoint`), both protocol eras (`McpProtocol`), tool definitions and routing (`Tools`).
@@ -391,7 +401,7 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
 - 26.x (found by the GameTests): a player's own command source is not the player (`ServerPlayer.commandSource()`):
   "typed by the player" checks use `Mc.typedBy`. The server ignores a player's input, attacks and use and keeps them
   invulnerable until the client reports its level loaded: bots send `ServerboundPlayerLoadedPacket` once their chunks
-  are ready (`Bot.reportLoaded`), mock players call `markClientLoaded()`. Player data is loaded in the configuration
+  are ready (`Bot.reportLoaded`; until then its programs wait), mock players call `markClientLoaded()`. Player data is loaded in the configuration
   phase, which bots skip: `Bots.place` loads it itself (`Platform.playerLoaded` fires the loader's event). Ticket
   types are registry entries: ours (`Areas.TICKET`, loading only, not saved, no timeout) is registered by the
   loader. Boats are per-wood entities (`driven_by_rider` lists ids as optional entries). Unit tests of 26.x nodes run

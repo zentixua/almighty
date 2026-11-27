@@ -55,9 +55,16 @@ public final class AlmightyFabric implements ModInitializer {
                 FeedListeners.onDimension(player, from.dimension(), to.dimension()));
 
         ServerLifecycleEvents.SERVER_STARTED.register(Almighty::started);
-        ServerTickEvents.START_SERVER_TICK.register(Almighty::tickStart);
+        ServerTickEvents.START_SERVER_TICK.register(server -> {
+            if (server.getTickCount() % 40 == 0) FabricConfig.reloadIfChanged();
+            Almighty.tickStart(server);
+        });
         ServerTickEvents.END_SERVER_TICK.register(Almighty::tickEnd);
-        ServerLifecycleEvents.SERVER_STOPPING.register(Almighty::stopping);
+        // Before other mods' stopping listeners (NeoForge: normal priority, before LOWEST): GM tickets go first, so a
+        // mod waiting for generation at shutdown does not wait on them.
+        net.minecraft.resources.ResourceLocation first = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(Almighty.ID, "first");
+        ServerLifecycleEvents.SERVER_STOPPING.addPhaseOrdering(first, net.fabricmc.fabric.api.event.Event.DEFAULT_PHASE);
+        ServerLifecycleEvents.SERVER_STOPPING.register(first, Almighty::stopping);
         ServerLifecycleEvents.SERVER_STOPPED.register(Almighty::stopped);
     }
 }

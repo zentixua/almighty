@@ -29,6 +29,7 @@ public final class FabricEvent {
     private Level level;
     private BlockPos pos;
     private Entity entity;
+    private Entity placeEntity;
     private boolean canceled;
 
     FabricEvent(String callback, Method method, Object[] args) {
@@ -46,7 +47,23 @@ public final class FabricEvent {
             if (a instanceof Level l && level == null) level = l;
             if (a instanceof BlockPos b && pos == null) pos = b;
             if (a instanceof BlockHitResult hit && pos == null) pos = hit.getBlockPos();
+            if (a instanceof Entity e && placeEntity == null && placing(params[i].getType())) placeEntity = e;
+            if (a instanceof net.minecraft.world.phys.EntityHitResult hit && placeEntity == null) placeEntity = hit.getEntity();
         }
+    }
+
+    /**
+     * Whether an argument of this declared type gives the call a place in the world: a block position or hit, or an
+     * entity the callback is about. A parameter declared as a player is the one who acts, not a place.
+     */
+    static boolean placing(Class<?> declared) {
+        if (BlockPos.class.isAssignableFrom(declared) || net.minecraft.world.phys.HitResult.class.isAssignableFrom(declared)) return true;
+        return Entity.class.isAssignableFrom(declared) && !net.minecraft.world.entity.player.Player.class.isAssignableFrom(declared);
+    }
+
+    /** The entity whose position is the call's place (null: none). */
+    Entity placeEntity() {
+        return placeEntity;
     }
 
     private static String decapitalize(String s) {

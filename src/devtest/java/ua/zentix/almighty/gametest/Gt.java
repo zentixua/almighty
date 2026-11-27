@@ -108,9 +108,9 @@ final class Gt {
     static final String CHAT_EVENT_MOD = "neoforge";
     //?}
 
-    /** A cancellable server-wide event with no place in the world (NeoForge: chat; Fabric: a game message, as chat has a player). */
+    /** A cancellable server-wide event with no place in the world: chat (on Fabric the sender is the one who acts, not a place). */
     //? if fabric {
-    /*static final String UNPLACED_EVENT = "ServerMessageEvents.ALLOW_GAME_MESSAGE";
+    /*static final String UNPLACED_EVENT = "ServerMessageEvents.ALLOW_CHAT_MESSAGE";
     *///?} else
     static final String UNPLACED_EVENT = "ServerChatEvent";
 

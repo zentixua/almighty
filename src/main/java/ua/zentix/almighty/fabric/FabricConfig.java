@@ -20,10 +20,18 @@ final class FabricConfig {
 
     private FabricConfig() {}
 
+    /** One loaded setting: where it is in the file and the value the game reads. */
+    private record Bound(Setting<?> setting, List<String> path, java.util.concurrent.atomic.AtomicReference<Object> cell) {}
+
+    private static CommentedFileConfig file;
+    private static final List<Bound> BOUND = new ArrayList<>();
+    private static long modified;
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     static void load(Path file) {
         CommentedFileConfig config = CommentedFileConfig.builder(file).sync().preserveInsertionOrder().build();
         config.load();
+        FabricConfig.file = config;
         boolean changed = false;
         for (Setting<?> s : GmConfig.ALL) {
             List<String> path = path(s);
@@ -42,6 +50,7 @@ final class FabricConfig {
             }
             java.util.concurrent.atomic.AtomicReference<Object> cell = new java.util.concurrent.atomic.AtomicReference<>(
                     s.kind() == Setting.Kind.STRING_LIST ? List.copyOf((List<String>) value) : value);
+            BOUND.add(new Bound(s, path, cell));
             ((Setting) s).bind(cell::get, v -> {
                 cell.set(v);
                 synchronized (config) {
@@ -51,6 +60,39 @@ final class FabricConfig {
             });
         }
         if (changed) config.save();
+        modified = lastModified();
+    }
+
+    private static long lastModified() {
+        try {
+            return java.nio.file.Files.getLastModifiedTime(file.getNioPath()).toMillis();
+        } catch (java.io.IOException | RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Server thread, now and then: an owner's edit of the file applies without a restart, as NeoForge's config watcher
+     * does (the emergency switch {@code scripts.enabled} included). An invalid value keeps the current one.
+     */
+    static void reloadIfChanged() {
+        if (file == null) return;
+        long now = lastModified();
+        if (now == modified) return;
+        modified = now;
+        synchronized (file) {
+            file.load();
+            for (Bound b : BOUND) {
+                Object raw = file.get(b.path());
+                Object value = valid(b.setting(), raw);
+                if (value == null) {
+                    LOG.warn("config/almighty-common.toml: {} = {} is invalid; keeping {}", String.join(".", b.path()), raw, b.cell().get());
+                    continue;
+                }
+                b.cell().set(value instanceof List<?> l ? List.copyOf(l) : value);
+            }
+        }
+        LOG.info("config/almighty-common.toml reloaded");
     }
 
     private static List<String> path(Setting<?> s) {

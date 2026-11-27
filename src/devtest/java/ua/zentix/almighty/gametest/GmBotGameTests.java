@@ -373,7 +373,8 @@ public final class GmBotGameTests {
                 })
                 .thenWaitUntil(() -> finished(walk.get()))
                 .thenExecute(() -> {
-                    check(bot.player().position().distanceTo(start.get()) > 1.0, "not walking after respawn");
+                    check(bot.player().position().distanceTo(start.get()) > 1.0, "not walking after respawn: from " + start.get()
+                            + " to " + bot.player().position() + ", on ground " + bot.player().onGround() + ", " + bot.describe(0));
                     leave(h, "GmTestPhoenix");
                 })
                 .thenSucceed();

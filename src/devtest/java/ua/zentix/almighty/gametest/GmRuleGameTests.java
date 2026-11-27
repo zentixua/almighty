@@ -99,6 +99,12 @@ public final class GmRuleGameTests {
             // An event with no place cannot be canceled everywhere below owner.
             check(refused(gm, "rule.add", "{\"event\":\"" + Gt.UNPLACED_EVENT + "\",\"name\":\"mute\",\"then\":[\"cancel\"],\"for\":\"" + t + "\"}")
                     .getMessage().contains("needs the owner"), "server-wide cancel");
+            //? if fabric {
+            /*// A boolean callback outside Fabric's allow/before convention has no neutral answer: listening alone would
+            // change the game (true = "glide without an elytra"), so no rule may subscribe, not even the owner's.
+            RpcException glide = refused(gm, "rule.add", "{\"event\":\"EntityElytraEvents.CUSTOM\",\"name\":\"glide\",\"for\":\"" + t + "\"}");
+            check(glide.status() == 400 && glide.getMessage().contains("allow/before"), "act-on-true callback: " + glide.getMessage());
+            *///?}
             JsonObject added = call(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"keep\",\"when\":" + when
                     + ",\"then\":[\"cancel\"],\"for\":\"" + t + "\"}").getAsJsonObject();
             check(added.has("expires") && added.get("for").getAsString().contains("rule-builder"), "bound to its creator, with a TTL: " + added);

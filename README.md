@@ -1,3 +1,5 @@
+![Almighty](docs/brand/banner/readme-banner-1280x320.png)
+
 # Almighty
 
 English · [Русский](README.ru.md)

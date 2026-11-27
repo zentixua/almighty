@@ -15,14 +15,14 @@ How the mark was chosen (nine rounds of blind tests) is in [`exploration/`](expl
 
 | File | Size (native grid x factor) | Use |
 |---|---|---|
-| `icon/icon-64.png` | 64x64 (x1) | Pixel source; in-game mod icon; Minecraft mod list square icon |
+| `icon/icon-64.png` | 64x64 (x1) | Pixel source of the square icon |
 | `icon/icon-128.png` | 128x128 (x2) | Small store icon |
 | `icon/icon-512.png` | 512x512 (x8) | Modrinth and CurseForge project icon |
 | `icon/mark-transparent-512.png` | 512x512 (x8) | The mark without background, for overlays and video |
 | `logo/logo-horizontal.png`, `-native.png` | 4x / 1x | Logo: mark + wordmark, transparent. README top, docs, store description |
 | `logo/logo-stacked.png` | 4x | Logo, stacked, for square or tall spaces |
 | `logo/wordmark.png` | 4x | Wordmark alone |
-| `logo/modlist-logo.png` | 2x | `logoFile` in `neoforge.mods.toml` (the mod list shows a wide logo) |
+| `logo/modlist-logo.png` | 2x | The mod's in-game logo: copied to `src/main/resources/almighty.png` (`logoFile`, shown with `logoBlur = false`) |
 | `banner/readme-banner-1280x320.png` | 320x80 (x4) | README and pack-list header |
 | `store/modrinth-banner-1920x480.png` | 320x80 (x6) | Modrinth description header |
 | `store/modrinth-cover-1920x1080.png` | 240x135 (x8) | Modrinth gallery, featured image |
@@ -35,8 +35,10 @@ How the mark was chosen (nine rounds of blind tests) is in [`exploration/`](expl
 | `video/thumbnail-plain-1280x720.png` | 160x90 (x8) | Video thumbnail without text |
 | `final.png` | 2000x1830 | Presentation: store page, mod list, GitHub, YouTube, logos |
 
-The in-game files under `src/` are not replaced yet. Swapping in `icon-64.png` and `modlist-logo.png` is a
-separate change once the brand is approved.
+Applied in the repository: the mod's logo (`src/main/resources/almighty.png`) and the banner at the top of
+`README.md` and `README.ru.md`. Not applied yet, because they change public pages: the store icons
+(`docs/media/icon.png`, `icon-400.png`) and the store, social and video images. Those go live with a store update
+or upload.
 
 ## Palette
 

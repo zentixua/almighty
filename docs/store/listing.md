@@ -49,7 +49,7 @@ sites rename categories from time to time.
 
 ## Gallery
 
-The icon is `docs/media/icon.png` (512×512), the same picture as the mod's logo `almighty.png` in the jar. CurseForge
+The icon is `docs/media/icon.png` (512×512). The approved brand icon is `docs/brand/icon/icon-512.png` (and the 400×400 avatar `docs/brand/social/avatar-400.png`); the jar's logo `almighty.png` already uses the brand's mod-list logo. Swapping the store icons is part of the next store update. CurseForge
 takes a 400×400 avatar and no WebP, so its avatar is `docs/media/icon-400.png`, the same picture scaled down. The
 gallery shows the bridge's own pictures from a server, enlarged three times without smoothing. In this order (the first
 one is featured):

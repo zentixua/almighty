@@ -17,7 +17,55 @@ import java.util.UUID;
  * are, which preset applies and how far each agent may go. Parsed strictly: every mistake is reported with its key,
  * and a bad file never replaces a good policy ({@link Policies}).
  */
-public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Map<String, AgentRules> agents, Safety safety) {
+public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Map<String, AgentRules> agents, Safety safety,
+                     Map<String, Zone> zones, Limits limits) {
+
+    /**
+     * {@code [zones.<name>]} (plan 4.7): a box in a dimension where some nodes are denied below owner ({@code deny}),
+     * or where the agent may use some nodes on its own initiative even above its floor ({@code agent_may}, its arena).
+     */
+    public record Zone(String name, String dim, int[] from, int[] to, Set<String> deny, Set<String> agentMay) {
+        /** Nodes a zone can deny: those whose methods check their box against zones. */
+        public static final Set<String> DENIABLE = Set.of("build", "area", "bots", "bots.admin", "command");
+        /** Nodes a zone can open to the agent's own initiative: methods with a known box ({@code Gate.ZONED}). */
+        public static final Set<String> MAY = Set.of("build", "area", "bots", "bots.admin");
+
+        /** Whether this zone denies {@code node}: listed, or under a listed node ({@code bots} denies {@code bots.admin}). */
+        public boolean denies(Node node) {
+            for (String d : deny) if (node.id().equals(d) || node.id().startsWith(d + ".")) return true;
+            return false;
+        }
+
+        /** Whether any of these zones denies building or commands, anywhere (commands then have their coordinates checked). */
+        public static boolean guards(java.util.Collection<Zone> zones) {
+            for (Zone z : zones) if (z.deny.contains("build") || z.deny.contains("command")) return true;
+            return false;
+        }
+
+        /** Whether the box (inclusive, in {@code dim}) meets this zone. */
+        public boolean meets(String dimension, int[] lo, int[] hi) {
+            if (!dim.equals(dimension)) return false;
+            for (int a = 0; a < 3; a++) {
+                int zl = Math.min(from[a], to[a]), zh = Math.max(from[a], to[a]);
+                if (hi[a] < zl || lo[a] > zh) return false;
+            }
+            return true;
+        }
+
+        /** Whether the box lies wholly inside this zone. */
+        public boolean holds(String dimension, int[] lo, int[] hi) {
+            if (!dim.equals(dimension)) return false;
+            for (int a = 0; a < 3; a++) {
+                if (lo[a] < Math.min(from[a], to[a]) || hi[a] > Math.max(from[a], to[a])) return false;
+            }
+            return true;
+        }
+    }
+
+    /** {@code [quotas]}: what one player's requests may take per hour below owner (plan 4.3). */
+    public record Limits(long buildBlocks, long giveItems) {
+        public static final Limits DEFAULT = new Limits(50_000, 128);
+    }
 
     /**
      * {@code [safety]}: {@code ask_admin}, the only kinds of request that may reach an admin when the requester lacks the
@@ -77,12 +125,12 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
      * guest. A typo must never open the server wider than the owner chose.
      */
     public static Policy lockdown() {
-        return new Policy(Preset.PUBLIC, Set.of(), Identity.Mode.AUTO, Map.of(), Safety.NONE);
+        return new Policy(Preset.PUBLIC, Set.of(), Identity.Mode.AUTO, Map.of(), Safety.NONE, Map.of(), Limits.DEFAULT);
     }
 
     /** The policy when the file has nothing to say: private, no owners, every agent at its default ceiling. */
     public static Policy defaults() {
-        return new Policy(Preset.PRIVATE, Set.of(), Identity.Mode.AUTO, Map.of(), Safety.NONE);
+        return new Policy(Preset.PRIVATE, Set.of(), Identity.Mode.AUTO, Map.of(), Safety.NONE, Map.of(), Limits.DEFAULT);
     }
 
     public static final class Invalid extends Exception {
@@ -100,7 +148,7 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
             throw new Invalid("not valid TOML: " + e.getMessage());
         }
         List<String> errors = new ArrayList<>();
-        Set<String> known = Set.of("preset", "owners", "identity", "agents", "safety", "version");
+        Set<String> known = Set.of("preset", "owners", "identity", "agents", "safety", "zones", "quotas", "version");
         for (Config.Entry entry : c.entrySet()) if (!known.contains(entry.getKey())) errors.add("unknown key " + entry.getKey());
 
         Preset preset = Preset.PRIVATE;
@@ -166,8 +214,77 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
         } else if (sf != null) {
             errors.add("safety: a table [safety]");
         }
+        Map<String, Zone> zones = new LinkedHashMap<>();
+        Object z = c.get("zones");
+        if (z instanceof Config table) {
+            for (Config.Entry e : table.entrySet()) {
+                String name = e.getKey(), key = "zones." + name;
+                if (!(e.getValue() instanceof Config t)) {
+                    errors.add(key + ": a table such as [zones." + name + "]");
+                    continue;
+                }
+                for (Config.Entry k : t.entrySet()) {
+                    if (!Set.of("dim", "from", "to", "deny", "agent_may").contains(k.getKey())) errors.add(key + ": unknown key " + k.getKey());
+                }
+                String dim = t.get("dim") == null ? "minecraft:overworld" : String.valueOf(t.<Object>get("dim"));
+                if (!dim.contains(":")) dim = "minecraft:" + dim;
+                if (net.minecraft.resources.ResourceLocation.tryParse(dim) == null) errors.add(key + ".dim: a dimension id such as \"overworld\" or \"minecraft:the_nether\"");
+                int[] from = point(t.get("from"), key + ".from", errors), to = point(t.get("to"), key + ".to", errors);
+                Set<String> deny = nodes(t.get("deny"), key + ".deny", errors, Zone.DENIABLE),
+                        may = nodes(t.get("agent_may"), key + ".agent_may", errors, Zone.MAY);
+                if (from != null && to != null) zones.put(name, new Zone(name, dim, from, to, deny, may));
+            }
+        } else if (z != null) {
+            errors.add("zones: tables such as [zones.spawn]");
+        }
+        Limits limits = Limits.DEFAULT;
+        Object q = c.get("quotas");
+        if (q instanceof Config t) {
+            for (Config.Entry k : t.entrySet()) {
+                if (!Set.of("build_blocks", "give_items").contains(k.getKey())) errors.add("quotas: unknown key " + k.getKey());
+            }
+            limits = new Limits(count(t.get("build_blocks"), "quotas.build_blocks", Limits.DEFAULT.buildBlocks(), errors),
+                    count(t.get("give_items"), "quotas.give_items", Limits.DEFAULT.giveItems(), errors));
+        } else if (q != null) {
+            errors.add("quotas: a table [quotas]");
+        }
         if (!errors.isEmpty()) throw new Invalid(String.join("; ", errors));
-        return new Policy(preset, Set.copyOf(owners), identity, Map.copyOf(agents), safety);
+        return new Policy(preset, Set.copyOf(owners), identity, Map.copyOf(agents), safety, Map.copyOf(zones), limits);
+    }
+
+    private static int[] point(Object v, String key, List<String> errors) {
+        if (!(v instanceof List<?> l) || l.size() != 3 || !l.stream().allMatch(x -> x instanceof Number)) {
+            errors.add(key + ": [x, y, z]");
+            return null;
+        }
+        return new int[]{((Number) l.get(0)).intValue(), ((Number) l.get(1)).intValue(), ((Number) l.get(2)).intValue()};
+    }
+
+    private static Set<String> nodes(Object v, String key, List<String> errors, Set<String> allowed) {
+        if (v == null) return Set.of();
+        if (!(v instanceof List<?> l)) {
+            errors.add(key + ": a list of node names such as [\"build\"]");
+            return Set.of();
+        }
+        Set<String> out = new LinkedHashSet<>();
+        for (Object x : l) {
+            String n = String.valueOf(x).strip().toLowerCase(Locale.ROOT).replaceFirst("^almighty\\.", "");
+            boolean known = false;
+            for (Node node : Node.values()) if (node.id().equals(n)) known = true;
+            if (!known) errors.add(key + ": no node " + x);
+            else if (!allowed.contains(n)) errors.add(key + ": " + n + " is not checked by zones (only " + String.join(", ", new java.util.TreeSet<>(allowed)) + ")");
+            else out.add(n);
+        }
+        return Set.copyOf(out);
+    }
+
+    private static long count(Object v, String key, long fallback, List<String> errors) {
+        if (v == null) return fallback;
+        if (!(v instanceof Number n) || n.longValue() < 0) {
+            errors.add(key + ": a number, 0 or more");
+            return fallback;
+        }
+        return n.longValue();
     }
 
     private static Set<String> kinds(Object v, String key, List<String> errors) {
@@ -222,6 +339,25 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 ask_admin = []
                 # Kinds the requesting player must confirm even when allowed and reversible (for example "tp").
                 confirm_first = []
+
+                # What one player's requests may take per hour (below owner); the agent's own builds share one budget.
+                [quotas]
+                build_blocks = 50000
+                give_items = 128
+
+                # Zones: boxes where some rights are denied below owner, or where the agent may act on its own.
+                # deny: build, area, bots (bots.admin too), command. Commands are checked at their source and at every
+                # coordinate they name; ones that move where they run (execute as/at/positioned/in...) are refused
+                # while any zone denies build or command. Entity selectors are not checked. agent_may: build, area, bots.
+                # [zones.spawn]
+                # dim = "overworld"
+                # from = [-64, -64, -64]
+                # to = [64, 320, 64]
+                # deny = ["build", "area"]
+                # [zones.arena]
+                # from = [5000, -64, 5000]
+                # to = [5400, 320, 5400]
+                # agent_may = ["build", "bots"]
                 """.formatted(preset.id());
     }
 }

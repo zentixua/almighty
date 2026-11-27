@@ -236,6 +236,12 @@ public final class CommandRunner {
         return new CommandSourceStack(capture, pos, Vec2.ZERO, level, who.level(), name, Component.literal(name), server, null);
     }
 
+    /** The source a {@code command} or {@code function} call will run with (for zone checks before it runs). */
+    public static CommandSourceStack sourceFor(MinecraftServer server, Args args, As who) throws RpcException {
+        ServerLevel level = Dims.level(server, args);
+        return source(server, level, origin(level, args), new Capture(), who);
+    }
+
     private static Vec3 origin(ServerLevel level, Args args) throws RpcException {
         if (!args.has("pos")) return Vec3.atBottomCenterOf(level.getSharedSpawnPos());
         int[] p = args.ints("pos", 3);

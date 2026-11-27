@@ -175,6 +175,8 @@ public final class Gate implements Dispatch.Check {
     @Override
     public void check(Caller caller, String method, JsonObject params) throws RpcException {
         if (caller.agent() == null) return;
+        // Only the gate sets this marker: whatever the agent sent under the name is dropped.
+        params.remove(ZONE_ONLY);
         Node node = node(method, params, isBot);
         if (node == null) throw new RpcException(403, "policy", "No permission node for " + method + ": refused by default");
         Rights r = rights(caller, params);
@@ -202,6 +204,16 @@ public final class Gate implements Dispatch.Check {
             }
             return;
         }
+        // Unasked, above the floor: allowed only inside a zone where the owner lets the agent (agent_may); the method
+        // checks its exact box against those zones.
+        if (r.ticket == null && r.ceiling.atLeast(node.defaultRole()) && ZONED.contains(method)) {
+            for (Policy.Zone z : policies.current().zones().values()) {
+                if (z.agentMay().contains(node.id())) {
+                    params.addProperty(ZONE_ONLY, true);
+                    return;
+                }
+            }
+        }
         // Above the requester's rights: only kinds the owner listed in ask_admin may go to an admin; the rest is refused.
         if (!decided && confirmations != null && r.ticket != null && r.ceiling.atLeast(node.defaultRole())) {
             java.util.Set<String> ask = policies.current().safety().askAdmin();
@@ -221,6 +233,38 @@ public final class Gate implements Dispatch.Check {
         e.detail("node", node.key());
         e.detail("allowed", allowed(r));
         throw e;
+    }
+
+    /** Set by the gate on a call it let through only for an {@code agent_may} zone; the method then checks the box. */
+    public static final String ZONE_ONLY = "\u0000zone_only";
+    /** Methods whose box is known to the method (and checked there): the only ones an agent_may zone can allow. */
+    static final Set<String> ZONED = Set.of("build", "area.prepare", "bot.spawn");
+
+    /**
+     * Zones (plan 4.7), checked by the method once it knows the call's box ({@code lo}..{@code hi} in {@code dim}):
+     * below owner, a zone that meets the box and denies the node refuses it; a call the gate let through only for an
+     * {@code agent_may} zone must lie wholly inside such a zone.
+     */
+    public void zone(ua.zentix.almighty.bridge.Caller caller, JsonObject params, Node node, String dim, int[] lo, int[] hi) throws RpcException {
+        if (caller.agent() == null) return;
+        Rights r = rights(caller, params);
+        if (r.effective() == Role.OWNER) return;
+        for (Policy.Zone z : policies.current().zones().values()) {
+            if (z.denies(node) && z.meets(dim, lo, hi)) {
+                throw new RpcException(403, "policy", "Zone " + z.name() + " denies " + node.key() + " here");
+            }
+        }
+        if (params.has(ZONE_ONLY)) {
+            for (Policy.Zone z : policies.current().zones().values()) {
+                if (z.agentMay().contains(node.id()) && z.holds(dim, lo, hi)) return;
+            }
+            throw new RpcException(403, "policy", "Not allowed: " + node.key() + " outside the zones where the agent may (agent_may)");
+        }
+    }
+
+    /** The node a call needs (for methods that check zones themselves). */
+    public Node nodeOf(String method, JsonObject params) throws RpcException {
+        return node(method, params, isBot);
     }
 
     /** Refuse unless the call's rights hold {@code node} (checks made inside a method, e.g. another agent's job). */

@@ -49,15 +49,28 @@ public final class AlmightyCommand {
         root.then(Commands.literal("deny").then(Commands.argument("nonce", StringArgumentType.word())
                 .executes(c -> decide(c.getSource(), StringArgumentType.getString(c, "nonce"), false))));
         root.then(Commands.literal("inbox").executes(c -> inbox(c.getSource())));
+        // Roles on the ladder (no permission plugin): admins and the console, only below their own role.
+        root.then(Commands.literal("role").then(Commands.argument("player", StringArgumentType.word())
+                .then(Commands.argument("role", StringArgumentType.word())
+                        .suggests((c, b) -> SharedSuggestionProvider.suggest(List.of("guest", "member", "builder", "admin", "clear"), b))
+                        .executes(c -> role(c.getSource(), StringArgumentType.getString(c, "player"), StringArgumentType.getString(c, "role"), null))
+                        .then(Commands.argument("duration", StringArgumentType.word())
+                                .executes(c -> role(c.getSource(), StringArgumentType.getString(c, "player"),
+                                        StringArgumentType.getString(c, "role"), StringArgumentType.getString(c, "duration")))))));
+        root.then(trueOwner("owner")
+                .then(Commands.literal("add").then(Commands.argument("player", StringArgumentType.word())
+                        .executes(c -> owners(c.getSource(), StringArgumentType.getString(c, "player"), true))))
+                .then(Commands.literal("remove").then(Commands.argument("player", StringArgumentType.word())
+                        .executes(c -> owners(c.getSource(), StringArgumentType.getString(c, "player"), false)))));
         root.then(Commands.literal("undo").then(Commands.argument("change", IntegerArgumentType.integer(1))
                 .executes(c -> undo(c.getSource(), IntegerArgumentType.getInteger(c, "change")))));
         root.then(owner("agents").executes(c -> agents(c.getSource())));
-        root.then(owner("agent")
+        root.then(trueOwner("agent")
                 .then(Commands.literal("add").then(Commands.argument("name", StringArgumentType.word())
                         .executes(c -> change(c, "add"))))
                 .then(Commands.literal("remove").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
                         .executes(c -> change(c, "remove")))));
-        root.then(owner("revoke").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
+        root.then(trueOwner("revoke").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
                 .executes(c -> change(c, "revoke"))));
         root.then(owner("reload").executes(c -> reload(c.getSource())));
         root.then(owner("pause").executes(c -> pause(c.getSource(), null, true))
@@ -80,6 +93,17 @@ public final class AlmightyCommand {
     /** An owner subcommand: permission level 4. */
     private static LiteralArgumentBuilder<CommandSourceStack> owner(String name) {
         return Commands.literal(name).requires(s -> s.hasPermission(4));
+    }
+
+    /**
+     * Owners and agent tokens (who gets owner rights and the engine): the console, or a verified owner from
+     * policy.toml. An operator who is not an owner is an admin on the ladder and cannot make themselves owner.
+     */
+    private static LiteralArgumentBuilder<CommandSourceStack> trueOwner(String name) {
+        return Commands.literal(name).requires(s -> s.hasPermission(4) && (!(s.getEntity() instanceof net.minecraft.server.level.ServerPlayer p)
+                ? s.getEntity() == null && (s.source == s.getServer() || s.source instanceof net.minecraft.server.rcon.RconConsoleSource)
+                : ua.zentix.almighty.policy.Identity.verified(p.getUUID()) && ua.zentix.almighty.policy.Nodes.role(p.getUUID())
+                        == ua.zentix.almighty.policy.Role.OWNER));
     }
 
     private static Bridge bridge(CommandSourceStack source) {
@@ -259,6 +283,94 @@ public final class AlmightyCommand {
             source.sendFailure(Component.literal(e.getMessage()));
             return 0;
         }
+    }
+
+    /** A player by name: online, else the server's profile cache (players who joined before). */
+    private static com.mojang.authlib.GameProfile profile(CommandSourceStack source, String name) {
+        var online = source.getServer().getPlayerList().getPlayerByName(name);
+        if (online != null) return online.getGameProfile();
+        var cache = source.getServer().getProfileCache();
+        return cache == null ? null : cache.get(name).orElse(null);
+    }
+
+    private static int role(CommandSourceStack source, String name, String roleName, String durationText) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        ua.zentix.almighty.policy.Role granter;
+        String by;
+        if (source.source instanceof net.minecraft.server.level.ServerPlayer p) {
+            granter = ua.zentix.almighty.policy.Identity.verified(p.getUUID()) ? ua.zentix.almighty.policy.Nodes.role(p.getUUID())
+                    : ua.zentix.almighty.policy.Role.GUEST;
+            by = p.getGameProfile().getName();
+        } else if (source.hasPermission(4) && source.getEntity() == null) {
+            granter = ua.zentix.almighty.policy.Role.OWNER;
+            by = source.getTextName();
+        } else {
+            source.sendFailure(Component.literal("Roles are given by admins and the console"));
+            return 0;
+        }
+        if (!granter.atLeast(ua.zentix.almighty.policy.Role.ADMIN)) {
+            source.sendFailure(Component.literal("Only admins and owners give roles"));
+            return 0;
+        }
+        var profile = profile(source, name);
+        if (profile == null) {
+            source.sendFailure(Component.literal("No player " + name + " (they must have joined this server)"));
+            return 0;
+        }
+        ua.zentix.almighty.policy.Role role = roleName.equals("clear") ? null : ua.zentix.almighty.policy.Role.parse(roleName);
+        if (role == null && !roleName.equals("clear")) {
+            source.sendFailure(Component.literal("Role: guest, member, builder, admin, or clear"));
+            return 0;
+        }
+        java.time.Duration d = null;
+        if (durationText != null) {
+            d = ua.zentix.almighty.policy.Roles.parse(durationText);
+            if (d == null) {
+                source.sendFailure(Component.literal("Duration such as 30m, 3h, 2d"));
+                return 0;
+            }
+        }
+        String why = gm.roles().set(profile.getId(), profile.getName(), role, d, granter, by);
+        if (why != null) {
+            source.sendFailure(Component.literal(why));
+            return 0;
+        }
+        String text = role == null ? profile.getName() + " no longer has a granted role"
+                : profile.getName() + " is " + role.id() + (d == null ? "" : " for " + durationText);
+        gm.audit().owner(by, "role", text);
+        source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line(text), true);
+        return 1;
+    }
+
+    /** Owners are UUIDs in policy.toml: added and removed by the owner (level 4), the file validated and reloaded. */
+    private static int owners(CommandSourceStack source, String name, boolean add) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null || gm.policies().file() == null) return 0;
+        var profile = profile(source, name);
+        if (profile == null) {
+            source.sendFailure(Component.literal("No player " + name + " (they must have joined this server)"));
+            return 0;
+        }
+        java.util.Set<java.util.UUID> owners = new java.util.LinkedHashSet<>(gm.policies().current().owners());
+        if (add) owners.add(profile.getId());
+        else owners.remove(profile.getId());
+        try {
+            String why = ua.zentix.almighty.policy.PolicyFile.owners(gm.policies().file(), owners);
+            if (why == null) why = gm.policies().reload();
+            if (why != null) {
+                source.sendFailure(Component.literal("policy.toml not changed: " + why));
+                return 0;
+            }
+        } catch (IOException e) {
+            source.sendFailure(Component.literal("Cannot write policy.toml: " + e.getMessage()));
+            return 0;
+        }
+        boolean verified = ua.zentix.almighty.policy.Identity.verified(profile.getId());
+        gm.audit().owner(source.getTextName(), add ? "owner add" : "owner remove", profile.getName() + " " + profile.getId());
+        source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line((add ? "Owner added: " : "Owner removed: ") + profile.getName()
+                + (add && !verified ? " (their UUID is not verified on this server, so they act as a guest until it is)" : "")), true);
+        return 1;
     }
 
     /** Who the server thinks you are: UUID (for owners in policy.toml), whether it is verified, your role. */

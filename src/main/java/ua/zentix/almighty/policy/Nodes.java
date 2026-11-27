@@ -73,6 +73,20 @@ public final class Nodes {
         policy = p;
     }
 
+    /**
+     * A permission handler standing in for the server's (GameTest: the LuckPerms path without LuckPerms): answers
+     * {@code true}/{@code false} for a player and node, or null to fall through to the server's handler.
+     */
+    public interface Handler {
+        Boolean get(UUID player, Node node);
+    }
+
+    private static volatile Handler handler;
+
+    public static void handler(Handler h) {
+        handler = h;
+    }
+
     public static void granted(java.util.function.Function<UUID, Role> roles) {
         granted = roles;
     }
@@ -104,6 +118,9 @@ public final class Nodes {
         Role ladder = role(id);
         if (ladder == Role.OWNER) return true;
         if (!Identity.verified(id)) return Role.GUEST.atLeast(node.defaultRole());
+        Handler h = handler;
+        Boolean forced = h == null ? null : h.get(id, node);
+        if (forced != null) return forced;
         PermissionNode<Boolean> pn = NODES.get(node);
         try {
             ServerPlayer player = server == null ? null : online.get(id);

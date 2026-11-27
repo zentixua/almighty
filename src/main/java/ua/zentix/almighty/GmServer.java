@@ -74,6 +74,8 @@ public final class GmServer {
     private final Inbox inbox;
     private final Pause pause = new Pause();
     private final ua.zentix.almighty.policy.Quotas quotas = new ua.zentix.almighty.policy.Quotas(System::currentTimeMillis);
+    private final ua.zentix.almighty.policy.Roles roles;
+    private final ua.zentix.almighty.world.Claims claims = ua.zentix.almighty.compat.Compat.claims();
     private final Journal journal;
     private final Policies policies;
     private final Gate gate;
@@ -107,6 +109,9 @@ public final class GmServer {
         jobs.paused(pause::paused);
         rules.paused(pause::all);
         this.inbox = new Inbox(server, feed, tickets, () -> bridge == null ? null : bridge.agents());
+        this.roles = new ua.zentix.almighty.policy.Roles(GmServer.configDir == null ? null : GmServer.configDir.resolve("roles.json"),
+                System::currentTimeMillis);
+        Nodes.granted(roles::of);
         this.policies = new Policies(GmServer.configDir == null ? null : GmServer.configDir.resolve("policy.toml"));
         // Bot names from a thread-safe set the bots keep (the gate runs on bridge threads).
         this.gate = new Gate(policies, tickets, Nodes::holds, bots::isBotName);
@@ -192,11 +197,13 @@ public final class GmServer {
 
     static GmServer start(MinecraftServer server, Path configDir) {
         // An existing install (its token predates this start) keeps the behaviour it had: preset private.
-        boolean existing = java.nio.file.Files.exists(configDir.resolve("token"));
+        // GameTest sets its own policies per test and starts from today's behaviour.
+        boolean existing = java.nio.file.Files.exists(configDir.resolve("token")) || server instanceof net.minecraft.gametest.framework.GameTestServer;
         GmServer.configDir = configDir;
         GmServer gm = new GmServer(server);
         current = gm;
-        gm.policies.load(existing ? Policy.Preset.PRIVATE : Policy.Preset.PRIVATE);
+        // Decision D1: a fresh install starts as a friends' server; an existing one keeps today's behaviour (private).
+        gm.policies.load(existing ? Policy.Preset.PRIVATE : Policy.Preset.FRIENDS);
         Nodes.start(server, gm.policies::current);
         Nodes.refresh(server);
         ua.zentix.almighty.policy.Identity.onlineMode(server.usesAuthentication());
@@ -366,6 +373,14 @@ public final class GmServer {
         return bots;
     }
 
+    public ua.zentix.almighty.world.Claims claims() {
+        return claims;
+    }
+
+    public ua.zentix.almighty.policy.Roles roles() {
+        return roles;
+    }
+
     public ua.zentix.almighty.policy.Quotas quotas() {
         return quotas;
     }
@@ -394,6 +409,35 @@ public final class GmServer {
         if (p == null) throw RpcException.conflict(r.ticket().name() + " is offline: a request runs as its player, who must be online");
         int level = Math.max(server.getProfilePermissions(p.getGameProfile()), Nodes.role(p.getUUID()).commandLevel());
         return new ua.zentix.almighty.act.CommandRunner.As(Math.min(level, r.ceiling().commandLevel()), p);
+    }
+
+    /**
+     * Zones for commands (plan 4.7), server thread, before anything runs: below owner, each command (or function
+     * line) is checked where it runs and, while any zone denies build or command, at every coordinate it names
+     * ({@link ua.zentix.almighty.policy.CommandZones}).
+     */
+    public void commandZone(ua.zentix.almighty.bridge.Args a, ua.zentix.almighty.act.CommandRunner.As as, boolean function) throws RpcException {
+        if (a.caller().agent() == null || gate.rights(a.caller(), a.raw()).effective() == ua.zentix.almighty.policy.Role.OWNER) return;
+        net.minecraft.commands.CommandSourceStack source = ua.zentix.almighty.act.CommandRunner.sourceFor(server, a, as);
+        ua.zentix.almighty.policy.CommandZones.Check check = (node, dim, lo, hi) -> gate.zone(a.caller(), a.raw(), node, dim, lo, hi);
+        java.util.Collection<ua.zentix.almighty.policy.Policy.Zone> zones = policies.current().zones().values();
+        if (!ua.zentix.almighty.policy.Policy.Zone.guards(zones)) {
+            // Nothing guards places: only the source position matters (a zone may still deny other nodes there).
+            net.minecraft.world.phys.Vec3 v = source.getPosition();
+            int[] p = {(int) Math.floor(v.x), (int) Math.floor(v.y), (int) Math.floor(v.z)};
+            check.zone(ua.zentix.almighty.policy.Node.COMMAND, ua.zentix.almighty.world.Dims.id(source.getLevel()), p, p);
+            return;
+        }
+        var dispatcher = server.getCommands().getDispatcher();
+        for (String line : a.strings(function ? "lines" : "commands")) {
+            String t = line.strip();
+            if (function && (t.isEmpty() || t.startsWith("#"))) continue;
+            if (function) {
+                String why = ua.zentix.almighty.policy.CommandZones.unchecked(t);
+                if (why != null) throw new RpcException(403, "policy", "Not run: " + why + ", and zones protect places on this server");
+            }
+            ua.zentix.almighty.policy.CommandZones.check(dispatcher, source, t, check);
+        }
     }
 
     /**

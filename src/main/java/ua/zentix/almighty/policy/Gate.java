@@ -116,6 +116,7 @@ public final class Gate implements Dispatch.Check {
             case "bot.remove" -> Node.BOTS;
             case "audit" -> Node.AUDIT;
             case "give" -> Node.GIVE_SELF;
+            case "file" -> Node.POLICY;
             default -> null;
         };
     }

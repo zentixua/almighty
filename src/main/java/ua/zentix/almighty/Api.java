@@ -69,7 +69,9 @@ public final class Api {
 
     /** Whether a call has no effects: idempotency keys are ignored for it. {@code notes} with {@code text} writes a note. */
     public static boolean readOnly(String method, JsonObject params) {
-        return READ_ONLY.contains(method) || (method.equals("notes") && !params.has("text"));
+        return READ_ONLY.contains(method) || (method.equals("notes") && !params.has("text"))
+                || (method.equals("file") && params.has("action") && params.get("action").isJsonPrimitive()
+                && java.util.Set.of("list", "read").contains(params.get("action").getAsString()));
     }
 
     /** Methods without effects on the world, whatever their parameters. */
@@ -156,6 +158,7 @@ public final class Api {
         m.put("map", a -> view(gm, a, () -> map(server, a)));
         m.put("look", a -> view(gm, a, () -> new LookView(Dims.level(server, a), a.ints("from", 3), a.ints("to", 3), LookView.Look.parse(a.string("look")))));
         m.put("build", a -> build(gm, a));
+        m.put("file", a -> CompletableFuture.completedFuture(gm.files().call(a)));
         m.put("changes", a -> CompletableFuture.completedFuture(gm.journal().list(a.integer("limit", 20, 1, 200))));
         m.put("undo", a -> {
             // A journal change (any GM call or job: builds, commands, functions, scripts), conflict-aware.

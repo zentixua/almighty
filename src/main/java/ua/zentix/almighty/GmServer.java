@@ -80,6 +80,7 @@ public final class GmServer {
     private final Policies policies;
     private final Gate gate;
     private final Decisions decisions;
+    private ua.zentix.almighty.policy.ConfigFiles files;
     private static final java.util.Set<String> PAUSE_ALLOWS = java.util.Set.of("cancel", "area.release", "rule.remove", "bot.remove");
     private final Audit audit;
     private Bridge bridge;
@@ -129,6 +130,8 @@ public final class GmServer {
                 gate),
                 Api::readOnly);
         decisions.dispatch(dispatch);
+        this.files = new ua.zentix.almighty.policy.ConfigFiles(GmServer.configDir == null ? server.getServerDirectory().resolve("config")
+                .resolve("almighty") : GmServer.configDir, policies, gate, ua.zentix.almighty.policy.ConfigFiles.digest(decisions));
         dispatch.requester((caller, params) -> {
             try {
                 return params.get("for").isJsonPrimitive() ? tickets.check(params.get("for").getAsString(), caller.name()).player() : null;
@@ -383,6 +386,10 @@ public final class GmServer {
 
     public ua.zentix.almighty.policy.Quotas quotas() {
         return quotas;
+    }
+
+    public ua.zentix.almighty.policy.ConfigFiles files() {
+        return files;
     }
 
     public Decisions decisions() {

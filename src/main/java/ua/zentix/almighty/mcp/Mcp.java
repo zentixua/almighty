@@ -79,8 +79,7 @@ public final class Mcp {
      * from the browser page, which is what proves the request is theirs.
      */
     static void notifyOwners(MinecraftServer server, SignIn.Pending p) {
-        String text = p.client().name() + " (from " + p.address() + ") asks to connect to this server as an agent. If you started it, "
-                + "type the code shown on its sign-in page: /almighty approve <code>";
+        String text = notice(p);
         LOG.info("Almighty sign-in: {}", text);
         server.execute(() -> {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -89,6 +88,12 @@ public final class Mcp {
                 }
             }
         });
+    }
+
+    /** The owners' notice for a waiting sign-in: who and from where, never the code. */
+    public static String notice(SignIn.Pending p) {
+        return p.client().name() + " (from " + p.address() + ") asks to connect to this server as an agent. If you started it, "
+                + "type the code shown on its sign-in page: /almighty approve <code>";
     }
 
     static String stripSlash(String s) {

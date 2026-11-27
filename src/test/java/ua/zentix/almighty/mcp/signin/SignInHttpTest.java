@@ -126,6 +126,8 @@ class SignInHttpTest {
         assertTrue(code.matches("\\d{4}"), "the page shows the code");
         assertTrue(page.body().contains("Codex") && page.body().contains("127.0.0.1"), "the page names the client and where it returns");
         assertEquals(1, notified.size(), "owners are told a login waits");
+        String notice = ua.zentix.almighty.mcp.Mcp.notice(notified.get(0));
+        assertTrue(notice.contains("Codex") && !notice.contains(code), "the notice names the app but never shows the code: " + notice);
         String id = page.body().replaceAll("(?s).*const id=\"([0-9a-f]+)\".*", "$1");
 
         JsonObject waiting = JsonParser.parseString(get(base() + "/oauth/status?id=" + id).body()).getAsJsonObject();

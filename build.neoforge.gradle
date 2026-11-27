@@ -47,9 +47,12 @@ repositories {
 
 neoForge {
     version = project.neo_version
-    parchment {
-        mappingsVersion = project.parchment_mappings_version
-        minecraftVersion = project.parchment_minecraft_version
+    // Parameter names on 1.21.1; the game ships unobfuscated with its own names from 26.1.
+    if (project.hasProperty('parchment_mappings_version')) {
+        parchment {
+            mappingsVersion = project.parchment_mappings_version
+            minecraftVersion = project.parchment_minecraft_version
+        }
     }
     runs {
         // Dedicated server with the bridge (manual mcp/almighty.py check): ./gradlew runServer
@@ -93,21 +96,34 @@ dependencies {
             prefer groovy_version
         }
     }
-    additionalRuntimeClasspath "org.apache.groovy:groovy:${groovy_version}"
+    // Gradle runs before 1.21.9 put the game on its own layer and need Groovy there too; from 1.21.9 FML has no
+    // extra run classpath and the implementation dependency above is enough.
+    if (minecraft_version.startsWith('1.21.1')) additionalRuntimeClasspath "org.apache.groovy:groovy:${groovy_version}"
 
-    // Immersive Aircraft 1.7.0 (Modrinth version xO17G766): bot aircraft control is called only when the mod is installed.
-    compileOnly 'maven.modrinth:immersive-aircraft:xO17G766'
-    // Claim mods, queried read-only (plan 4.7): Open Parties and Claims 0.33.0 (Modrinth yWmXD7GW) and FTB Chunks.
-    compileOnly 'maven.modrinth:open-parties-and-claims:yWmXD7GW'
-    compileOnly('dev.ftb.mods:ftb-chunks-neoforge:2101.1.24') { transitive = false }
-    compileOnly('dev.ftb.mods:ftb-library-neoforge:2101.1.39') { transitive = false }
-    compileOnly('dev.ftb.mods:ftb-teams-neoforge:2101.1.9') { transitive = false }
-    devtestRuntimeOnly 'maven.modrinth:immersive-aircraft:xO17G766'
-    // Sable 2.0.6 (Modrinth version fg9dTRz9; Create Aeronautics ships): ships (compat/sable) use its public
-    // sable-companion library (MIT, shipped by Sable itself, absent from our jar and mods.toml); Sable is GameTest-only.
-    compileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
-    devtestCompileOnly 'maven.modrinth:sable:fg9dTRz9'
-    devtestRuntimeOnly 'maven.modrinth:sable:fg9dTRz9'
+    // Mod compatibility (compat/<mod>), compile only and absent from the jar and mods.toml; a node without the
+    // property has no such module (Stonecutter disables it, stonecutter.gradle). Versions: versions/<node>/gradle.properties.
+    // Immersive Aircraft (Modrinth version id): bot aircraft control is called only when the mod is installed.
+    if (project.findProperty('compat_ia')) {
+        compileOnly "maven.modrinth:immersive-aircraft:${compat_ia}"
+        devtestRuntimeOnly "maven.modrinth:immersive-aircraft:${compat_ia}"
+    }
+    // Claim mods, queried read-only (plan 4.7): Open Parties and Claims (Modrinth version id) and FTB Chunks
+    // (chunks:library:teams versions on maven.ftb.dev).
+    if (project.findProperty('compat_opac')) compileOnly "maven.modrinth:open-parties-and-claims:${compat_opac}"
+    if (project.findProperty('compat_ftbchunks')) {
+        def (chunks, library, teams) = compat_ftbchunks.split(':')
+        compileOnly("dev.ftb.mods:ftb-chunks-neoforge:${chunks}") { transitive = false }
+        compileOnly("dev.ftb.mods:ftb-library-neoforge:${library}") { transitive = false }
+        compileOnly("dev.ftb.mods:ftb-teams-neoforge:${teams}") { transitive = false }
+    }
+    // Sable (Create Aeronautics ships), companion:sable: ships (compat/sable) use its public sable-companion library
+    // (MIT, shipped by Sable itself); Sable itself is GameTest-only.
+    if (project.findProperty('compat_sable')) {
+        def (companion, sable) = compat_sable.split(':')
+        compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-${minecraft_version}:${companion}"
+        devtestCompileOnly "maven.modrinth:sable:${sable}"
+        devtestRuntimeOnly "maven.modrinth:sable:${sable}"
+    }
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'

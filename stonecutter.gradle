@@ -9,4 +9,15 @@ stonecutter.parameters {
     String project = node.metadata.project
     String loader = project.substring(project.lastIndexOf('-') + 1)
     constants.match(loader, 'neoforge', 'fabric')
+    // Mod compatibility present on this node (versions/<node>/gradle.properties compat_<mod>): a constant for
+    // conditions (//? if ia), and the module's files are left out where the mod has no build for this version.
+    Map<String, String> compat = [ia: 'immersiveaircraft', opac: 'opac', ftbchunks: 'ftbchunks', sable: 'sable']
+    compat.each { key, dir ->
+        boolean present = node.project.findProperty("compat_${key}" as String) != null
+        constants.put(key, present)
+        files.disable(!present, "ua/zentix/almighty/compat/${dir}/" as String)
+    }
+    files.disable(!node.project.findProperty('compat_sable'), 'ua/zentix/almighty/gametest/GmSableGameTests.java')
+    files.disable(loader != 'neoforge', 'ua/zentix/almighty/neoforge/')
+    files.disable(loader != 'fabric', 'ua/zentix/almighty/fabric/')
 }

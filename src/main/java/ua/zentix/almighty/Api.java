@@ -82,7 +82,15 @@ public final class Api {
     public static Map<String, Method> methods(GmServer gm) {
         MinecraftServer server = gm.server();
         Map<String, Method> m = new LinkedHashMap<>();
-        m.put("status", a -> gm.onMain(() -> Observe.status(gm)));
+        m.put("status", a -> {
+            // The caller's rights (with for: what that player's request allows); computed here, not on the server thread.
+            JsonObject rights = a.caller().agent() == null ? null : gm.gate().describe(a.caller(), a.raw());
+            return gm.onMain(() -> {
+                JsonObject s = Observe.status(gm).getAsJsonObject();
+                if (rights != null) s.add("rights", rights);
+                return s;
+            });
+        });
         // World notes are unconfirmed until the gate knows when an agent acts with the owner's authority.
         m.put("notes", a -> Knowledge.notes(gm, a, new Notes.Author(a.caller().name(), null, false)));
         m.put("players", a -> gm.onMain(() -> Observe.players(server)));
@@ -100,6 +108,8 @@ public final class Api {
             return gm.submit(() -> {
                 Job of = gm.jobs().get(id);
                 if (!(of instanceof BuildJob build)) throw RpcException.notFound("No build #" + id + " (the history keeps the last 50 jobs)");
+                if (!of.agent().equals(a.caller().name())) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.UNDO_ANY,
+                        "build #" + id + " is agent " + of.agent() + "'s");
                 return BuildJob.undo(build, CHUNK_WAIT_TICKS);
             }, waitSeconds(a));
         });
@@ -119,6 +129,8 @@ public final class Api {
             return gm.onMain(() -> {
                 Job job = gm.jobs().get(id);
                 if (job == null) throw RpcException.notFound("No job #" + id);
+                if (!job.agent().equals(a.caller().name())) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.UNDO_ANY,
+                        "job #" + id + " is agent " + job.agent() + "'s");
                 if (!gm.jobs().cancel(id)) throw RpcException.conflict("Job #" + id + " has already finished: " + job.state().id());
                 return job.describe();
             });

@@ -65,6 +65,8 @@ public final class Bots {
 
     private final GmServer gm;
     private final Map<String, Bot> byName = new LinkedHashMap<>();
+    /** Names of the bots, readable from any thread (the gate tells a bot's eyes from a player's). */
+    private final java.util.Set<String> names = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final Map<UUID, Bot> byUuid = new HashMap<>();
     /** Logins awaiting destination loading. */
     private final List<Waiting> waiting = new ArrayList<>();
@@ -229,6 +231,7 @@ public final class Bots {
         Bot bot = new Bot(this, profile, spec.marker(), spec.autoRespawn());
         // Before login: the tab name is computed during login, and the event must already know the bot.
         byName.put(key(spec.name()), bot);
+        names.add(key(spec.name()));
         byUuid.put(profile.getId(), bot);
         ProfileCache.Snapshot cache = ProfileCache.snapshot(server.getProfileCache(), spec.name(), profile.getId());
         try {
@@ -288,6 +291,10 @@ public final class Bots {
     /** Whether {@code agent} is paused by the owner (its bots get no new programs). */
     boolean paused(String agent) {
         return gm.pause().paused(agent);
+    }
+
+    public boolean isBotName(String name) {
+        return names.contains(key(name));
     }
 
     public List<Bot> all() {
@@ -409,7 +416,9 @@ public final class Bots {
 
     private boolean forget(Bot bot) {
         byUuid.remove(bot.uuid);
-        return byName.remove(key(bot.name), bot);
+        boolean removed = byName.remove(key(bot.name), bot);
+        if (removed) names.remove(key(bot.name));
+        return removed;
     }
 
     void feed(String type, JsonObject data) {

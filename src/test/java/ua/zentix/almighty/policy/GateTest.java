@@ -46,6 +46,8 @@ class GateTest {
     @Test
     void everyMethodDeclaresANode() throws Exception {
         for (String m : METHODS) assertNotNull(Gate.node(m, new JsonObject(), n -> false), m);
+        assertEquals(Node.SCRIPTS_RUN, Gate.node("script", json("{\"name\":\"hello\"}"), n -> false), "an approved script by name");
+        assertEquals(Node.ENGINE, Gate.node("script", json("{\"name\":\"hello\",\"code\":\"1\"}"), n -> false), "code is always the engine");
         assertNull(Gate.node("delete.world", new JsonObject(), n -> false), "unknown methods have none: refused");
     }
 

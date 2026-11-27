@@ -270,10 +270,54 @@ public final class Api {
         m.put("ships", a -> gm.onMain(() -> Ships.describe(server, a)));
         m.put("script", a -> script(gm, a));
         m.put("rule.add", a -> {
-            Rules.Spec spec = Rules.parse(a);
-            return gm.onMain(() -> gm.rules().add(spec));
+            // Bound to its creator (plan 4.12): the requester, or the agent unasked; the owner's rules have no TTL.
+            // An admin's one-call approval is never turned into a standing rule bound to that admin.
+            ua.zentix.almighty.policy.Confirmations.Pending approving = ua.zentix.almighty.policy.Confirmations.running();
+            if (approving != null && approving.kind == ua.zentix.almighty.policy.Confirmations.Kind.ADMIN && a.caller().agent() != null) {
+                throw new RpcException(403, "policy", "A rule cannot be made through an admin's approval: rules act for their own creator");
+            }
+            ua.zentix.almighty.rules.Declarative.Creator creator = creator(gm, a);
+            boolean owner = creator.agent() == null || gm.gate().role(creator.agent(), creator.player()) == ua.zentix.almighty.policy.Role.OWNER;
+            Rules.Spec spec = Rules.parse(a, creator, owner, System.currentTimeMillis());
+            if (!owner && spec.decl() != null) {
+                if (spec.decl().cancels() && !ua.zentix.almighty.rules.Declarative.placed(spec.event().type())) {
+                    throw new RpcException(403, "policy", spec.event().name() + " has no place in the world: a rule that cancels it everywhere needs the owner");
+                }
+                if (spec.decl().cancels()) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.BUILD, "a rule that cancels acts where its creator may build");
+                if (spec.decl().saysToAll(creator)) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.SPEAK_ALL, "a rule that speaks to anyone but its creator");
+                for (ua.zentix.almighty.rules.Declarative.Action s : spec.decl().actions("say")) {
+                    if (s.text().contains(ua.zentix.almighty.act.Chat.RESERVED)) throw new RpcException(403, "policy", "Rule text may not carry " + ua.zentix.almighty.act.Chat.RESERVED);
+                }
+                if (spec.decl().commands()) {
+                    // The same checks a command call gets below owner, on the template (fields fill only plain names and numbers).
+                    gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.COMMAND, "a rule that runs commands");
+                    for (ua.zentix.almighty.rules.Declarative.Action c : spec.decl().actions("command")) {
+                        String low = c.text().toLowerCase(java.util.Locale.ROOT);
+                        if (low.contains("run_command") || low.contains("suggest_command") || c.text().contains(ua.zentix.almighty.act.Chat.RESERVED)) {
+                            throw new RpcException(403, "policy", "Below owner, commands may not carry run_command/suggest_command clicks or " + ua.zentix.almighty.act.Chat.RESERVED);
+                        }
+                        JsonObject one = new JsonObject();
+                        com.google.gson.JsonArray list = new com.google.gson.JsonArray();
+                        list.add(c.text());
+                        one.add("commands", list);
+                        // Nobody is there to confirm when the rule fires: what would need a player's confirmation is refused.
+                        if (ua.zentix.almighty.policy.Confirmations.needsRequester("command", one, creator.name() == null ? "" : creator.name(), creator.player(),
+                                gm.policies().current().safety().confirmFirst())) {
+                            throw new RpcException(403, "policy", "Not in a rule: \"" + c.text() + "\" would need a player's confirmation each time");
+                        }
+                    }
+                }
+            }
+            ua.zentix.almighty.rules.Declarative.Creator mine = creator;
+            boolean admin = owner || gm.gate().role(creator.agent(), creator.player()).atLeast(ua.zentix.almighty.policy.Role.ADMIN);
+            return gm.onMain(() -> gm.rules().add(spec, c -> admin || sameCreator(c, mine)));
         });
-        m.put("rule.remove", a -> gm.onMain(() -> gm.rules().remove(a)));
+        m.put("rule.remove", a -> {
+            // Below admin, only rules made for you (the same player, or the same agent unasked).
+            ua.zentix.almighty.rules.Declarative.Creator me = creator(gm, a);
+            boolean admin = me.agent() == null || gm.gate().role(me.agent(), me.player()).atLeast(ua.zentix.almighty.policy.Role.ADMIN);
+            return gm.onMain(() -> gm.rules().remove(a, c -> admin || sameCreator(c, me)));
+        });
         m.put("rules", a -> gm.onMain(() -> gm.rules().describe()));
         m.put("event.types", a -> {
             String query = a.string("query", "");
@@ -307,6 +351,19 @@ public final class Api {
         return m;
     }
 
+    /** The same rule creator: the same player, or the same agent unasked (the owner's rules are nobody's below admin). */
+    private static boolean sameCreator(ua.zentix.almighty.rules.Declarative.Creator c, ua.zentix.almighty.rules.Declarative.Creator me) {
+        return c.agent() != null && java.util.Objects.equals(c.player(), me.player()) && (me.player() != null || c.agent().equals(me.agent()));
+    }
+
+    /** Who a rule is for: the console or internal caller (the owner), the requester of this call, or the agent unasked. */
+    private static ua.zentix.almighty.rules.Declarative.Creator creator(GmServer gm, Args a) throws RpcException {
+        if (a.caller().agent() == null) return ua.zentix.almighty.rules.Declarative.Creator.OWNER;
+        ua.zentix.almighty.policy.Gate.Rights r = gm.gate().rights(a.caller(), a.raw());
+        return r.ticket() == null ? new ua.zentix.almighty.rules.Declarative.Creator(r.agent(), null, null)
+                : new ua.zentix.almighty.rules.Declarative.Creator(r.agent(), r.ticket().player(), r.ticket().name());
+    }
+
     /**
      * Groovy script on the server thread between ticks: compilation happens here on the bridge thread; the value
      * is JSON, {@code println} output is a string; errors return {@code ok: false} with text and script line.
@@ -314,7 +371,11 @@ public final class Api {
      */
     private static CompletableFuture<JsonElement> script(GmServer gm, Args a) throws RpcException {
         if (!GmConfig.SCRIPTS_ENABLED.get()) throw Rules.scriptsOff();
-        String code = a.string("code");
+        // A script by name: the owner's file, run only while its hash matches the owner's approval.
+        boolean named = !a.has("code") && a.has("name");
+        String scriptName = named ? a.string("name") : null;
+        if (named && !scriptName.matches("[a-z0-9_-]{1,40}")) throw RpcException.badRequest("name: lowercase letters, digits, - and _");
+        String code = named ? gm.files().approvedScript(scriptName) : a.string("code");
         if (code.length() > Rules.MAX_SCRIPT) throw RpcException.badRequest("code: at most " + Rules.MAX_SCRIPT / 1024 + " KB");
         int timeout = a.integer("timeout_ms", 1000, 1, MAX_SCRIPT_MS);
         Object args = a.has("args") ? Json.toJava(a.raw().get("args")) : new LinkedHashMap<String, Object>();
@@ -328,7 +389,8 @@ public final class Api {
             return CompletableFuture.completedFuture(out);
         }
         return gm.onMain(() -> {
-            LOG.info("GM: script\n{}", code);
+            if (named) LOG.info("GM: approved script {}", scriptName);
+            else LOG.info("GM: script\n{}", code);
             ScriptApi api = new ScriptApi(gm.server(), false, data -> {
                 JsonObject d = new JsonObject();
                 d.addProperty("script", true);
@@ -336,7 +398,10 @@ public final class Api {
                 gm.feed().add("emit", d);
             });
             try {
-                Scripts.Result r = Scripts.run(compiled, Map.of("server", gm.server(), "gm", api, "state", gm.state(), "args", args));
+                Map<String, Object> vars = new java.util.HashMap<>(Map.of("server", gm.server(), "gm", api, "state", gm.state(), "args", args));
+                // Who asked: an approved script may act for its requester (its own code decides how).
+                vars.put("requester", a.caller().requester() == null ? null : a.caller().requester().toString());
+                Scripts.Result r = Scripts.run(compiled, vars);
                 JsonObject out = new JsonObject();
                 out.addProperty("ok", r.ok());
                 if (r.ok()) out.add("value", Json.from(r.value()));

@@ -236,6 +236,16 @@ public final class CommandRunner {
         return new CommandSourceStack(capture, pos, Vec2.ZERO, level, who.level(), name, Component.literal(name), server, null);
     }
 
+    /** Commands as {@code who} at a place (declarative rules: as the rule's creator), logged at DEBUG. */
+    public static JsonArray runAs(MinecraftServer server, ServerLevel level, Vec3 pos, List<String> commands, As who) {
+        return run(server, level, pos, null, commands, true, who);
+    }
+
+    /** The source {@link #runAs} uses (zone checks before running). */
+    public static CommandSourceStack sourceFor(MinecraftServer server, ServerLevel level, Vec3 pos, As who) {
+        return source(server, level, pos, new Capture(), who);
+    }
+
     /** The source a {@code command} or {@code function} call will run with (for zone checks before it runs). */
     public static CommandSourceStack sourceFor(MinecraftServer server, Args args, As who) throws RpcException {
         ServerLevel level = Dims.level(server, args);

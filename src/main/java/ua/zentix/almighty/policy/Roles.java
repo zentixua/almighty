@@ -82,6 +82,7 @@ public final class Roles {
      * {@code granterRole}. Returns null, or why not.
      */
     public synchronized String set(UUID player, String name, Role role, Duration duration, Role granterRole, String by) {
+        Policies.CHANGES.incrementAndGet();
         if (role == Role.OWNER) return "owners are listed in policy.toml (owners), never granted";
         Grant old = grant(player);
         if (old != null && !granterRole.atLeast(Role.OWNER) && old.role().compareTo(granterRole) >= 0) {

@@ -55,6 +55,11 @@ More: [Getting started](docs/guide/getting-started.md) · [Connect your app](doc
 - Add rules: a reaction to any NeoForge event of the game or of any mod. A rule runs on the server in the same tick,
   can cancel the event and can be saved with the world. A rule turns itself off when it goes over its time budget,
   fails 10 times in a row or floods the feed.
+- Below the owner, rules are declarative: conditions on the event's fields and actions (cancel, write to the feed,
+  say, run a command). Such a rule acts for the player who asked for it (or the game master acting on its own),
+  with their rights checked at every event: it cancels only where they may build, stops working when they lose the
+  right, and expires after 7 days at most. Scripts in `config/almighty/scripts/` run by name once the owner
+  approves them with `/almighty script approve <name>`, and only until the file changes.
 - Spawn bots. A bot is a server player that acts only through the packets a client would send: keys and mouse,
   hotbar, menus, chat and commands, signs, respawning. Bots walk, mine, build, use chests, ride horses, boats, pigs,
   striders and camels, and fly Immersive Aircraft planes. The tab list and chat show them with a `[bot]` marker.

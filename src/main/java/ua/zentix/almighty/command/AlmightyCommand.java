@@ -70,6 +70,12 @@ public final class AlmightyCommand {
                         .executes(c -> change(c, "add"))))
                 .then(Commands.literal("remove").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
                         .executes(c -> change(c, "remove")))));
+        root.then(trueOwner("script")
+                .then(Commands.literal("approve").then(Commands.argument("name", StringArgumentType.word())
+                        .executes(c -> script(c.getSource(), StringArgumentType.getString(c, "name"), true))))
+                .then(Commands.literal("revoke").then(Commands.argument("name", StringArgumentType.word())
+                        .executes(c -> script(c.getSource(), StringArgumentType.getString(c, "name"), false))))
+                .then(Commands.literal("list").executes(c -> scripts(c.getSource()))));
         root.then(trueOwner("policy").then(Commands.literal("undo").executes(c -> policyUndo(c.getSource()))));
         root.then(trueOwner("revoke").then(Commands.argument("name", StringArgumentType.word()).suggests(AGENTS)
                 .executes(c -> change(c, "revoke"))));
@@ -372,6 +378,34 @@ public final class AlmightyCommand {
         source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line((add ? "Owner added: " : "Owner removed: ") + profile.getName()
                 + (add && !verified ? " (their UUID is not verified on this server, so they act as a guest until it is)" : "")), true);
         return 1;
+    }
+
+    /** {@code /almighty script approve|revoke <name>}: pin the file's hash (it runs by name until it changes) or drop it. */
+    private static int script(CommandSourceStack source, String name, boolean approve) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        String why = gm.files().approve(name, approve);
+        gm.audit().owner(source.getTextName(), approve ? "script approve" : "script revoke", name + (why == null ? "" : ": " + why));
+        if (why != null) {
+            source.sendFailure(Component.literal(why));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(approve ? "Approved script " + name + ": agents with almighty.scripts.run may run it by name until the file changes"
+                : "Script " + name + " is no longer approved"), true);
+        return 1;
+    }
+
+    private static int scripts(CommandSourceStack source) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        try {
+            var list = gm.files().approvedList();
+            source.sendSuccess(() -> Component.literal(list.isEmpty() ? "No approved scripts" : "Approved scripts: " + list), false);
+            return list.size();
+        } catch (java.io.IOException e) {
+            source.sendFailure(Component.literal(e.getMessage()));
+            return 0;
+        }
     }
 
     /** {@code /almighty policy undo}: put back the policy.toml saved before the last change (by the agent or by you). */

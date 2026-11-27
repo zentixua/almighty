@@ -131,4 +131,19 @@ class PolicyFilesTest {
         s.addProperty("path", "../token");
         assertEquals(400, assertThrows(RpcException.class, () -> f.call(new Args(s, console))).status(), "only Almighty's own files");
     }
+
+    @Test
+    void approvedScriptsRunOnlyWhileUnchanged(@TempDir Path dir) throws Exception {
+        ConfigFiles f = files(dir, friends(""));
+        Files.createDirectories(dir.resolve("scripts"));
+        Files.writeString(dir.resolve("scripts/hello.groovy"), "return 1");
+        assertEquals(403, assertThrows(RpcException.class, () -> f.approvedScript("hello")).status(), "not approved yet");
+        assertNull(f.approve("hello", true));
+        assertEquals("return 1", f.approvedScript("hello"));
+        Files.writeString(dir.resolve("scripts/hello.groovy"), "return 2");
+        assertTrue(assertThrows(RpcException.class, () -> f.approvedScript("hello")).getMessage().contains("changed"), "an edit needs a new approval");
+        assertNull(f.approve("hello", false));
+        assertNotNull(f.approve("nope", true));
+        assertEquals(400, assertThrows(RpcException.class, () -> f.approvedScript("../token")).status());
+    }
 }

@@ -72,6 +72,15 @@ public final class Rules {
     /** While true (the owner paused every agent), rules with a script do not run: the red button stops autopilots too. */
     private java.util.function.BooleanSupplier paused = () -> false;
 
+    private Guard guard = Guard.OPEN;
+    private java.util.function.LongSupplier clockMillis = System::currentTimeMillis;
+
+    /** Who rules act for, asked at every fire (GmServer: the gate, zones and claims). */
+    public void guard(Guard guard, java.util.function.LongSupplier clockMillis) {
+        this.guard = guard;
+        this.clockMillis = clockMillis;
+    }
+
     public void paused(java.util.function.BooleanSupplier paused) {
         this.paused = paused;
     }
@@ -86,14 +95,47 @@ public final class Rules {
 
     /** Parsed rule: original parameters (for persistence), event and script. */
     public record Spec(JsonObject params, EventTypes.Found event, String code, Scripts.Compiled script, String name, int every,
-                       long limit, EventPriority priority, boolean canceled, double budgetMs, boolean persist) {}
+                       long limit, EventPriority priority, boolean canceled, double budgetMs, boolean persist,
+                       Declarative.Decl decl, Declarative.Creator creator, long expires) {}
 
-    /** Parse and compile on the bridge thread without accessing the world. */
+    /** TTL of a rule made below owner (plan 4.12): 7 days at most. */
+    public static final long TTL_MAX_MS = 7L * 24 * 3_600_000;
+
+    /** A rule the owner made (the console, scripts, an owner's request): no TTL unless asked. */
     public static Spec parse(Args a) throws RpcException {
+        return parse(a, Declarative.Creator.OWNER, true, System.currentTimeMillis());
+    }
+
+    /** A saved rule: its creator and expiry come from the file (written by this server). */
+    static Spec saved(JsonObject params, long now) throws RpcException {
+        Args a = new Args(params);
+        Declarative.Creator creator = Declarative.Creator.from(params.get("creator"));
+        // Parsed as the owner would (no TTL computed, no TTL limit): the expiry is the file's, verbatim.
+        Spec s = parse(a, creator, true, now);
+        long expires = params.has("expires") ? params.get("expires").getAsLong() : 0;
+        s.params().remove("expires");
+        if (expires > 0) s.params().addProperty("expires", expires);
+        return new Spec(s.params(), s.event(), s.code(), s.script(), s.name(), s.every(), s.limit(), s.priority(), s.canceled(),
+                s.budgetMs(), s.persist(), s.decl(), creator, expires);
+    }
+
+    /**
+     * Parse and compile on the bridge thread without accessing the world. {@code creator} and the expiry are set by
+     * the server ({@code owner}: no TTL unless {@code ttl_hours}; below owner at most 7 days), never by parameters.
+     */
+    public static Spec parse(Args a, Declarative.Creator creator, boolean owner, long now) throws RpcException {
         JsonObject params = new JsonObject();
-        for (String key : List.of("event", "script", "name", "every", "limit", "priority", "canceled", "budget_ms", "persist")) {
+        for (String key : List.of("event", "script", "name", "every", "limit", "priority", "canceled", "budget_ms", "persist",
+                "when", "then", "ttl_hours")) {
             if (a.has(key)) params.add(key, a.raw().get(key));
         }
+        Declarative.Decl decl = Declarative.parse(a.raw().get("when"), a.raw().get("then"));
+        if (decl != null && a.has("script")) throw RpcException.badRequest("A rule has either a script or when/then, not both");
+        double ttlHours = a.number("ttl_hours", owner ? 0 : TTL_MAX_MS / 3_600_000.0, 0, owner ? 1e6 : TTL_MAX_MS / 3_600_000.0);
+        if (!owner && ttlHours <= 0) ttlHours = TTL_MAX_MS / 3_600_000.0;
+        long expires = ttlHours > 0 ? now + (long) (ttlHours * 3_600_000) : 0;
+        if (creator.agent() != null) params.add("creator", creator.json());
+        if (expires > 0) params.addProperty("expires", expires);
         EventTypes.Found event = EventTypes.resolve(a.string("event"));
         String name = a.string("name", null);
         if (name != null && (name.isBlank() || name.length() > 64)) throw RpcException.badRequest("name: 1 to 64 characters");
@@ -119,7 +161,7 @@ public final class Rules {
                 throw RpcException.badRequest("Rule script failed to compile: " + e.getMessage());
             }
         }
-        return new Spec(params, event, code, script, name, every, limit, priority, canceled, budget, persist);
+        return new Spec(params, event, code, script, name, every, limit, priority, canceled, budget, persist, decl, creator, expires);
     }
 
     /** One-run deadline: the whole window's budget, at least 50 ms and at most 10 s. */
@@ -131,9 +173,20 @@ public final class Rules {
         return RpcException.unavailable("Scripts are disabled: scripts.enabled = false in config/almighty-common.toml");
     }
 
-    /** Add a rule (server thread). The same name replaces the previous rule. */
+    /** Add a rule (server thread), as the owner. The same name replaces the previous rule. */
     public JsonObject add(Spec spec) throws RpcException {
+        return add(spec, c -> true);
+    }
+
+    /** Add a rule; a same-named rule (or saved rule that did not load) is replaced only if {@code may} allows its creator. */
+    public JsonObject add(Spec spec, java.util.function.Predicate<Declarative.Creator> may) throws RpcException {
         Rule old = spec.name() == null ? null : byName(spec.name());
+        if (old != null && !may.test(old.spec.creator())
+                || old == null && spec.name() != null && !may.test(Declarative.Creator.OWNER) && unloaded.stream().anyMatch(u -> spec.name().equals(savedName(u)))) {
+            if (spec.script() != null) spec.script().close();
+            throw new RpcException(403, "policy", "A rule named " + spec.name() + " was made for "
+                    + (old != null ? old.spec.creator().describe() : "the owner") + ": choose another name");
+        }
         if (old == null && rules.size() >= MAX_RULES) {
             if (spec.script() != null) spec.script().close();
             throw RpcException.conflict("Already " + MAX_RULES + " rules: remove unused ones (rule.remove)");
@@ -154,13 +207,25 @@ public final class Rules {
         return rule.describe();
     }
 
-    /** Remove by id or name (server thread). */
+    /** Remove by id or name (server thread), as the owner. */
     public JsonObject remove(Args a) throws RpcException {
+        return remove(a, c -> true);
+    }
+
+    /** Remove by id or name; {@code may} says whether the caller may remove a rule of that creator (bound to its creator). */
+    public JsonObject remove(Args a, java.util.function.Predicate<Declarative.Creator> may) throws RpcException {
         Rule rule;
         String name = a.has("id") ? null : a.string("name", null);
         if (a.has("id")) rule = rules.get(a.longValue("id", 0, 1, Long.MAX_VALUE));
         else if (name != null) rule = byName(name);
         else throw RpcException.badRequest("rule.remove: id or name");
+        if (rule == null && name != null && !may.test(Declarative.Creator.OWNER)
+                && unloaded.stream().anyMatch(u -> name.equals(savedName(u)))) {
+            throw new RpcException(403, "policy", "A saved rule that did not load is removed by the owner or an admin");
+        }
+        if (rule != null && !may.test(rule.spec.creator())) {
+            throw new RpcException(403, "policy", "This rule was made for " + rule.spec.creator().describe() + ": only they, an admin or the owner remove it");
+        }
         if (rule == null && name != null && unloaded.removeIf(u -> name.equals(savedName(u)))) {
             save();
             JsonObject out = new JsonObject();
@@ -211,7 +276,7 @@ public final class Rules {
         try {
             for (JsonElement e : saved) {
                 try {
-                    Spec spec = parse(new Args(e.getAsJsonObject()));
+                    Spec spec = saved(e.getAsJsonObject(), clockMillis.getAsLong());
                     add(spec);
                 } catch (RpcException | RuntimeException ex) {
                     LOG.warn("Saved rule did not load: {}: {}", e, ex.getMessage());
@@ -315,7 +380,8 @@ public final class Rules {
 
         void fire(Event event) {
             if (off != null || running) return;
-            if (spec.script() != null && paused.getAsBoolean()) return;
+            // Paused: scripts stop, and so do rules made below the owner (they act for an agent or a player).
+            if (paused.getAsBoolean() && (spec.script() != null || !ownerMade())) return;
             if (!server.isSameThread()) {
                 if (!wrongThread) {
                     wrongThread = true;
@@ -326,15 +392,42 @@ public final class Rules {
             }
             long tick = server.getTickCount();
             if (spec.every() > 0 && lastRun != Long.MIN_VALUE && tick - lastRun < spec.every()) return;
-            lastRun = tick;
+            if (spec.expires() > 0 && clockMillis.getAsLong() >= spec.expires()) {
+                end("expired (made for " + spec.creator().describe() + "; ttl_hours)");
+                return;
+            }
             if (tick - timeTick >= WINDOW) {
                 timeTick = tick;
                 timeNanos = 0;
             }
-            running = true;
+            // Everything from here counts toward the budget, a non-matching condition too.
             long start = System.nanoTime();
+            // Bound to its creator (plan 4.12): the creator's rights, asked again at most once a second.
+            if (!ownerMade()) {
+                String lost = creatorLacks(tick);
+                if (lost != null) {
+                    turnOff(spec.creator().describe() + " may no longer have this rule: " + lost);
+                    return;
+                }
+            }
+            JsonObject fields = null;
+            if (spec.decl() != null && !spec.decl().when().isEmpty()) {
+                fields = Json.fields(event);
+                if (!Declarative.matches(spec.decl().when(), fields)) {
+                    if (warm) timeNanos += System.nanoTime() - start;
+                    warm = true;
+                    if (timeNanos > spec.budgetMs() * 1e6 * WINDOW) {
+                        turnOff(String.format(Locale.ROOT, "%.1f ms over %d ticks with a budget of %.1f ms per tick (budget_ms)", timeNanos / 1e6, WINDOW, spec.budgetMs()));
+                    }
+                    return;
+                }
+            }
+            lastRun = tick;
+            running = true;
             try {
-                if (spec.script() == null) {
+                if (spec.decl() != null) {
+                    act(event, fields != null ? fields : Json.fields(event), tick);
+                } else if (spec.script() == null) {
                     emit(Json.fields(event));
                 } else {
                     // Do not retain a departed bot (a new login is a different object) until the rule ends.
@@ -349,7 +442,7 @@ public final class Rules {
                         if (off != null) stopDriven(off);
                     }
                     if (r.ok()) errorsInRow = 0;
-                    else error(r, tick);
+                    else error(r.message(), r.line(), r.timedOut(), tick);
                 }
             } finally {
                 running = false;
@@ -361,32 +454,91 @@ public final class Rules {
             if (timeNanos > spec.budgetMs() * 1e6 * WINDOW) {
                 turnOff(String.format(Locale.ROOT, "%.1f ms over %d ticks with a budget of %.1f ms per tick (budget_ms)", timeNanos / 1e6, WINDOW, spec.budgetMs()));
             } else if (spec.limit() > 0 && fired >= spec.limit()) {
-                drop(this);
-                JsonObject d = who();
-                d.addProperty("reason", "limit = " + spec.limit() + " reached");
-                feed.add("rule.off", d);
-                if (spec.persist()) save();
+                end("limit = " + spec.limit() + " reached");
             }
         }
 
-        private void error(Scripts.Result r, long tick) {
+        long checkedTick = -WINDOW, checkedChanges = -1;
+        String lacking;
+        boolean ownerChecked, owner;
+
+        /** Whether the rule's creator is the owner now (asked once a second with the rights). */
+        private boolean ownerMade() {
+            if (spec.creator().agent() == null) return true;
+            long tick = server.getTickCount();
+            if (!ownerChecked || tick - checkedTick >= WINDOW || checkedChanges != ua.zentix.almighty.policy.Policies.CHANGES.get()) creatorLacks(tick);
+            return owner;
+        }
+
+        /**
+         * The creator's rights for this rule, cached for one second or until the policy or a role changes (permission
+         * lookups are not free per event; a permission plugin's change is seen within a second).
+         */
+        private String creatorLacks(long tick) {
+            long changes = ua.zentix.almighty.policy.Policies.CHANGES.get();
+            if (ownerChecked && tick - checkedTick < WINDOW && checkedChanges == changes) return lacking;
+            checkedTick = tick;
+            checkedChanges = changes;
+            ownerChecked = true;
+            owner = guard.owner(spec.creator());
+            if (owner) return lacking = null;
+            lacking = guard.lacks(spec.creator(), spec.script() != null ? ua.zentix.almighty.policy.Node.ENGINE : ua.zentix.almighty.policy.Node.RULES);
+            if (lacking == null && spec.decl() != null && spec.decl().commands()) lacking = guard.lacks(spec.creator(), ua.zentix.almighty.policy.Node.COMMAND);
+            return lacking;
+        }
+
+        /** A planned end (limit, expiry): removed from the list and the file. */
+        private void end(String reason) {
+            drop(this);
+            JsonObject d = who();
+            d.addProperty("reason", reason);
+            feed.add("rule.off", d);
+            if (spec.persist()) save();
+        }
+
+        /** Declarative actions, in order; a refused or failed action is a rule error (10 in a row turn it off). */
+        private void act(Event event, JsonObject fields, long tick) {
+            Declarative.Creator c = spec.creator();
+            try {
+                for (Declarative.Action a : spec.decl().then()) {
+                    switch (a.kind()) {
+                        case "cancel" -> {
+                            if (!(event instanceof net.neoforged.bus.api.ICancellableEvent ce)) throw new IllegalStateException(spec.event().name() + " cannot be canceled");
+                            String why = guard.cancel(c, event);
+                            if (why != null) throw new IllegalStateException("not canceled: " + why);
+                            ce.setCanceled(true);
+                        }
+                        case "emit" -> emit(fields);
+                        case "say" -> guard.say(c, Declarative.fill(a.text(), fields, false), a.to() == null ? null : Declarative.fill(a.to(), fields, true), a.style());
+                        case "command" -> guard.command(c, event, Declarative.fill(a.text(), fields, true));
+                        default -> throw new IllegalStateException("unknown action " + a.kind());
+                    }
+                    if (off != null) return;
+                }
+                errorsInRow = 0;
+            } catch (RpcException | Declarative.Unsafe | RuntimeException e) {
+                error(e.getMessage(), 0, false, tick);
+            }
+        }
+
+        private void error(String message, int line, boolean timedOut, long tick) {
             errors++;
             errorsInRow++;
             if (errorsInRow >= ERRORS_OFF) {
-                turnOff(ERRORS_OFF + " errors in a row, last: " + r.message() + (r.line() > 0 ? " (line " + r.line() + ")" : ""));
+                turnOff(ERRORS_OFF + " errors in a row, last: " + message + (line > 0 ? " (line " + line + ")" : ""));
                 return;
             }
             // The first run may spend its deadline linking Groovy calls: its abort is an error; the second disables the rule.
-            if (r.timedOut() && warm) {
-                turnOff(r.message() + " (budget_ms)");
+            if (timedOut && warm) {
+                turnOff(message + " (budget_ms)");
                 return;
             }
             // Report an error to the feed at most once per second: frequent events can produce hundreds.
             if (tick - lastErrorTick < WINDOW) return;
             lastErrorTick = tick;
             JsonObject d = who();
-            d.addProperty("error", r.message());
-            if (r.line() > 0) d.addProperty("line", r.line());
+            d.addProperty("error", message);
+            if (line > 0) d.addProperty("line", line);
             d.addProperty("errors", errors);
             feed.add("rule.error", d);
         }
@@ -447,6 +599,12 @@ public final class Rules {
             out.addProperty("state", off == null ? "on" : "off");
             if (off != null) out.addProperty("reason", off);
             out.addProperty("script", spec.code() != null);
+            if (spec.decl() != null) {
+                out.add("when", spec.params().get("when"));
+                out.add("then", spec.params().get("then"));
+            }
+            if (spec.creator().agent() != null) out.addProperty("for", spec.creator().describe());
+            if (spec.expires() > 0) out.addProperty("expires", java.time.Instant.ofEpochMilli(spec.expires()).toString());
             if (spec.every() > 0) out.addProperty("every", spec.every());
             if (spec.limit() > 0) out.addProperty("limit", spec.limit());
             out.addProperty("priority", spec.priority().name().toLowerCase(Locale.ROOT));

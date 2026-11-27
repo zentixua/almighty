@@ -133,6 +133,20 @@ public final class GmConfirmGameTests {
             op(h, alex, 4);
             check(runs(dispatcher, "almighty approve 1234 app", alex), "a level-4 operator cannot approve a sign-in");
             check(!runs(dispatcher, "almighty approve 1234 app owner", alex), "a level-4 operator who is not an owner can approve an owner app");
+            // Not through an owner either: the requirement is about who typed the command, not who it runs as.
+            ServerPlayer realOwner = player(h, "confirm-real-owner", UUID.randomUUID());
+            try {
+                gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\nowners = [\"" + realOwner.getUUID() + "\"]"));
+                op(h, realOwner, 4);
+                check(runs(dispatcher, "almighty approve 1234 app owner", realOwner), "the owner cannot approve their own app");
+                check(!runs(dispatcher, "execute as confirm-real-owner run almighty approve 1234 app owner", alex),
+                        "an operator approves an owner app by running it as the owner");
+                check(!runs(dispatcher, "execute as confirm-real-owner run almighty owner add confirm-bea", alex),
+                        "an operator makes themself owner by running it as the owner");
+            } finally {
+                deop(h, realOwner);
+                server.getPlayerList().remove(realOwner);
+            }
             JsonObject state = gm.decisions().pending("gm", id, 0).join();
             check(state.get("state").getAsString().equals("done"), "ran after confirmation: " + state);
         } finally {

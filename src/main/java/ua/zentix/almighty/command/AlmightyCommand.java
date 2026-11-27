@@ -23,7 +23,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Owner command {@code /almighty} (permission level 4: the console and level-4 operators): agents and their tokens.
+ * Command {@code /almighty}: each subcommand has its own requirement. Owner subcommands need permission level 4 (the
+ * console and level-4 operators; agents, tokens, scripts and owners only a true owner); confirm, deny, whoami and inbox are for every
+ * player, role for admins. Agents and their tokens.
  * Tokens are never printed: a command names the file that holds one. Also the red button ({@code pause},
  * {@code resume}) and the audit ({@code log}). Later steps add {@code role}, {@code confirm}, {@code undo}.
  */
@@ -108,10 +110,14 @@ public final class AlmightyCommand {
 
     /** The console, or a verified owner from policy.toml (see {@link #trueOwner}). */
     public static boolean isTrueOwner(CommandSourceStack s) {
-        return Mc.has(s, 4) && (!(s.getEntity() instanceof net.minecraft.server.level.ServerPlayer p)
-                ? s.getEntity() == null && (s.source == s.getServer() || s.source instanceof net.minecraft.server.rcon.RconConsoleSource)
-                : ua.zentix.almighty.policy.Identity.verified(p.getUUID()) && ua.zentix.almighty.policy.Nodes.role(p.getUUID())
-                        == ua.zentix.almighty.policy.Role.OWNER);
+        if (!Mc.has(s, 4)) return false;
+        // Who typed it, not who it runs as: "/execute as <owner> run almighty …" by another operator is that operator's.
+        net.minecraft.server.level.ServerPlayer typist = Mc.typedBy(s);
+        if (typist != null) {
+            return ua.zentix.almighty.policy.Identity.verified(typist.getUUID())
+                    && ua.zentix.almighty.policy.Nodes.role(typist.getUUID()) == ua.zentix.almighty.policy.Role.OWNER;
+        }
+        return s.getEntity() == null && (s.source == s.getServer() || s.source instanceof net.minecraft.server.rcon.RconConsoleSource);
     }
 
     private static Bridge bridge(CommandSourceStack source) {

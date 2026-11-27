@@ -75,6 +75,43 @@ public final class GmJournalGameTests {
         h.succeedWhen(() -> check(h.getLevel().getBlockState(p).isAir(), "reverted"));
     }
 
+    /** Redstone wire updates its own position while placed: the revert must still be exact (no false conflict). */
+    @GameTest(template = "floor", batch = "gm_journal", timeoutTicks = 200)
+    public static void selfRewritingBlocksRevertExactly(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        BlockPos block = h.absolutePos(new BlockPos(6, 2, 1)), wire = block.east();
+        gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"setblock %d %d %d minecraft:redstone_block\",\"setblock %d %d %d minecraft:redstone_wire\"]}",
+                block.getX(), block.getY(), block.getZ(), wire.getX(), wire.getY(), wire.getZ())).join();
+        long id = newest(gm);
+        long[] job = new long[1];
+        gm.dispatch().invoke(GM, "undo", params("{\"change\":%d,\"wait\":0}", id))
+                .thenAccept(o -> job[0] = o.getAsJsonObject().getAsJsonArray("jobs").get(0).getAsLong());
+        h.succeedWhen(() -> {
+            check(job[0] > 0 && gm.jobs().get(job[0]).state().finished(), "revert finished");
+            JsonObject d = gm.jobs().get(job[0]).describe();
+            check(!d.has("conflicts"), "no false conflict: " + d);
+            check(h.getLevel().getBlockState(wire).isAir() && h.getLevel().getBlockState(block).isAir(), "both reverted");
+        });
+    }
+
+    /** One command writing in two places far apart: the revert splits by region instead of leasing everything between. */
+    @GameTest(template = "floor", batch = "gm_journal", timeoutTicks = 300)
+    public static void spreadOutChangesRevert(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        BlockPos near = h.absolutePos(new BlockPos(7, 2, 7)), far = near.offset(400, 0, 0);
+        // GameTest loads the far place itself (background loading cannot keep up with test ticks).
+        h.getLevel().getChunk(far);
+        gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"setblock %d %d %d minecraft:stone\",\"setblock %d %d %d minecraft:stone\"]}",
+                near.getX(), near.getY(), near.getZ(), far.getX(), far.getY(), far.getZ())).join();
+        long id = newest(gm);
+        JsonObject[] out = new JsonObject[1];
+        gm.dispatch().invoke(GM, "undo", params("{\"change\":%d,\"wait\":0}", id)).thenAccept(o -> out[0] = o.getAsJsonObject());
+        h.succeedWhen(() -> {
+            check(out[0] != null && out[0].getAsJsonArray("jobs").size() == 2, "one job per region: " + out[0]);
+            check(h.getLevel().getBlockState(near).isAir() && h.getLevel().getBlockState(far).isAir(), "both places reverted");
+        });
+    }
+
     /**
      * A crash mid-build leaves an undoable journal: while a slow build still runs, what it wrote is already on disk,
      * and a journal opened afresh on the same directory (a restart) lists the change as interrupted and reads it.

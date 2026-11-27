@@ -50,14 +50,12 @@ public final class Journal {
     /** Positions kept over all changes; the oldest changes are dropped beyond it (like build snapshots). */
     public static final long MAX_POSITIONS = 4_000_000;
 
-    private static final CompoundTag NONE = new CompoundTag();
-
     /** Any change open on any thread: the hook's fast path. */
-    private static volatile int open;
+    private static final java.util.concurrent.atomic.AtomicInteger open = new java.util.concurrent.atomic.AtomicInteger();
     private static final ThreadLocal<Change> CURRENT = new ThreadLocal<>();
 
     public static boolean recording() {
-        return open > 0;
+        return open.get() > 0;
     }
 
     public static Change current() {
@@ -91,21 +89,8 @@ public final class Journal {
         private long count;
         private int refs = 1;
         private boolean closed;
-        /**
-         * Block entity data before each write in progress (pushed by the hook before the write, popped after it). A
-         * stack: a write can cause nested writes ({@code onPlace} of neighbours) before it returns.
-         */
-        private final java.util.ArrayDeque<CompoundTag> pending = new java.util.ArrayDeque<>();
-
-        public void before(CompoundTag tag) {
-            pending.push(tag == null ? NONE : tag);
-        }
-
-        public CompoundTag takeBefore() {
-            CompoundTag t = pending.poll();
-            return t == NONE ? null : t;
-        }
-
+        /** A write to disk failed: nothing more is recorded, but the change still closes normally. */
+        private boolean failed;
         Change(long id, String agent, String method, UUID requester) {
             this.id = id;
             this.agent = agent;
@@ -128,7 +113,7 @@ public final class Journal {
         public void release() {
             if (--refs > 0 || closed) return;
             closed = true;
-            open--;
+            open.decrementAndGet();
             try {
                 if (out != null) out.close();
             } catch (IOException e) {
@@ -140,7 +125,7 @@ public final class Journal {
 
         /** The hook: one block write of this change. */
         public void record(String dim, BlockPos pos, BlockState before, BlockState after, CompoundTag tagBefore) {
-            if (closed) return;
+            if (closed || failed) return;
             try {
                 if (out == null) {
                     Files.createDirectories(dir);
@@ -173,7 +158,7 @@ public final class Journal {
                 total++;
             } catch (IOException e) {
                 LOG.error("Almighty journal: change {} cannot be written ({}); it will not be fully undoable", id, e.toString());
-                closed = true;
+                failed = true;
             }
         }
 
@@ -223,7 +208,7 @@ public final class Journal {
         e.addProperty("open", true);
         index.put(c.id, e);
         active.add(c);
-        open++;
+        open.incrementAndGet();
         return c;
     }
 
@@ -232,23 +217,30 @@ public final class Journal {
         JsonObject e = index.get(c.id);
         if (e == null) return;
         if (c.count == 0) {
+            // Nothing written: nothing on disk either (the index never saved it as open with records).
             index.remove(c.id);
-            try {
-                Files.deleteIfExists(c.file);
-            } catch (IOException ignored) {
-                // Nothing written.
-            }
-        } else {
-            e.remove("open");
-            e.addProperty("positions", c.count);
+            return;
         }
+        e.remove("open");
+        e.addProperty("positions", c.count);
         trim();
-        save();
+        dirty = true;
     }
 
-    /** Tick end: flush what was recorded this tick. */
+    /** Changes kept at most (besides the position budget): one setblock per call must not grow the index without bound. */
+    static final int MAX_CHANGES = 1000;
+    private boolean dirty;
+    private long savedAt;
+
+    /** Tick end: flush what was recorded this tick; save the index at most every 5 seconds. */
     public synchronized void flush() {
         for (Change c : active) c.flush();
+        long now = System.currentTimeMillis();
+        if (dirty && now - savedAt >= 5_000) {
+            savedAt = now;
+            dirty = false;
+            save();
+        }
     }
 
     /** Server stop: close open changes (their files stay undoable). */
@@ -257,6 +249,7 @@ public final class Journal {
             c.refs = 1;
             c.release();
         }
+        save();
     }
 
     public synchronized JsonObject describe(long id) {
@@ -301,7 +294,15 @@ public final class Journal {
                 }
                 try {
                     switch (type) {
-                        case 0 -> palette.add(states.apply(NbtIo.read(in, NbtAccounter.unlimitedHeap())));
+                        case 0 -> {
+                            CompoundTag t = NbtIo.read(in, NbtAccounter.unlimitedHeap());
+                            BlockState st = states.apply(t);
+                            // A block whose mod is gone reads back as air: refuse rather than write air over the world.
+                            if (st.isAir() && !t.getString("Name").endsWith("air")) {
+                                throw new IOException("change " + id + " has a block that no longer exists: " + t.getString("Name"));
+                            }
+                            palette.add(st);
+                        }
                         case 1 -> dims.add(in.readUTF());
                         case 4 -> in.readUTF();
                         case 2, 3 -> {
@@ -315,8 +316,10 @@ public final class Journal {
                             }
                             dim[n] = in.readUnsignedByte();
                             pos[n] = in.readLong();
-                            before[n] = palette.get(in.readInt());
-                            after[n] = palette.get(in.readInt());
+                            int bi = in.readInt(), ai = in.readInt();
+                            if (bi < 0 || bi >= palette.size() || ai < 0 || ai >= palette.size()) throw new IOException("change " + id + " is corrupt");
+                            before[n] = palette.get(bi);
+                            after[n] = palette.get(ai);
                             tag[n] = type == 3 ? NbtIo.read(in, NbtAccounter.unlimitedHeap()) : null;
                             n++;
                         }
@@ -337,7 +340,7 @@ public final class Journal {
         for (int i = ids.size() - 1; i >= 0; i--) {
             JsonObject e = index.get(ids.get(i));
             kept += e.has("positions") ? e.get("positions").getAsLong() : 0;
-            if (kept > MAX_POSITIONS && !e.has("open")) {
+            if ((kept > MAX_POSITIONS || ids.size() - i > MAX_CHANGES) && !e.has("open")) {
                 index.remove(ids.get(i));
                 try {
                     Files.deleteIfExists(dir.resolve(ids.get(i) + ".bin"));

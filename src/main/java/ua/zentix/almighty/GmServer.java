@@ -36,6 +36,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import com.google.gson.JsonArray;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -173,9 +174,11 @@ public final class GmServer {
                     && id.isNumber() && o.get("kind").getAsString().equals("build") ? id.getAsLong() : null;
             String what = method.equals("command") || method.equals("function") ? Confirmations.render(method, params)
                     : job != null ? "build #" + job : method;
-            Long undoable = change > 0 ? change : null;
+            long recorded = change;
             server.execute(() -> {
                 net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(caller.requester());
+                // [Undo] only for a change that recorded something (a change with no writes is gone by now).
+                Long undoable = recorded > 0 && journal.describe(recorded) != null ? recorded : null;
                 if (p != null) p.sendSystemMessage(ua.zentix.almighty.policy.Prompts.receipt(what, undoable));
             });
         });
@@ -444,6 +447,7 @@ public final class GmServer {
         JsonObject meta = journal.describe(id);
         if (meta == null) throw RpcException.notFound("No change " + id + " (old changes are dropped beyond 4 million positions)");
         if (meta.has("undone_by")) throw RpcException.conflict("Change " + id + " was already undone by change " + meta.get("undone_by").getAsLong());
+        if (meta.has("open")) throw RpcException.conflict("Change " + id + " is still running (a job of it has not finished): cancel it first");
         if (caller != null && caller.agent() != null) {
             String agent = meta.get("agent").getAsString();
             String requester = meta.has("requester") ? meta.get("requester").getAsString() : null;
@@ -465,32 +469,50 @@ public final class GmServer {
         if (r.size() == 0) throw RpcException.conflict("Change " + id + " changed no blocks");
         Journal.Records rec = r;
         return onMain(() -> {
-            JsonArray jobs = new JsonArray();
-            for (int d = 0; d < rec.dims().size(); d++) {
-                int n = 0;
-                for (int i = 0; i < rec.size(); i++) if (rec.dim()[i] == d) n++;
-                long[] pos = new long[n];
-                net.minecraft.world.level.block.state.BlockState[] before = new net.minecraft.world.level.block.state.BlockState[n], after =
-                        new net.minecraft.world.level.block.state.BlockState[n];
-                net.minecraft.nbt.CompoundTag[] tags = new net.minecraft.nbt.CompoundTag[n];
-                int k = 0;
-                for (int i = 0; i < rec.size(); i++) {
-                    if (rec.dim()[i] != d) continue;
-                    pos[k] = rec.pos()[i];
-                    before[k] = rec.before()[i];
-                    after[k] = rec.after()[i];
-                    tags[k] = rec.tag()[i];
-                    k++;
+            // Grouped by region (dimension and 128×128 blocks): a change spread over the map is reverted piece by piece,
+            // each piece leasing only its own chunks.
+            Map<String, List<Integer>> groups = new LinkedHashMap<>();
+            for (int i = 0; i < rec.size(); i++) {
+                long pp = rec.pos()[i];
+                String k = rec.dim()[i] + "/" + (net.minecraft.core.BlockPos.getX(pp) >> 7) + "/" + (net.minecraft.core.BlockPos.getZ(pp) >> 7);
+                groups.computeIfAbsent(k, x -> new ArrayList<>()).add(i);
+            }
+            List<Job> started = new ArrayList<>();
+            try {
+                for (Map.Entry<String, List<Integer>> g : groups.entrySet()) {
+                    List<Integer> idx = g.getValue();
+                    int n = idx.size();
+                    long[] pos = new long[n];
+                    net.minecraft.world.level.block.state.BlockState[] before = new net.minecraft.world.level.block.state.BlockState[n], after =
+                            new net.minecraft.world.level.block.state.BlockState[n];
+                    net.minecraft.nbt.CompoundTag[] tags = new net.minecraft.nbt.CompoundTag[n];
+                    for (int k = 0; k < n; k++) {
+                        int i = idx.get(k);
+                        pos[k] = rec.pos()[i];
+                        before[k] = rec.before()[i];
+                        after[k] = rec.after()[i];
+                        tags[k] = rec.tag()[i];
+                    }
+                    String dim = rec.dims().get(rec.dim()[idx.get(0)]);
+                    var key = net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION,
+                            net.minecraft.resources.ResourceLocation.parse(dim));
+                    net.minecraft.server.level.ServerLevel level = server.getLevel(key);
+                    if (level == null) throw RpcException.notFound("Change " + id + " touched dimension " + dim + ", which is not loaded");
+                    started.add(jobs().submit(ua.zentix.almighty.building.BuildJob.revert(level, areas, id, pos, before, after, tags, n, 2400)));
                 }
-                var key = net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION,
-                        net.minecraft.resources.ResourceLocation.parse(rec.dims().get(d)));
-                net.minecraft.server.level.ServerLevel level = server.getLevel(key);
-                if (level == null) continue;
-                Job job = jobs().submit(ua.zentix.almighty.building.BuildJob.revert(level, areas, id, pos, before, after, tags, n, 2400));
-                jobs.add(job.id());
+            } catch (RpcException | RuntimeException e) {
+                // All or nothing: a piece that cannot start (no chunk budget) cancels the pieces already queued.
+                for (Job j : started) jobs().cancel(j.id());
+                throw e;
             }
             Journal.Change now = Journal.current();
-            journal.undone(id, now == null ? 0 : now.id);
+            long by = now == null ? 0 : now.id;
+            // Marked undone only when every piece has finished; a failed piece leaves the change revertible again.
+            CompletableFuture.allOf(started.stream().map(Job::done).toArray(CompletableFuture[]::new)).thenRun(() -> server.execute(() -> {
+                if (started.stream().allMatch(j -> j.state() == Job.State.DONE)) journal.undone(id, by);
+            }));
+            JsonArray jobs = new JsonArray();
+            for (Job j : started) jobs.add(j.id());
             JsonObject out = new JsonObject();
             out.addProperty("change", id);
             out.add("jobs", jobs);

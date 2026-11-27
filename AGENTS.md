@@ -227,7 +227,13 @@ Modrinth and CurseForge pages use the manually triggered `publish` workflow: `dr
   holds what the change put there; the rest are `conflicts` in the job (`BuildJob.revert`). Another agent's or
   requester's change needs `undo.any`; reverting an undo (a redo) needs the owner. `changes {limit?}` lists them;
   receipts and audit lines carry the change id. Block-entity-only edits (container contents), entities and
-  inventories are not recorded.
+  inventories are not recorded. Writes are recorded at the start of `setBlockState` (true order; a block that
+  rewrites itself while placed, such as redstone wire, reverts exactly). The index is saved at most every 5 s
+  (tick end) and keeps at most 1000 changes; a change still running cannot be reverted; a revert is split by
+  region (128×128 blocks per job, so spread-out changes stay within the chunk budget), all or nothing, and the
+  change is marked undone only when every piece finished. A block whose mod is gone refuses the revert instead of
+  writing air. Caveat: work the server thread runs inside a GM call (a script that loads a chunk drains queued
+  tasks, player packets included) is recorded into that call's change; scripts must not load chunks (deny list).
 - `knowledge/`: what the agent learns about this server, one method `notes`. `Notes`: notes from mods and
   datapacks (`data/<namespace>/almighty/notes/<name>.md` in the server's current data, refreshed after `/reload`,
   id `<namespace>:<name>`; a datapack overrides a mod note at the same path, an empty file removes it), the
@@ -378,7 +384,8 @@ Before planning or changing bot or vision behavior (including compatibility driv
 
 - Journal: GameTest `GmJournalGameTests` (a command's fill recorded with before/after on disk; revert leaves a
   position changed since; a script's write recorded and reverted; mid-build the change is on disk and a journal
-  reopened on the directory lists it as interrupted and reads it).
+  reopened on the directory lists it as interrupted and reads it; redstone wire beside a redstone block reverts with
+  no conflict; one command writing 400 blocks apart reverts both places).
 - Content limits: GameTest `GmLimitsGameTests` (command block, jigsaw and a sign with data refused below owner, a
   plain sign built, the owner builds a command block; bread given to the requester, `never_give`, components and
   no requester refused; a creative bot at the member floor refused).

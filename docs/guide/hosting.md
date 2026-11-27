@@ -37,4 +37,5 @@ passes it, so agents keep working).
 
 - Behind Velocity or BungeeCord, each backend server has its own bridge and its own agents.
 - Bedrock players through Geyser and Floodgate are players like any other; Geyser for modded servers supports only
-  the newest Minecraft version, so on 1.21.1 it is not available.
+  the newest Minecraft version: on 26.3 (the latest release Almighty supports) it can work, on 1.21.1 it is not
+  available.

@@ -2,8 +2,9 @@
 
 English · [Русский](getting-started.ru.md)
 
-From a jar to an AI agent playing game master on your server, in three steps. You need a Minecraft 1.21.1 server
-with NeoForge 21.1.264 or newer and an AI agent app on your computer (Claude Code, Codex, the ChatGPT desktop app in
+From a jar to an AI agent playing game master on your server, in three steps. You need a Minecraft server — 1.21.1
+on NeoForge 21.1.264+, or 26.1.2 or 26.3 on NeoForge or Fabric (the jar's name says which: `almighty-<version>+<game
+version>-<loader>.jar`) — and an AI agent app on your computer (Claude Code, Codex, the ChatGPT desktop app in
 Codex mode, Cursor, VS Code, opencode, Gemini CLI, Antigravity or a local model app).
 
 ## 1. Install the mod

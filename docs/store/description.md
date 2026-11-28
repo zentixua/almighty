@@ -15,7 +15,8 @@ how much of that it may do, for whom and where. Players install nothing.
 - **See the world:** a top-down map, a building from any side, or the view through any player's or bot's eyes.
 - **Follow the game:** chat, joins, deaths, advancements and player commands reach it as they happen.
 - **Talk to players:** in chat, as a title or above the hotbar. Players can write to it privately with
-  `/gm <text>`, or address it by name in chat ("Claude" by default).
+  `/gm <text>`, or address it by name in chat ("Claude" by default). By default, each player who joins is told that an AI
+  reads what is addressed to it.
 - **Build:** from a few blocks up to two million, placed a little each tick so the server keeps running.
 - **Run the game:** commands, items for players, and rules that react to events of the game and of other mods.
 - **Learn your modpack:** blocks, items, recipes and commands of every installed mod, read from the running server.
@@ -34,13 +35,16 @@ how much of that it may do, for whom and where. Players install nothing.
   and on its own it acts as a member would. On a public server, use `public`: everyone talks to it, and on its own it
   acts as a guest would. On `private`, only the owners talk to it, and on its own it acts with its full rights.
 - **Confirmation:** something that affects other players and cannot be undone waits until the player who asked
-  presses [Allow] in chat. A request beyond the player's rights is refused, unless you list its kind under
-  `ask_admin`; then an admin can approve it with one click.
+  presses [Allow] in chat, or in a dialog on 26.x; the question is in the player's game language, English or
+  Russian. A request beyond the player's rights, or a call beyond the game master's own rights, is refused, unless
+  you list its kind under `ask_admin`; then an admin can approve it with one click, and the owners online are told
+  of every such decision.
 - **Roles:** owner, admin, builder, member and guest. Give one for a while with `/almighty role <player> builder 3h`,
   or let LuckPerms decide through the `almighty.*` permissions.
 - **Zones, quotas and claims:** keep spawn free of building, give the game master an arena, limit blocks and items
-  per player per hour. With Open Parties and Claims or FTB Chunks it builds for a player only where that player may
-  build.
+  per player per hour. With Open Parties and Claims, FTB Chunks or, on Fabric, any protection mod that uses the
+  Common Protection API, it changes blocks for a player, by building or by commands, only where that player may
+  build, and on its own only outside claims.
 - **Limits:** command blocks, spawners, barriers and similar blocks are never built for a player, and items go only
   to the player who asked.
 - **Ask in words:** tell the game master "deny building at spawn" and it changes the policy for you. Anything it
@@ -49,14 +53,16 @@ how much of that it may do, for whom and where. Players install nothing.
 ### Safe for your server
 
 - **Undo:** every block the game master changes is saved to disk, even if the server crashes mid-build. Any change
-  can be undone; blocks that players changed since stay as they are. A player who asked for something gets a
-  "Done for you … [Undo]" line in chat.
+  can be undone, chests with their contents; what players built or stored since stays as it is. A player who asked
+  for something gets a "Done for you … [Undo]" line in chat.
 - **Pause:** `/almighty pause` stops one agent or all of them at once. `/almighty log` shows what they did and what
   was refused.
 - **Bots are marked:** `[bot]` before their names in the tab list and chat. Unless you allow it, a bot cannot take
   the name or skin of a player your server knows.
-- **No lag:** game master work gets 3 ms per tick, and a quarter of that while the server lags. Commands known to
-  crash or freeze a server are refused for every agent.
+- **No lag:** game master work gets 3 ms per tick, and a quarter of that while the server lags. Several agents
+  share that time equally, and limits on calls a minute and waiting jobs (below the owner also on bot time and
+  script time) keep one agent from crowding out the rest. Commands known to crash or freeze a server are refused
+  for every agent.
 
 ## What it is, plainly
 
@@ -64,7 +70,9 @@ Almighty is remote control of your server by an AI agent that you, the owner, ru
 the server, by default only on `127.0.0.1`, the server machine itself. An app you choose connects to it and signs in
 with a four-digit code that you type on the server, or with a token you made for it with `/almighty agent add`;
 no app gets in otherwise, and you can revoke one at any time with `/almighty revoke`. The endpoint is reachable from the internet only if you put it there: use your own HTTPS
-reverse proxy or tunnel, or give it your certificate, and never open a plain port.
+reverse proxy or tunnel, or give it your certificate, and never open a plain port. The mod refuses plain HTTP
+anywhere but the server machine itself, unless you allow it for a private container network with
+`bridge.allow_plain_http_off_loopback = true`.
 
 By default, only the owner may run Groovy scripts, on every preset (a permissions plugin can grant it to others,
 and builders may run scripts the owner approved by name). With scripts on, the owner's agent can run any code
@@ -80,6 +88,9 @@ public description and to look up a Minecraft skin when the agent asks for a bot
 3. The app opens a sign-in page with a four-digit code. Type `/almighty approve <code> <name> owner` in the console
    for your own app. Without `owner` it gets less: no scripts, and only the commands its rights allow.
 
+Once connected, the game master gets a check of your server's setup (preset, owners, identity, claims, HTTPS) and
+tells you about any problem, with its fix.
+
 Claude Code, Codex (also in the ChatGPT desktop app), Cursor, VS Code, opencode, Gemini CLI, Antigravity and local
 models all work. For a server on a VPS or a hosting panel, see
 [Hosting](https://github.com/zentixua/almighty/blob/main/docs/guide/hosting.md).
@@ -93,8 +104,9 @@ models all work. For a server on a VPS or a hosting panel, see
 **Minecraft 26.3 · NeoForge 26.3.0.118+ or Fabric Loader 0.20.1+ with Fabric API 0.167.0+ · Java 25**
 
 Almighty runs on the server only; players join with a plain client. No other mods are required. Immersive
-Aircraft (1.21.1, 26.1.2), Sable (1.21.1), Open Parties and Claims, FTB Chunks (1.21.1, 26.1.2) and LuckPerms are
-optional; their support loads only when they are installed.
+Aircraft (1.21.1, 26.1.2), Sable (1.21.1), Open Parties and Claims, FTB Chunks (1.21.1, 26.1.2), protection mods
+that use the Common Protection API (Fabric) and LuckPerms are optional; their support loads only when they are
+installed.
 
 ## FAQ
 
@@ -110,7 +122,7 @@ bridge between the app and your server.
 costs about as much as a player.
 
 **How do I protect builds?** Set zones in `config/almighty/policy.toml`, or ask the game master to. With Open
-Parties and Claims or FTB Chunks, claims are respected. Blocks the game master changed can be put back with undo.
+Parties and Claims, FTB Chunks or a protection mod that uses the Common Protection API, claims are respected. Blocks the game master changed can be put back with undo.
 
 **Can I use it in a modpack?** Yes, under the GPL-3.0 license. Mark it as server-side.
 

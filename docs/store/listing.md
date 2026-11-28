@@ -76,13 +76,18 @@ publish workflow uploads each as its own file named `Almighty <version> (<game v
 | `almighty-<v>+1.21.1-neoforge.jar` | NeoForge 21.1.264+ | 1.21.1 | 21 | | LuckPerms, Immersive Aircraft, Sable, Open Parties and Claims, FTB Chunks |
 | `almighty-<v>+26.1.2-neoforge.jar` | NeoForge 26.1.2.130+ | 26.1.2 | 25 | | LuckPerms, Immersive Aircraft, Open Parties and Claims, FTB Chunks |
 | `almighty-<v>+26.3-neoforge.jar` | NeoForge 26.3.0.118+ | 26.3 | 25 | | LuckPerms, Open Parties and Claims |
-| `almighty-<v>+26.1.2-fabric.jar` | Fabric Loader 0.20.1+ | 26.1.2 | 25 | Fabric API 0.155.3+ | LuckPerms, Immersive Aircraft, Open Parties and Claims, FTB Chunks |
-| `almighty-<v>+26.3-fabric.jar` | Fabric Loader 0.20.1+ | 26.3 | 25 | Fabric API 0.167.0+ | LuckPerms, Open Parties and Claims |
+| `almighty-<v>+26.1.2-fabric.jar` | Fabric Loader 0.20.1+ | 26.1.2 | 25 | Fabric API 0.155.3+ | LuckPerms, Immersive Aircraft, Open Parties and Claims, FTB Chunks, Common Protection API* |
+| `almighty-<v>+26.3-fabric.jar` | Fabric Loader 0.20.1+ | 26.3 | 25 | Fabric API 0.167.0+ | LuckPerms, Open Parties and Claims, Common Protection API* |
 
 Java and the optional list come from each node's `gradle.properties` (`java_version`, `compat_*` keys; the publish
 workflow's `plan` job). `plan` reads `versions/*/gradle.properties` from the branch the run starts on, not from the
 release tag: run it from `main` (or the release's own commit) so the nodes match the jars. FTB Chunks is not on
 Modrinth, so it is listed on CurseForge only (`ftb-chunks-forge` for NeoForge, `ftb-chunks-fabric` for Fabric).
+
+\* Common Protection API (`compat_cpa`, Patbox, MIT) is a library that protection mods bundle, not a project of its
+own: neither Modrinth nor CurseForge has a page for it (checked 28.11.2026; only mods built on it, such as "Common
+Protection API: Spawn Protection Integration"), so the publish workflow declares no dependency for it. The page
+names it under optional mods.
 
 ## Disclosure
 

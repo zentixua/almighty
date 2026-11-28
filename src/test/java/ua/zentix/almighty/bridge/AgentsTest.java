@@ -84,10 +84,12 @@ class AgentsTest {
     @Test
     void playersReachTheAgentThatRuns() {
         Agents a = Agents.of(java.util.Map.of("gm", "g".repeat(32), "claude-code", "c".repeat(32)));
-        assertEquals("gm", a.route("gm", 60_000), "nobody connected yet: the configured agent");
+        java.util.function.Predicate<String> owners = n -> n.equals("claude-code");
+        assertEquals("gm", a.route("gm", 60_000, owners), "nobody connected yet: the configured agent");
         a.get("claude-code").seen("127.0.0.1");
-        assertEquals("claude-code", a.route("gm", 60_000), "gm is not running: the app that is");
+        assertEquals("claude-code", a.route("gm", 60_000, owners), "gm is not running: the owner's app that is");
+        assertEquals("gm", a.route("gm", 60_000, n -> false), "never to an agent without an owner ceiling (review of #101)");
         a.get("gm").seen("127.0.0.1");
-        assertEquals("gm", a.route("gm", 60_000), "the configured agent while it runs");
+        assertEquals("gm", a.route("gm", 60_000, owners), "the configured agent while it runs");
     }
 }

@@ -134,7 +134,8 @@ public final class Inbox {
     String defaultAgent() {
         Agents known = agents.get();
         String configured = GmConfig.FEED_DEFAULT_AGENT.get();
-        return known == null ? configured : known.route(configured, PRESENT_MS);
+        return known == null ? configured : known.route(configured, PRESENT_MS,
+                name -> ua.zentix.almighty.policy.Nodes.policy().ceiling(name) == ua.zentix.almighty.policy.Role.OWNER);
     }
 
     private void deliver(ServerPlayer player, String type, JsonObject d, Addressing.Via via, String agentName) {

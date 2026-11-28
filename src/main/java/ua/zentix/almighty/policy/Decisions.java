@@ -93,11 +93,12 @@ public final class Decisions {
     }
 
     /** Whether a call's result reports a failed command ({@code ok: false} in a command list). */
-    static boolean failed(Object result) {
+    public static boolean failed(Object result) {
         if (result instanceof com.google.gson.JsonArray list) {
             for (var r : list) if (r instanceof JsonObject o && o.has("ok") && !o.get("ok").getAsBoolean()) return true;
         }
-        return false;
+        // A function's result is one object with ok (review of #101).
+        return result instanceof JsonObject o && o.has("ok") && o.get("ok").isJsonPrimitive() && !o.get("ok").getAsBoolean();
     }
 
     /** The policy's owners (UUIDs), told of every admin decision. */

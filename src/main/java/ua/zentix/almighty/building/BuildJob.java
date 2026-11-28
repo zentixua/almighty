@@ -116,6 +116,27 @@ public final class BuildJob extends Job {
         this.after = job;
     }
     private int restoreAt;
+    /** The positions an undo or revert writes, for {@link #partnerWritten}; built on first need. */
+    private it.unimi.dsi.fastutil.longs.LongOpenHashSet restored;
+
+    /** Whether {@code old} is one half of a door, bed or tall plant whose other half this undo or revert also writes. */
+    private boolean partnerWritten(BlockState old, BlockPos pos) {
+        BlockPos other;
+        if (old.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.DOUBLE_BLOCK_HALF)) {
+            other = old.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.DOUBLE_BLOCK_HALF)
+                    == net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER ? pos.above() : pos.below();
+        } else if (old.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.BED_PART)
+                && old.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING)) {
+            other = pos.relative(net.minecraft.world.level.block.BedBlock.getConnectedDirection(old));
+        } else {
+            return false;
+        }
+        if (restored == null) {
+            restored = new it.unimi.dsi.fastutil.longs.LongOpenHashSet(restore.size);
+            for (int i = 0; i < restore.size; i++) restored.add(restore.pos[i]);
+        }
+        return restored.contains(other.asLong());
+    }
 
     private BuildJob(String kind, ServerLevel level, Areas areas, int[] bounds, long timeoutTicks,
                      BuildPlan<BlockInput> plan, Snapshot restore, long undoOf) {
@@ -301,11 +322,10 @@ public final class BuildJob extends Job {
         // Lead's F4: replacing one half of a door, bed or tall plant breaks the other half through its shape update,
         // with a drop (vanilla clears UPDATE_SUPPRESS_DROPS for neighbour updates). Without shape updates here the
         // other half stays for its own write (both halves are in a build or a change), and nothing drops.
+        // Only in an undo or revert, and only when the other half is written by this job too (review of #101: a build
+        // over one half, or a revert of one half, keeps vanilla's shape update, or the other half would float).
         int flags = FLAGS;
-        if (old.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.DOUBLE_BLOCK_HALF)
-                || old.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.BED_PART)) {
-            flags |= Block.UPDATE_KNOWN_SHAPE;
-        }
+        if (plan == null && partnerWritten(old, pos)) flags |= Block.UPDATE_KNOWN_SHAPE;
         if (plan != null) {
             changed = cursor.block.place(level, pos, flags);
         } else {

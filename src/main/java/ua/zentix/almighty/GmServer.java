@@ -136,7 +136,10 @@ public final class GmServer {
             } catch (java.util.concurrent.ExecutionException e) {
                 // The requester went offline, or the like: the confirmation path reports it as before.
                 return 0;
-            } catch (java.util.concurrent.TimeoutException | InterruptedException e) {
+            } catch (java.util.concurrent.TimeoutException e) {
+                return 0;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 return 0;
             }
         });
@@ -204,9 +207,7 @@ public final class GmServer {
             // A reply is its own answer (lead's F2): no "Done for you: say" under it.
             if (method.equals("say")) return;
             // Commands report per command; a receipt only for what actually happened.
-            if (result instanceof com.google.gson.JsonArray results) {
-                for (var r : results) if (r instanceof JsonObject o && o.has("ok") && !o.get("ok").getAsBoolean()) return;
-            }
+            if (ua.zentix.almighty.policy.Decisions.failed(result)) return;
             Long job = result instanceof JsonObject o && o.has("kind") && o.get("id") instanceof com.google.gson.JsonPrimitive id
                     && id.isNumber() && o.get("kind").getAsString().equals("build") ? id.getAsLong() : null;
             String what = method.equals("command") || method.equals("function") ? Confirmations.render(method, params)

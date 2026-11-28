@@ -148,15 +148,17 @@ public final class Agents {
 
     /**
      * Who gets players' messages (lead's F7): the configured agent ({@code feed.default_agent}) while it is present
-     * (a call within {@code presentMs}); else the present agent seen last, so a freshly signed-in app hears players
-     * without a config step; with nobody present, the configured agent if it exists, else the one seen last.
+     * (a call within {@code presentMs}); else the present {@code eligible} agent seen last (the owner's own app: an
+     * owner ceiling, so a player's message never goes to someone else's agent they did not address), so a freshly
+     * signed-in owner app hears players without a config step; with none present, the configured agent if it
+     * exists, else the eligible one seen last.
      */
-    public String route(String configured, long presentMs) {
+    public String route(String configured, long presentMs, java.util.function.Predicate<String> eligible) {
         Agent c = get(configured);
         if (c != null && c.present(presentMs)) return configured;
         Agent best = null;
         for (Agent a : list()) {
-            if (a.lastSeenMillis() == 0) continue;
+            if (a.lastSeenMillis() == 0 || !eligible.test(a.name())) continue;
             if (best == null || a.lastSeenMillis() > best.lastSeenMillis()) best = a;
         }
         if (best != null && best.present(presentMs)) return best.name();

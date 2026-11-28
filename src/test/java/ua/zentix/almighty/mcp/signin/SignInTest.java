@@ -242,11 +242,15 @@ class SignInTest {
         SignIn.Client c = register(s, "Codex", "http://127.0.0.1:9/cb");
         SignIn.Pending p = s.authorize(c, authorizeQuery(c.id(), "http://127.0.0.1:9/cb"), "http://127.0.0.1:25650/mcp", "10.0.0.5");
         assertTrue(s.deny(p.code()));
-        SignIn.Client again = register(s, "Codex", "http://127.0.0.1:9/cb");
+        SignIn.Client again = c;
         SignIn.OAuthError e = assertThrows(SignIn.OAuthError.class, () -> s.authorize(again, authorizeQuery(again.id(), "http://127.0.0.1:9/cb"),
                 "http://127.0.0.1:25650/mcp", "10.0.0.5"));
         assertEquals("access_denied", e.error());
-        now.addAndGet(SignIn.REFUSED_MS + 1);
+        // Another app instance (its own client id) from the same address, as behind a proxy: not held back.
+        SignIn.Client friend = register(s, "Codex", "http://127.0.0.1:9/cb");
+        SignIn.Pending theirs = s.authorize(friend, authorizeQuery(friend.id(), "http://127.0.0.1:9/cb"), "http://127.0.0.1:25650/mcp", "10.0.0.5");
+        // The owner approving clears the refusals.
+        s.approve(theirs.code(), null);
         s.authorize(again, authorizeQuery(again.id(), "http://127.0.0.1:9/cb"), "http://127.0.0.1:25650/mcp", "10.0.0.5");
     }
 

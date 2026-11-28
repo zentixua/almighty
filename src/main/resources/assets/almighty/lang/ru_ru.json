@@ -114,5 +114,8 @@
   "almighty.undo.failed": "Изменение %s не отменено: %s",
   "almighty.undo.partial": "Изменение %s: часть отмены не завершилась (%s).",
   "almighty.undo.none": "Изменения %s нет.",
-  "almighty.undo.not_yours": "Изменение %s сделано не для вас."
+  "almighty.undo.not_yours": "Изменение %s сделано не для вас.",
+  "almighty.gm.echo": "Ведущему: %s",
+  "almighty.prompt.for_admin": "(для %s, с вашими правами)",
+  "almighty.prompt.for_admin_agent": "(агент %s сам, с вашими правами)"
 }

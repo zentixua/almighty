@@ -125,6 +125,19 @@ public final class Prompts {
                 .append(t("almighty.prompt.exact", lang, p.text).copy().withStyle(ChatFormatting.GRAY));
     }
 
+    /**
+     * An admin request put straight to an admin online: "[Almighty] Cloudien wants to “summary” (its own words) — what
+     * runs: … (for Alex, with your rights) [Allow] [Deny] [Details]", the exact call written out after it.
+     */
+    public static Component adminQuestion(Confirmations.Pending p, String lang) {
+        MutableComponent c = prefix().append(t("almighty.prompt.wants", lang, name()).copy().withStyle(ChatFormatting.WHITE))
+                .append(what(p.summary, p.facts, p.text, lang, true)).append(" ")
+                .append((p.requester != null ? t("almighty.prompt.for_admin", lang, p.requesterName)
+                        : t("almighty.prompt.for_admin_agent", lang, p.caller.name())).copy().withStyle(ChatFormatting.WHITE)).append(" ");
+        buttons(c, p, lang);
+        return c.append(" ").append(t("almighty.prompt.exact", lang, p.text).copy().withStyle(ChatFormatting.GRAY));
+    }
+
     /** One admin request in {@code /almighty inbox}, in the admin's language. */
     public static Component inboxLine(Confirmations.Pending p, String lang) {
         MutableComponent c = prefix().append((p.requester != null

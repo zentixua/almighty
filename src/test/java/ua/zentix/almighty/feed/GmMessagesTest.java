@@ -23,6 +23,9 @@ class GmMessagesTest {
         }
         assertEquals("Сделано по вашей просьбе: /time set day ", GmMessages.get("almighty.receipt.done", "ru_ru", "/time set day").getString());
         assertEquals("Not allowed: x", GmMessages.get("almighty.outcome.not_allowed", "en_gb", "x").getString());
+        // Lead's note: the sender's own copy of a /gm line, the same on every node.
+        assertEquals("To Almighty: hi", GmCommand.echo("hi", "en_us").getString());
+        assertEquals("Ведущему: привет", GmCommand.echo("привет", "ru_ru").getString());
     }
 
     private static com.google.gson.JsonObject read(String lang) throws Exception {

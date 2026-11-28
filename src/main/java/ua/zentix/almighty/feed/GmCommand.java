@@ -7,14 +7,13 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import ua.zentix.almighty.GmConfig;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.platform.Mc;
 
 /**
  * A player's private channel to the game master: any player can use {@code /gm <text>}. The text enters the feed
  * as a {@code gm} event (player, location, text), hidden from other players and operators; the sender sees a gray
- * line "-> game master: ...". The game master can reply privately with {@code say} and {@code to}.
+ * line "To Almighty: ..." ({@link #echo}). The game master can reply privately with {@code say} and {@code to}.
  * {@code /gm @<agent> <text>} addresses another agent ({@link Inbox}).
  */
 public final class GmCommand {
@@ -44,8 +43,12 @@ public final class GmCommand {
         // Refused (over the hourly limit): the server already told the player; no echo.
         if (!gm.inbox().gm(player, text)) return 0;
         // false: only the sender, never broadcast to operators. The "received" acknowledgement.
-        source.sendSuccess(() -> Component.literal("→ " + GmConfig.NAME.get() + ": " + text)
-                .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC), false);
+        source.sendSuccess(() -> echo(text, GmMessages.language(player)), false);
         return 1;
+    }
+
+    /** The sender's own copy of their /gm line, in their language: "To Almighty: …" / "Ведущему: …" (every node). */
+    public static Component echo(String text, String lang) {
+        return GmMessages.get("almighty.gm.echo", lang, text).copy().withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC);
     }
 }

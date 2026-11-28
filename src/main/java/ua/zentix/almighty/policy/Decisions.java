@@ -46,13 +46,67 @@ public final class Decisions {
         return confirmations;
     }
 
-    /** From the gate (any thread): requester questions now, admin requests in the next digest. */
+    /**
+     * From the gate (any thread): requester questions now; an admin request goes straight to the admins online who
+     * may decide it, as a direct chat question, within limits (no approval spam): at most {@value #DIRECT_PER_ADMIN}
+     * direct questions per admin and one per requester (or per agent asking on its own) every 10 minutes; merged
+     * identical requests are never asked again. What is over a limit, or finds nobody online, waits in the quiet
+     * digest and {@code /almighty inbox} as before.
+     */
     public void prompt(Confirmations.Pending p) {
         server.execute(() -> {
             if (p.kind == Confirmations.Kind.REQUESTER) Prompts.ask(server, p);
-            else news = true;
+            else if (!direct(p)) news = true;
             event(p);
         });
+    }
+
+    static final int DIRECT_PER_ADMIN = 3;
+    static final long DIRECT_WINDOW_MS = 10 * 60_000;
+    private final java.util.Map<UUID, java.util.Deque<Long>> directByAdmin = new java.util.HashMap<>();
+    private final java.util.Map<String, Long> directByAsker = new java.util.HashMap<>();
+    private final java.util.Map<String, Set<UUID>> prompted = new java.util.LinkedHashMap<>();
+
+    /** The admins a request was put to directly (tests, and the owners' notice). */
+    public Set<UUID> promptedFor(String id) {
+        return prompted.getOrDefault(id, Set.of());
+    }
+
+    /** Whether waiting admin requests are due for the next digest line. */
+    public boolean digestDue() {
+        return news;
+    }
+
+    /** True when every admin online who may decide it got the question directly (server thread). */
+    private boolean direct(Confirmations.Pending p) {
+        long now = System.currentTimeMillis();
+        String asker = p.requester != null ? p.requester.toString() : "agent:" + p.caller.name();
+        Long last = directByAsker.get(asker);
+        if (last != null && now - last < DIRECT_WINDOW_MS) return false;
+        Set<UUID> told = new HashSet<>();
+        boolean all = true;
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            UUID id = player.getUUID();
+            if (id.equals(p.requester) || !mayDecide(id, p)) continue;
+            java.util.Deque<Long> recent = directByAdmin.computeIfAbsent(id, k -> new java.util.ArrayDeque<>());
+            while (!recent.isEmpty() && now - recent.peekFirst() >= DIRECT_WINDOW_MS) recent.pollFirst();
+            if (recent.size() >= DIRECT_PER_ADMIN) {
+                all = false;
+                continue;
+            }
+            recent.addLast(now);
+            told.add(id);
+            player.sendSystemMessage(Prompts.adminQuestion(p, ua.zentix.almighty.feed.GmMessages.language(player)));
+        }
+        if (told.isEmpty()) return false;
+        directByAsker.put(asker, now);
+        if (prompted.size() >= Confirmations.MAX) prompted.remove(prompted.keySet().iterator().next());
+        prompted.put(p.id, Set.copyOf(told));
+        return all;
+    }
+
+    private static boolean mayDecide(UUID id, Confirmations.Pending p) {
+        return Identity.verified(id) && Nodes.holds(id, p.node) && (p.node == Node.ENGINE || Nodes.holds(id, Node.APPROVE));
     }
 
     /** {@code /almighty confirm|deny <nonce>}: {@code by} null is the console. Returns the answer for the decider. */
@@ -153,7 +207,7 @@ public final class Decisions {
         Set<UUID> told = new HashSet<>();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             for (Confirmations.Pending p : waiting) {
-                if (Identity.verified(player.getUUID()) && Nodes.holds(player.getUUID(), p.node) && (p.node == Node.ENGINE || Nodes.holds(player.getUUID(), Node.APPROVE)) && told.add(player.getUUID())) {
+                if (mayDecide(player.getUUID(), p) && told.add(player.getUUID())) {
                     player.sendSystemMessage(Prompts.digest(waiting, ua.zentix.almighty.feed.GmMessages.language(player)));
                 }
             }

@@ -498,4 +498,62 @@ public final class GmConfirmGameTests {
             h.getLevel().getServer().getPlayerList().remove(third);
         }
     }
+
+    /**
+     * Lead's note: an ask_admin request reaches an admin online as a direct question (with the server's facts and
+     * the exact call), within limits: an identical request is merged, never asked again; past
+     * {@code DIRECT_PER_ADMIN} direct questions in 10 minutes the next one spills into the quiet digest and the inbox.
+     */
+    @GameTest(template = "floor", batch = "gm_confirm_direct", timeoutTicks = 200)
+    public static void adminRequestsAreAskedDirectlyWithinLimits(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        ServerPlayer admin = player(h, "direct-admin", UUID.randomUUID());
+        java.util.List<ServerPlayer> guests = new java.util.ArrayList<>();
+        try {
+            gm.policies().set(Policy.parse("preset = \"public\"\nidentity = \"proxy\"\n[safety]\nask_admin = [\"time\"]"));
+            op(h, admin, 3);
+            java.util.List<String> ids = new java.util.ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                ServerPlayer g = player(h, "direct-guest" + i, UUID.randomUUID());
+                guests.add(g);
+                String t = ticket(h, gm, g, "make it day");
+                try {
+                    gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"time set %d\"],\"for\":\"%s\",\"summary\":\"make it day\"}", 1000 + i, t)).join();
+                    throw new GameTestAssertException("a guest set the time");
+                } catch (java.util.concurrent.CompletionException e) {
+                    check(e.getCause() instanceof RpcException r && r.status() == 202, "time waits for an admin: " + e.getCause());
+                    ids.add(((RpcException) e.getCause()).details().get("id").getAsString());
+                }
+                if (i == 0) {
+                    // The same request again (the agent retried): merged into the first, nobody is asked twice.
+                    try {
+                        gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"time set 1000\"],\"for\":\"%s\"}", t)).join();
+                    } catch (java.util.concurrent.CompletionException e) {
+                        check(e.getCause() instanceof RpcException r && r.status() == 202
+                                && r.details().get("id").getAsString().equals(ids.get(0)), "merged: " + e.getCause());
+                    }
+                    check(gm.decisions().confirmations().get(ids.get(0)).count() == 2, "counted, not asked again");
+                    check(!gm.decisions().digestDue(), "asked directly: no digest due");
+                }
+            }
+            for (int i = 0; i < 3; i++) {
+                check(gm.decisions().promptedFor(ids.get(i)).contains(admin.getUUID()), "request " + i + " asked the admin directly");
+            }
+            check(gm.decisions().promptedFor(ids.get(3)).isEmpty() && gm.decisions().digestDue(),
+                    "the fourth spills into the digest and the inbox: " + gm.decisions().promptedFor(ids.get(3)));
+            check(gm.decisions().confirmations().waitingForAdmins().size() >= 4, "all wait in the inbox");
+            // What the admin read: the GM's sentence, the summary, the server's facts and the exact call.
+            String shown = fallbacks(ua.zentix.almighty.policy.Prompts.adminQuestion(gm.decisions().confirmations().get(ids.get(1)), "en_us"));
+            check(shown.contains("wants to \u201cmake it day\u201d (its own words) — what runs: change the time of day")
+                    && shown.contains("(for direct-guest1, with your rights)") && shown.contains("Exact call: /time set 1001"), "direct question: " + shown);
+            for (String id : ids) gm.decisions().decide(gm.decisions().confirmations().get(id).nonce(), admin, false);
+            h.succeed();
+        } finally {
+            deop(h, admin);
+            gm.policies().set(before);
+            h.getLevel().getServer().getPlayerList().remove(admin);
+            for (ServerPlayer g : guests) h.getLevel().getServer().getPlayerList().remove(g);
+        }
+    }
 }

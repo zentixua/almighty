@@ -79,7 +79,7 @@
   "almighty.fact.box_to": "%s → %s",
   "almighty.fact.summon_at": "призвать %s в %s",
   "almighty.fact.teleport": "телепортировать %s к %s",
-  "almighty.fact.via_execute": "%s (через /execute %s)",
+  "almighty.fact.via_execute": "%s (через /execute: %s)",
   "almighty.fact.more": "и ещё команд: %s",
   "almighty.fact.method": "вызвать %s",
   "almighty.fact.script_named": "запустить скрипт владельца %s",
@@ -101,5 +101,12 @@
   "almighty.fact.sel.e": "все существа и предметы",
   "almighty.fact.sel.n": "ближайшее существо или предмет",
   "almighty.fact.sel.s": "тот, кто выполняет",
-  "almighty.fact.filtered": "%s, с фильтром: %s"
+  "almighty.fact.filtered": "%s, с фильтром: %s",
+  "almighty.fact.exec_as": "от имени каждого: %s",
+  "almighty.fact.exec_at": "на месте каждого: %s",
+  "almighty.fact.exec_on": "на их %s",
+  "almighty.fact.exec_other": "с другими условиями",
+  "almighty.fact.exec_nothing": "после run ничего нет",
+  "almighty.fact.function": "выполнить функцию %s",
+  "almighty.fact.function_later": "запланировать функцию %s"
 }

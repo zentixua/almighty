@@ -242,7 +242,13 @@ public final class Dispatch {
         if (key == null || readOnly.test(name, p)) return method.call(new Args(p, caller));
         String slot = caller.name() + "\u0000" + key;
         // A digest, not the call itself (stability audit M1): 1024 remembered 16 MB builds would fill the heap.
-        String call = digest(name + "\u0000" + p);
+        // The agent's summary is words about the call, not the call: a retry may word it differently.
+        JsonObject same = p;
+        if (p.has("summary")) {
+            same = p.deepCopy();
+            same.remove("summary");
+        }
+        String call = digest(name + "\u0000" + same);
         CompletableFuture<JsonElement> mine = new CompletableFuture<>();
         synchronized (keys) {
             long now = clockMillis.getAsLong();

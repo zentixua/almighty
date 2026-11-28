@@ -79,7 +79,7 @@
   "almighty.fact.box_to": "%s → %s",
   "almighty.fact.summon_at": "summon %s at %s",
   "almighty.fact.teleport": "teleport %s to %s",
-  "almighty.fact.via_execute": "%s (through /execute %s)",
+  "almighty.fact.via_execute": "%s (through /execute: %s)",
   "almighty.fact.more": "and %s more commands",
   "almighty.fact.method": "use %s",
   "almighty.fact.script_named": "run the owner's script %s",
@@ -101,5 +101,12 @@
   "almighty.fact.sel.e": "every creature and object",
   "almighty.fact.sel.n": "the nearest creature or object",
   "almighty.fact.sel.s": "whoever runs it",
-  "almighty.fact.filtered": "%s, filtered: %s"
+  "almighty.fact.filtered": "%s, filtered: %s",
+  "almighty.fact.exec_as": "as each of %s",
+  "almighty.fact.exec_at": "at each of %s",
+  "almighty.fact.exec_on": "on their %s",
+  "almighty.fact.exec_other": "with other conditions",
+  "almighty.fact.exec_nothing": "nothing after run",
+  "almighty.fact.function": "run the function %s",
+  "almighty.fact.function_later": "schedule the function %s"
 }

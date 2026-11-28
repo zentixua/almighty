@@ -226,7 +226,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   not resolved), `[Allow]`/`[Deny]`/`[Details]` and the typed `/almighty confirm|deny|show <nonce>`; the exact call on
   hover, behind `show` and written out for Bedrock players; on 26.x also a vanilla confirmation dialog with the same
   buttons and the exact call, `Mc.confirmDialog`, except for Bedrock players; never clipped: a call too long to show
-  is refused). Receipts and outcomes name the call the same way (`FactsTest`, `SummaryTest`,
+  is refused). Outcomes name the call the same way; a receipt shows the summary alone ("Done for you: <summary>
+  [Undo]", lead's note) with the facts and exact call on hover, or the facts when there is no summary (`FactsTest`, `SummaryTest`,
   `GmConfirmGameTests.aQuestionShowsTheServersFactsBesideTheSummary`); only that player may answer; at most 3 waiting per player and 20 per agent;
   2 minutes. A request above the player's rights (or the agent's own call above its floor, for methods; limited per agent
   the same way) whose kind is in `[safety] ask_admin` → 202 for an admin; the owners online are told every admin decision (for

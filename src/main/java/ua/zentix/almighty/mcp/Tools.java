@@ -72,7 +72,7 @@ public final class Tools {
             + " characters) of what this call does, in the player's words and language, e.g. \"snow over your base\". The "
             + "player sees it in quotes, marked as your words, in their confirmation and receipt, always beside the server's own "
             + "description of what runs; formatting, brackets and quotes are dropped, and a summary that spells the server's "
-            + "own words is not shown.";
+            + "own words (its name, \"what runs\", \"asked by\", \"cannot be undone\", in English or Russian) is not shown.";
 
     private static void withFor(JsonObject tool) {
         JsonObject props = tool.getAsJsonObject("inputSchema").getAsJsonObject("properties");

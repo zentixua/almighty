@@ -45,14 +45,47 @@ class FactsTest {
     @Test
     void underExecuteTheChainIsShownNotResolved() {
         String s = en("command", cmd("execute as @a at @s run give @s diamond 1"), "Alex");
-        assertTrue(s.contains("through /execute as @a at @s"), s);
+        assertEquals("give 1 × diamond to whoever runs it (through /execute: as each of every player, at each of whoever runs it)", s);
         assertFalse(s.contains("Alex"), "@s under execute is whoever execute picked: " + s);
     }
 
+    /** Review B1: a " run " inside a quoted name or a filter is not the command, and padding never hides who runs it. */
     @Test
-    void manyCommandsAreCounted() {
-        assertEquals("change the weather; change the time of day; send a message; and 2 more commands",
-                en("command", cmd("weather clear", "time set day", "say hi", "kill @a", "ban Bob"), "Alex"));
+    void aRunInsideQuotesOrPaddingNeverHidesTheCommand() {
+        assertEquals("kill — target: whoever runs it, filtered: @s[name=!\"x run weather clear\"] (through /execute: as each of every creature and object)",
+                en("command", cmd("execute as @e run kill @s[name=!\"x run weather clear\"]"), "Alex"));
+        String padded = en("command", cmd("execute " + "positioned ~ ~ ~ ".repeat(12) + "as @a run kill @s"), "Alex");
+        assertTrue(padded.startsWith("kill — target: whoever runs it (through /execute: as each of every player"), padded);
+        assertTrue(padded.contains("with other conditions"), padded);
+        assertEquals("kick from the server — target: whoever runs it (through /execute: with other conditions)",
+                en("command", cmd("execute positioned 0 0 0 run kick @s Griefing run time set day"), "Alex"),
+                "a reason that says run is still the kick's reason");
+        assertEquals("kill — target: every player (through /execute: with other conditions)", en("command", cmd("execute run execute if entity @a run kill @a"), "Alex"));
+    }
+
+    /** Review B2: what makes the call wait for a person is never folded into "and N more", whatever comes first. */
+    @Test
+    void theRiskyCommandIsAlwaysNamed() {
+        assertEquals("kill — target: every player; change the time of day; change the weather; and 1 more commands",
+                en("command", cmd("time set day", "weather clear", "say hi", "kill @a"), "Alex"));
+        JsonObject fn = new JsonObject();
+        fn.add("lines", JsonParser.parseString("[\"# a\", \"\", \"# c\", \"kill @a\"]"));
+        assertEquals("kill — target: every player", en("function", fn, "Alex"), "comments run nothing");
+        assertEquals("kill — target: every player", en("command", cmd("kill @a", "kill @a"), "Alex"), "the same fact once");
+    }
+
+    /** Review M1–M3: another mod's command is not the vanilla one; targets after subcommand words. */
+    @Test
+    void namespacesAndSubcommandTargets() {
+        assertEquals("run the command /othermod:kill", en("command", cmd("othermod:kill @a"), "Alex"));
+        assertEquals("kill — target: every player", en("command", cmd("minecraft:kill @a"), "Alex"));
+        assertEquals("teleport Alex to 1 2 3", en("command", cmd("tp 1 2 3"), "Alex"));
+        assertEquals("teleport Alex to ~ ~5 ~", en("command", cmd("tp ~ ~5 ~"), "Alex"));
+        assertEquals("change items — target: every player", en("command", cmd("item replace entity @a armor.head with air"), "Alex"));
+        assertEquals("give or drop loot — target: Bob", en("command", cmd("loot give Bob loot x:y"), "Alex"));
+        assertEquals("run the function x:boom", en("command", cmd("function x:boom"), "Alex"));
+        assertEquals("change effects — target: Alex", en("command", cmd("effect clear"), "Alex"));
+        assertEquals("teleport — target: every player", en("command", cmd("spreadplayers 0 0 5 20 under 80 false @a"), "Alex"));
     }
 
     @Test

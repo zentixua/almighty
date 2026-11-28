@@ -89,10 +89,10 @@ public description and to look up a Minecraft skin when the agent asks for a bot
 1. Put the jar for your Minecraft version and loader into the server's `mods` folder and start the server.
 2. Tell your AI app: "connect to my Minecraft server at http://127.0.0.1:25650/mcp". For Claude Code that sentence
    is enough. `/almighty connect` shows the exact line or link for each app.
-3. The app opens a sign-in page with a four-digit code. In game, as a level-4 operator with a verified Minecraft
-   account, type `/almighty approve <code> <name> owner`; on a server with no owner yet, this also makes you its
-   owner. From the console, add your player name: `/almighty approve <code> <name> owner <player>`. Without `owner`
-   the app gets less: no scripts, and only the commands its rights allow.
+3. The app opens a sign-in page with a four-digit code and the command to type. Type it in game as a level-4
+   operator with a verified Minecraft account: `/almighty approve <code>`. On a new server this makes you its owner
+   and gives your app your rights; there is no other step. Later apps get less (no scripts, only the commands their
+   rights allow) unless you approve them with `/almighty approve <code> <name> owner`.
 
 Players' `/gm` messages then reach your app, with nothing more to set up.
 

@@ -65,7 +65,7 @@ public final class Tools {
      */
     static final String FOR = "Ticket of the player's message this call answers (the ticket field of an addressed event): "
             + "the server then acts with that player's rights, asks them to confirm what cannot be undone and tells them "
-            + "it was done. Without it the call runs with your own, lower rights.";
+            + "it was done. Without it the call runs with your own rights when unasked (your trust floor; status shows them).";
 
     private static void withFor(JsonObject tool) {
         JsonObject props = tool.getAsJsonObject("inputSchema").getAsJsonObject("properties");
@@ -164,22 +164,27 @@ public final class Tools {
                 yield call("say", "text", a.get("text"), "component", a.get("component"), "to", a.get("to"), "style", a.get("style"));
             }
             case "script" -> {
-                a.allow("code", "args", "timeout_ms");
-                a.need("code");
-                yield call("script", "code", a.get("code"), "args", a.get("args"), "timeout_ms", a.get("timeout_ms"));
+                a.allow("code", "name", "args", "timeout_ms");
+                if (a.has("code") == a.has("name")) throw new ToolError("script: exactly one of code (Groovy) or name (a script the owner approved)");
+                yield call("script", "code", a.get("code"), "name", a.get("name"), "args", a.get("args"), "timeout_ms", a.get("timeout_ms"));
             }
             case "rule" -> rule(a);
             case "events" -> {
-                a.allow("after", "wait", "limit");
-                yield call("events", "after", a.get("after"), "wait", a.get("wait"), "limit", a.get("limit"));
+                a.allow("after", "wait", "limit", "mine");
+                yield call("events", "after", a.get("after"), "wait", a.get("wait"), "limit", a.get("limit"), "mine", a.get("mine"));
             }
             case "view" -> view(a);
             case "build" -> {
-                a.allow("ops", "undo", "dimension", "wait");
-                if (a.has("ops") == a.has("undo")) throw new ToolError("build: exactly one of ops (build) or undo (job number to undo)");
+                a.allow("ops", "undo", "undo_change", "dimension", "wait");
+                int given = (a.has("ops") ? 1 : 0) + (a.has("undo") ? 1 : 0) + (a.has("undo_change") ? 1 : 0);
+                if (given != 1) throw new ToolError("build: exactly one of ops (build), undo (job number to undo) or undo_change (change id to revert)");
                 if (a.has("undo")) {
                     a.only("build undo", "dimension");
                     yield call("undo", "job", a.get("undo"), "wait", a.get("wait"));
+                }
+                if (a.has("undo_change")) {
+                    a.only("build undo_change", "dimension");
+                    yield call("undo", "change", a.get("undo_change"), "wait", a.get("wait"));
                 }
                 yield call("build", "ops", a.get("ops"), "dimension", a.get("dimension"), "wait", a.get("wait"));
             }
@@ -244,13 +249,15 @@ public final class Tools {
     }
 
     private static Call rule(A a) throws ToolError {
-        a.allow("action", "event", "script", "name", "every", "limit", "priority", "canceled", "budget_ms", "persist", "id", "query");
+        a.allow("action", "event", "script", "when", "then", "name", "every", "limit", "priority", "canceled", "budget_ms", "persist",
+                "ttl_hours", "id", "query");
         String action = a.string("action", "list");
         Map<String, List<String>> takes = Map.of(
-                "add", List.of("event", "script", "name", "every", "limit", "priority", "canceled", "budget_ms", "persist"),
+                "add", List.of("event", "script", "when", "then", "name", "every", "limit", "priority", "canceled", "budget_ms", "persist", "ttl_hours"),
                 "remove", List.of("id", "name"), "list", List.of(), "types", List.of("query"));
         if (!takes.containsKey(action)) throw new ToolError("rule: action is add, remove, list or types, not '" + action + "'");
-        List<String> not = new ArrayList<>(List.of("event", "script", "name", "every", "limit", "priority", "canceled", "budget_ms", "persist", "id", "query"));
+        List<String> not = new ArrayList<>(List.of("event", "script", "when", "then", "name", "every", "limit", "priority", "canceled", "budget_ms",
+                "persist", "ttl_hours", "id", "query"));
         not.removeAll(takes.get(action));
         a.only("rule " + action, not.toArray(String[]::new));
         return switch (action) {

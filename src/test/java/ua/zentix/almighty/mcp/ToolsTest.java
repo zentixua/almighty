@@ -41,6 +41,12 @@ class ToolsTest {
         call("view", "{\"kind\":\"eye\",\"who\":\"0a1b2c3d-0000-4000-8000-000000000001\"}", "see", "{\"uuid\":\"0a1b2c3d-0000-4000-8000-000000000001\"}");
         call("view", "{\"kind\":\"eye\",\"eye\":[0,64,0],\"yaw\":90}", "see", "{\"at\":[0,64,0],\"yaw\":90}");
         call("build", "{\"undo\":5}", "undo", "{\"job\":5}");
+        // The paths below owner (plan 4.12) and the journal's undo reach the bridge through the tools.
+        call("build", "{\"undo_change\":7}", "undo", "{\"change\":7}");
+        call("script", "{\"name\":\"welcome\",\"args\":{\"a\":1}}", "script", "{\"name\":\"welcome\",\"args\":{\"a\":1}}");
+        call("events", "{\"after\":3,\"mine\":true}", "events", "{\"after\":3,\"mine\":true}");
+        call("rule", "{\"action\":\"add\",\"event\":\"PlayerBlockBreakEvents.BEFORE\",\"when\":{\"block\":\"minecraft:diamond_ore\"},\"then\":[\"cancel\"],\"ttl_hours\":2}",
+                "rule.add", "{\"event\":\"PlayerBlockBreakEvents.BEFORE\",\"when\":{\"block\":\"minecraft:diamond_ore\"},\"then\":[\"cancel\"],\"ttl_hours\":2}");
         call("area", "{\"action\":\"prepare\",\"start\":[0,0],\"end\":[100,100],\"wait\":10}", "area.prepare", "{\"from\":[0,0],\"to\":[100,100],\"wait\":10}");
         call("area", "{}", "areas", "{}");
         call("job", "{}", "jobs", "{}");
@@ -58,7 +64,8 @@ class ToolsTest {
                 {"status", "{\"name\":\"Alex\"}"}, {"rule", "{\"action\":\"add\"}"}, {"rule", "{\"action\":\"remove\"}"},
                 {"rule", "{\"action\":\"list\",\"event\":\"tick\"}"}, {"view", "{\"kind\":\"map\"}"}, {"view", "{\"kind\":\"map\",\"center\":[0,0,0]}"},
                 {"view", "{\"kind\":\"eye\",\"who\":\"A\",\"yaw\":1}"}, {"view", "{\"kind\":\"blocks\",\"start\":[0,0,0],\"end\":[1,1,1],\"who\":\"A\"}"},
-                {"build", "{}"}, {"build", "{\"undo\":1,\"dimension\":\"x\"}"}, {"area", "{\"action\":\"release\"}"}, {"job", "{\"cancel\":true}"},
+                {"build", "{}"}, {"build", "{\"undo\":1,\"dimension\":\"x\"}"}, {"build", "{\"undo\":1,\"undo_change\":2}"},
+                {"script", "{}"}, {"script", "{\"code\":\"1\",\"name\":\"x\"}"}, {"rule", "{\"action\":\"remove\",\"id\":1,\"when\":{}}"}, {"area", "{\"action\":\"release\"}"}, {"job", "{\"cancel\":true}"},
                 {"job", "{\"id\":1,\"cancel\":true,\"wait\":3}"}, {"bot", "{\"action\":\"act\",\"name\":\"B\"}"}, {"bot", "{\"action\":\"list\",\"name\":\"B\"}"},
                 {"bot", "{\"action\":\"fly\"}"}, {"notes", "{\"text\":\"t\"}"}, {"call", "{}"}}) {
             assertThrows(Tools.ToolError.class, () -> route(bad[0], bad[1]), bad[0] + " " + bad[1]);

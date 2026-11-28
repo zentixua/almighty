@@ -264,6 +264,14 @@ final class FabricEvents implements GameEvents {
     }
 
     @Override
+    public Place actor(Object event) {
+        if (event instanceof FabricEvent e && e.getPlayer() != null && e.getPlayer().level() instanceof ServerLevel l) {
+            return new Place(l, e.getPlayer().blockPosition());
+        }
+        return null;
+    }
+
+    @Override
     public boolean placed(Class<?> type) {
         Method m = single(type);
         if (m == null) return false;

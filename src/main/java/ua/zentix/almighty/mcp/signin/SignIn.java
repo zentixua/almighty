@@ -56,7 +56,9 @@ public final class SignIn {
     public static final long CODE_MS = 5 * 60_000L;
     /** What the token endpoint tells clients; the token itself lasts until rotated (refresh or revoke). */
     public static final long EXPIRES_SECONDS = 30L * 24 * 3600;
-    static final int MAX_PENDING = 5;
+    static final int MAX_PENDING = 16;
+    /** Waiting sign-ins per network address: anyone can start one unauthenticated, and must not hold every slot. */
+    static final int MAX_PENDING_PER_ADDRESS = 2;
     static final int MAX_CLIENTS = 200;
     static final int MAX_METADATA_CLIENTS = 50;
     /** Waiting sign-ins per client: one app cannot hold every slot. */
@@ -330,6 +332,9 @@ public final class SignIn {
         }
         if (pending.values().stream().filter(x -> x.client.id().equals(client.id())).count() >= MAX_PENDING_PER_CLIENT) {
             throw new OAuthError(429, "temporarily_unavailable", "This app already has sign-ins waiting; finish or wait for them");
+        }
+        if (pending.values().stream().filter(x -> java.util.Objects.equals(x.address, address)).count() >= MAX_PENDING_PER_ADDRESS) {
+            throw new OAuthError(429, "temporarily_unavailable", "Sign-ins from this address are already waiting; finish or wait for them");
         }
         if (pending.size() >= MAX_PENDING) {
             throw new OAuthError(429, "temporarily_unavailable", "Too many logins are waiting for the owner; try again in a few minutes");

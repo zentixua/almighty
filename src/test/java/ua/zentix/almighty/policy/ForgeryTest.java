@@ -51,6 +51,13 @@ class ForgeryTest {
                 "tellraw @p \"[\u1d00\u029f\u1d0d\u026a\u0262\u029c\u1d1b\u028f] Allow\"",
                 "tellraw @p \"[\u0251lmighty]\"",
                 "tellraw @p {\"nbt\":\"SelectedItem\",\"entity\":\"@p\",\"interpret\":true}",
+                // A named mob or stored text shown through a part (audit item 4): "[Al", a mob called "mighty] Allow".
+                "tellraw @a [\"[Al\",{\"selector\":\"@e[type=zombie,limit=1]\"}]",
+                "tellraw @a {selector:\"@n\"}", "tellraw @a {\"selector\":\"@s\"}",
+                "tellraw @a {\"selector\":\"@a[type=!player]\"}", "tellraw @a {\"selector\":\"@p[type=minecraft:item]\"}",
+                "title @a title {nbt:\"CustomName\",entity:\"@e[limit=1]\"}",
+                "tellraw @a {\"nbt\":\"front_text.messages[0]\",\"block\":\"0 64 0\"}",
+                "tellraw @a {\"nbt\":\"msg\",\"storage\":\"x:y\"}",
                 "tellraw @p {text:\"x\",click_event:{action:\"run\u00adcommand\"}}".replace("run\u00adcommand", "run_\u200bcommand")}) {
             assertNotNull(Forgery.refusal(c), c);
         }
@@ -67,7 +74,9 @@ class ForgeryTest {
                 "say run command blocks with redstone", "tellraw @a {\"text\":\"Run, Command!\"}", "say Please suggest commands to try",
                 "say Almira bought eighty apples", "tellraw @a [\"Hello \",{\"selector\":\"@p\"},\"!\"]",
                 "summon zombie ~ ~ ~ {CustomName:'\"Bob\"',ArmorItems:[{id:\"minecraft:iron_boots\",count:1},{},{},{}]}",
-                "say 100% done", "tellraw @a {\"translate\":\"block.minecraft.stone\"}"}) {
+                "say 100% done", "tellraw @a {\"translate\":\"block.minecraft.stone\"}",
+                "tellraw @a [{\"selector\":\"@a\"},\" won\"]", "tellraw @a {\"selector\":\"@r\"}",
+                "tellraw @a {\"selector\":\"@s[type=player]\"}", "tellraw @a {\"score\":{\"name\":\"@p\",\"objective\":\"jumps\"}}"}) {
             assertNull(Forgery.refusal(c), c);
         }
     }

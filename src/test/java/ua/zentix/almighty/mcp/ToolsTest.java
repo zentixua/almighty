@@ -38,6 +38,9 @@ class ToolsTest {
         call("view", "{\"kind\":\"map\",\"start\":[0,0],\"end\":[9,9],\"size\":64}", "map", "{\"from\":[0,0],\"to\":[9,9]}");
         call("view", "{\"kind\":\"look\",\"start\":[0,0,0],\"end\":[1,1,1],\"direction\":\"north\"}", "look", "{\"from\":[0,0,0],\"to\":[1,1,1],\"look\":\"north\"}");
         call("view", "{\"kind\":\"eye\",\"who\":\"Alex\"}", "see", "{\"name\":\"Alex\"}");
+        call("view", "{\"kind\":\"map\",\"center\":[0,0],\"image\":false}", "map", "{\"center\":[0,0],\"image\":false}");
+        call("view", "{\"kind\":\"look\",\"start\":[0,0,0],\"end\":[1,1,1],\"direction\":\"up\",\"image\":false}", "look",
+                "{\"from\":[0,0,0],\"to\":[1,1,1],\"look\":\"up\",\"image\":false}");
         call("view", "{\"kind\":\"eye\",\"who\":\"0a1b2c3d-0000-4000-8000-000000000001\"}", "see", "{\"uuid\":\"0a1b2c3d-0000-4000-8000-000000000001\"}");
         call("view", "{\"kind\":\"eye\",\"eye\":[0,64,0],\"yaw\":90}", "see", "{\"at\":[0,64,0],\"yaw\":90}");
         call("build", "{\"undo\":5}", "undo", "{\"job\":5}");

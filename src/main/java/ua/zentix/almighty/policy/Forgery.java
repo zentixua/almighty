@@ -21,6 +21,10 @@ import java.util.regex.Pattern;
  * <li>nbt text with {@code interpret}: it renders clicks stored in the world (a book a player wrote);</li>
  * <li>the {@code dialog} command;</li>
  * <li>translation keys and fallbacks with format codes ({@code "translate":"%2$s%1$s"}): they reorder parts unseen;</li>
+ * <li>text parts that show names or data the world holds rather than the command: a {@code selector} that can match
+ * non-players ({@code @e}, {@code @n}, a {@code type} other than player; a named mob or item can be called
+ * "[Almighty] Allow"), and {@code nbt} parts (an entity's, a block's or storage's data, a sign's text). Player
+ * selectors stay: account names hold only letters, digits and underscores;</li>
  * <li>the name {@code almighty} in the command's letters, or in the letters its text parts show once keys and the
  * values of fields never shown (colour, selector, score, nbt …) are taken out.</li>
  * </ul>
@@ -34,6 +38,10 @@ public final class Forgery {
     private static final Pattern CUSTOM = Pattern.compile("(action|type)\\W{0,4}:\\W{0,4}(minecraft:)?custom\\b");
     private static final Pattern INTERPRET = Pattern.compile("interpret\\W{0,4}:\\W{0,4}(true|1b?\\b)");
     private static final Pattern ROOT = Pattern.compile("^(minecraft:)?dialog\\b");
+    /** A selector text part and its pattern (JSON or SNBT, any quoting). */
+    private static final Pattern SELECTOR_PART = Pattern.compile("selector\\W{0,4}:\\W{0,4}(@[a-z](?:\\[[^\\]]*])?)");
+    private static final Pattern NBT_PART = Pattern.compile("(?<![a-z0-9_])\\W?nbt\\W{0,4}:");
+    private static final Pattern PLAYER_TYPE = Pattern.compile("type\\s*=\\s*(minecraft:)?player\\b");
     /** Component fields whose values are never shown as the text itself: removed, key and value, before reading letters. */
     private static final Pattern HIDDEN_PAIR = Pattern.compile("(?<![a-z0-9_])[\"']?(color|font|shadow_color|insertion|selector|separator|keybind|objective|"
             + "name|nbt|entity|block|storage|source|sprite|atlas|action|type|id|url|value|command|dialog|hover_event|hoverevent)[\"']?\\s*:\\s*"
@@ -62,7 +70,29 @@ public final class Forgery {
         }
         if (INTERPRET.matcher(flat).find()) return "Below owner, nbt text may not be interpreted (interpret: true renders stored clicks)";
         if (TRANSLATE_FORMAT.matcher(flat).find()) return "Below owner, translation keys may not carry format codes (%)";
+        String shows = worldText(flat);
+        if (shows != null) return shows;
         if (names(flat)) return "Below owner, commands may not carry [Almighty] (reserved for the server's own messages)";
+        return null;
+    }
+
+    /** Why a text part would show what the world holds (a mob's name, stored nbt), or null. */
+    private static String worldText(String flat) {
+        if (NBT_PART.matcher(flat).find()) {
+            return "Below owner, text may not show stored nbt (an entity's, block's or storage's data can spell [Almighty]); write the text itself";
+        }
+        Matcher m = SELECTOR_PART.matcher(flat);
+        while (m.find()) {
+            String sel = m.group(1);
+            char kind = sel.charAt(1);
+            boolean typed = sel.contains("type"), player = PLAYER_TYPE.matcher(sel).find();
+            // @a, @p, @r select players; @s whoever runs the command (a mob under execute as @e) unless typed player.
+            boolean players = kind == 'a' || kind == 'p' || kind == 'r' || kind == 's' && player;
+            if (!players || typed && !player) {
+                return "Below owner, text may show selected players only (a mob's or item's name can spell [Almighty]): use @a, @p or @r,"
+                        + " or a name";
+            }
+        }
         return null;
     }
 

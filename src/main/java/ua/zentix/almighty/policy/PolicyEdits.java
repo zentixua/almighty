@@ -22,9 +22,12 @@ public final class PolicyEdits {
 
     private static int trust(Identity.Mode m) {
         return switch (m) {
-            case MOJANG, AUTO -> 0;
-            case PROXY -> 1;
-            case OFFLINE -> 2;
+            // mojang: v4 UUIDs with online-mode on; auto adds Floodgate players (rights audit m5); proxy also with
+            // online-mode off (behind a proxy); offline everyone.
+            case MOJANG -> 0;
+            case AUTO -> 1;
+            case PROXY -> 2;
+            case OFFLINE -> 3;
         };
     }
 
@@ -41,7 +44,7 @@ public final class PolicyEdits {
                 || neu.preset().playerRole().compareTo(old.preset().playerRole()) > 0)) {
             out.add("preset " + old.preset().id() + " → " + neu.preset().id() + " (players reach the agents, as " + neu.preset().playerRole().id() + ")");
         }
-        // Who counts as verified: mojang and auto verify the same (nobody with online-mode off), proxy every v4 UUID,
+        // Who counts as verified: mojang v4 UUIDs, auto also Floodgate players, proxy also with online-mode off,
         // offline everyone.
         if (trust(neu.identity()) > trust(old.identity())) out.add("identity " + old.identity() + " → " + neu.identity());
         for (UUID o : neu.owners()) if (!old.owners().contains(o)) out.add("a new owner " + o);

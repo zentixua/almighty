@@ -25,15 +25,26 @@ class PolicyFilesTest {
     private static final UUID OWNER = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private final Caller gm = new Caller(Agents.of(Map.of("gm", "g".repeat(32))).get("gm"), "127.0.0.1");
     private final AtomicReference<String> asked = new AtomicReference<>();
+    private final AtomicReference<JsonObject> proposal = new AtomicReference<>();
+    private final AtomicReference<String> told = new AtomicReference<>();
 
     private ConfigFiles files(Path dir, String toml) throws Exception {
         Files.writeString(dir.resolve("policy.toml"), toml);
         Policies p = new Policies(dir.resolve("policy.toml"));
         assertNull(p.reload());
         Gate gate = new Gate(p, new Tickets(System::currentTimeMillis), (id, node) -> false, name -> false);
-        return new ConfigFiles(dir, p, gate, (a, grants) -> {
-            asked.set(grants);
-            return new RpcException(202, "pending", "waiting: " + grants);
+        return new ConfigFiles(dir, p, gate, new ConfigFiles.Asker() {
+            @Override
+            public RpcException ask(Args a, String grants) {
+                asked.set(grants);
+                proposal.set(a.raw().deepCopy());
+                return new RpcException(202, "pending", "waiting: " + grants);
+            }
+
+            @Override
+            public void told(String text) {
+                told.set(text);
+            }
         });
     }
 
@@ -90,6 +101,58 @@ class PolicyFilesTest {
         assertNull(f.undoByOwner());
         assertTrue(!Files.readString(dir.resolve("policy.toml")).contains("build_blocks"), "back to the start");
         assertNotNull(f.undoByOwner(), "nothing earlier");
+    }
+
+    /**
+     * Rights audit m3: an approved proposal applies only to the file it was made against; an owner edit since makes
+     * it a conflict, never a silent revert. m4: the owners hear of the agent's own restricting change.
+     */
+    @Test
+    void approvalsAreBoundToTheirBaseAndOwnersHearOfRestrictions(@TempDir Path dir) throws Exception {
+        ConfigFiles f = files(dir, friends(""));
+        write(f, gm, friends("[quotas]\nbuild_blocks = 10"));
+        assertNotNull(told.get(), "the owners are told of a restricting change");
+        assertEquals(202, assertThrows(RpcException.class, () -> write(f, gm, friends("[quotas]\nbuild_blocks = 999999"))).status());
+        JsonObject asked = proposal.get();
+        assertTrue(asked.has(ConfigFiles.BASE), "the proposal carries its base");
+        // The owner edits the file by hand meanwhile; the approval then runs the proposal.
+        Caller console = new Caller(null, "console", null);
+        write(f, console, friends("[quotas]\nbuild_blocks = 20"));
+        Confirmations.Pending p = new Confirmations.Pending(Confirmations.Kind.ADMIN, gm, "file", asked, "x", null, Node.ENGINE, null, "the agent",
+                Long.MAX_VALUE);
+        p.decider = OWNER;
+        ua.zentix.almighty.bridge.Dispatch d = new ua.zentix.almighty.bridge.Dispatch(Map.of("file",
+                a -> java.util.concurrent.CompletableFuture.completedFuture(f.call(a))));
+        var stale = Confirmations.run(p, d, asked, false);
+        assertTrue(stale.isCompletedExceptionally(), "a stale approval is refused");
+        assertTrue(Files.readString(dir.resolve("policy.toml")).contains("build_blocks = 20"), "the owner's edit stays");
+        // Against the current file, the same approval applies.
+        assertEquals(202, assertThrows(RpcException.class, () -> write(f, gm, friends("[quotas]\nbuild_blocks = 999999"))).status());
+        JsonObject fresh = proposal.get();
+        Confirmations.Pending q = new Confirmations.Pending(Confirmations.Kind.ADMIN, gm, "file", fresh, "x", null, Node.ENGINE, null, "the agent",
+                Long.MAX_VALUE);
+        q.decider = OWNER;
+        assertEquals("applied (approved by the owner)", Confirmations.run(q, d, fresh, false).join().getAsJsonObject().get("how").getAsString());
+    }
+
+    /** Rights audit m4: a plain write naming a history entry as undo_of deletes nothing unless it is the newest. */
+    @Test
+    void aCallerSuppliedUndoOfDeletesNoOlderEntry(@TempDir Path dir) throws Exception {
+        ConfigFiles f = files(dir, friends("[quotas]\nbuild_blocks = 5"));
+        Caller console = new Caller(null, "console", null);
+        write(f, console, friends("[quotas]\nbuild_blocks = 100"));
+        write(f, console, friends("[quotas]\nbuild_blocks = 50"));
+        java.util.List<Path> before = Files.list(dir.resolve("policy.history")).filter(x -> x.toString().endsWith(".toml")).sorted().toList();
+        assertEquals(2, before.size());
+        // The oldest entry holds "5"; the agent writes that text (restricting) naming it: no entry is deleted.
+        JsonObject p = new JsonObject();
+        p.addProperty("action", "write");
+        p.addProperty("path", "policy.toml");
+        p.addProperty("text", friends("[quotas]\nbuild_blocks = 5"));
+        p.addProperty("undo_of", before.get(0).getFileName().toString());
+        assertEquals("applied (it only restricts)", f.call(new Args(p, gm)).get("how").getAsString());
+        assertTrue(Files.exists(before.get(0)), "an older entry is not deleted by a plain write");
+        assertEquals(3, Files.list(dir.resolve("policy.history")).filter(x -> x.toString().endsWith(".toml")).count());
     }
 
     @Test

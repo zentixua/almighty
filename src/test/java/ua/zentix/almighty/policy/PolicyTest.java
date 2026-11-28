@@ -91,6 +91,18 @@ class PolicyTest {
         assertEquals(null, PolicyEdits.grants(quiet, Policy.parse("")), "turning it on does not");
     }
 
+    /** Rights audit m5: mojang → auto verifies Floodgate players too, so it is a grant; auto → mojang restricts. */
+    @Test
+    void identityOrder() throws Exception {
+        Policy mojang = Policy.parse("identity = \"mojang\"\n"), auto = Policy.parse("identity = \"auto\"\n"),
+                proxy = Policy.parse("identity = \"proxy\"\n"), offline = Policy.parse("identity = \"offline\"\n");
+        assertTrue(PolicyEdits.grants(mojang, auto) != null);
+        assertTrue(PolicyEdits.grants(auto, proxy) != null);
+        assertTrue(PolicyEdits.grants(proxy, offline) != null);
+        assertEquals(null, PolicyEdits.grants(auto, mojang));
+        assertEquals(null, PolicyEdits.grants(offline, proxy));
+    }
+
     /** Plan 4.5/7.2: per-agent MCP defaults are read, and named mistakes. */
     @Test
     void agentProfileAndImages() throws Exception {

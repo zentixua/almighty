@@ -58,8 +58,20 @@ public abstract class View extends Job {
         out.add("legend", legend.deepCopy());
     }
 
+    private volatile boolean withoutImage;
+
+    /** {@code image: false}: the legend only; the picture is never encoded or sent (here or by a later {@code job}). */
+    public void withoutImage() {
+        withoutImage = true;
+    }
+
     /** Bridge thread: append a PNG image (base64) to the completed job description. Delivered once. */
     public JsonObject attach(JsonObject result) {
+        if (withoutImage) {
+            image = null;
+            if (!result.has("legend") && result.has("state") && result.get("state").getAsString().equals("done")) result.add("legend", legend.deepCopy());
+            return result;
+        }
         Png png = image;
         // Use the state from the description, made by the server thread; this thread need not see the job field.
         if (png == null || !result.has("state") || !result.get("state").getAsString().equals("done")) return result;

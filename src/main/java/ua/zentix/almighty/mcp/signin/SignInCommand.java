@@ -35,7 +35,9 @@ public final class SignInCommand {
         // subcommand here carries its own. "deny <code>" is AlmightyCommand's deny node (codes are 4 digits).
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("almighty");
         root.then(Commands.literal("approve").requires(s -> Mc.has(s, 4)).executes(c -> waiting(c.getSource()))
-                .then(Commands.argument("code", StringArgumentType.word()).executes(c -> approve(c, null, false))
+                // Approving mints an agent (admin ceiling by default): the owner's, as `agent add` (rights audit m8).
+                .then(Commands.argument("code", StringArgumentType.word()).requires(ua.zentix.almighty.command.AlmightyCommand::isTrueOwner)
+                        .executes(c -> approve(c, null, false))
                         .then(Commands.argument("name", StringArgumentType.word()).executes(c -> approve(c, StringArgumentType.getString(c, "name"), false))
                                 // An app with the owner's rights: only an owner (or the console) grants it (plan 4.4).
                                 .then(Commands.literal("owner").requires(ua.zentix.almighty.command.AlmightyCommand::isTrueOwner)

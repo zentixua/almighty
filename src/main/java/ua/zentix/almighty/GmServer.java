@@ -109,7 +109,8 @@ public final class GmServer {
                 GmConfig.AUDIT_DAYS.get());
         jobs.paused(pause::paused);
         rules.paused(pause::all);
-        rules.agentPaused(pause::paused);
+        // One agent paused: all its rules stop; pause of all keeps the owner's (rules.paused above).
+        rules.agentPaused(pause::pausedAlone);
         this.inbox = new Inbox(server, feed, tickets, () -> bridge == null ? null : bridge.agents());
         this.roles = new ua.zentix.almighty.policy.Roles(GmServer.configDir == null ? null : GmServer.configDir.resolve("roles.json"),
                 System::currentTimeMillis);

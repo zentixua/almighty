@@ -31,6 +31,11 @@ public final class Pause {
         return all || agents.contains(agent);
     }
 
+    /** Whether this agent itself was paused (not counting pause of all). */
+    public boolean pausedAlone(String agent) {
+        return agents.contains(agent);
+    }
+
     public boolean all() {
         return all;
     }

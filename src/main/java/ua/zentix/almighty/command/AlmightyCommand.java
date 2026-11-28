@@ -205,8 +205,14 @@ public final class AlmightyCommand {
         // An agent's name, or a player's (the calls made for their requests).
         java.util.UUID player = null;
         if (who != null) {
-            var profile = Mc.cachedProfile(source.getServer(), who);
-            if (profile != null) player = Mc.id(profile);
+            var online = source.getServer().getPlayerList().getPlayerByName(who);
+            if (online != null) {
+                player = online.getUUID();
+            } else if (gm.audit().recent(1, e -> e.get("agent").getAsString().equals(who)).isEmpty()) {
+                // Not an agent with entries: an offline player (the profile cache may ask Mojang on a miss).
+                var profile = Mc.cachedProfile(source.getServer(), who);
+                if (profile != null) player = Mc.id(profile);
+            }
         }
         String requester = player == null ? null : player.toString();
         var entries = gm.audit().recent(count, e -> who == null || e.get("agent").getAsString().equals(who)

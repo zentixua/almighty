@@ -107,6 +107,11 @@ public final class GmRuleGameTests {
             gm.pause().resume("gm");
             breaks(h, at, p);
             check(emits(gm, after) == 1, "the rule after resume: " + emits(gm, after));
+            // Pause of all stops scripts and rules made below the owner; this one is the owner's (private, unasked).
+            gm.pause().pause(null);
+            breaks(h, at, p);
+            gm.pause().resume(null);
+            check(emits(gm, after) == 2, "an owner-made rule stopped on pause of all: " + emits(gm, after));
             //? if neoforge {
             call(gm, "rule.add", "{\"event\":\"CommandEvent\",\"name\":\"watch-commands\"}");
             after = gm.feed().read(0, 4096, 0).get("next").getAsLong();

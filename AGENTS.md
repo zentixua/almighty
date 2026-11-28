@@ -297,9 +297,10 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   receipts and audit lines carry the change id. Block-entity-only edits (container contents), entities and
   inventories are not recorded. Writes are recorded at the start of `setBlockState` (true order; a block that
   rewrites itself while placed, such as redstone wire, reverts exactly). The index is saved at most every 5 s
-  (tick end) and keeps at most 1000 changes; a change still running cannot be reverted; a revert is split by
-  region (128×128 blocks per job, so spread-out changes stay within the chunk budget), all or nothing, and the
-  change is marked undone only when every piece finished. A block whose mod is gone refuses the revert instead of
+  (tick end) and keeps at most 1000 changes; a change still running cannot be reverted; a revert is split into
+  pieces of consecutive writes within 128×128 blocks (so spread-out changes stay within the chunk budget) that run
+  one after another from the last writes back (`BuildJob.after`: exact reverse write order, also across pieces),
+  all or nothing, and the change is marked undone only when every piece finished. A block whose mod is gone refuses the revert instead of
   writing air. Caveat: work the server thread runs inside a GM call (a script that loads a chunk drains queued
   tasks, player packets included) is recorded into that call's change; scripts must not load chunks (deny list).
 - Policy edits by asking (`policy/ConfigFiles`, `PolicyEdits`): `file` reads and writes only `policy.toml` and

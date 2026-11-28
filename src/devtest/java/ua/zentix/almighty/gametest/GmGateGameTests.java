@@ -96,6 +96,10 @@ public final class GmGateGameTests {
                     "an unverified player's request cannot build");
             JsonObject status = gm.dispatch().invoke(GM, "status", params("{\"for\":\"%s\"}", offlineTicket)).join().getAsJsonObject();
             JsonArray allowed = status.getAsJsonObject("rights").getAsJsonArray("allowed");
+            // Plan 9.1: the connection check, live: this policy, and GameTest's offline mode named as a problem.
+            JsonObject conn = status.getAsJsonObject("connection");
+            check(conn.get("preset").getAsString().equals("public") && conn.get("identity").getAsString().equals("proxy")
+                    && conn.get("owners").getAsInt() == 1 && conn.has("problems"), "connection check: " + conn);
             check(!allowed.toString().contains("almighty.build") && allowed.toString().contains("almighty.observe.world"),
                     "status rights for that request: " + status.get("rights"));
         } finally {

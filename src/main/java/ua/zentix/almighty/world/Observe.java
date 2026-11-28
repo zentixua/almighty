@@ -85,6 +85,14 @@ public final class Observe {
         if (gm.pause().all()) work.addProperty("paused", "all");
         else if (!gm.pause().agents().isEmpty()) work.add("paused", Json.from(new java.util.ArrayList<>(gm.pause().agents())));
         out.add("gm", work);
+        // Plan 9.1: the agent's connection check, with plain fixes for anything wrong.
+        String host = ua.zentix.almighty.GmConfig.BRIDGE_HOST.get();
+        out.add("connection", ua.zentix.almighty.policy.ConnectionCheck.of(gm.policies().current(),
+                new ua.zentix.almighty.policy.ConnectionCheck.Facts(server.usesAuthentication(),
+                        id -> ua.zentix.almighty.platform.Platform.present() && ua.zentix.almighty.platform.Platform.get().isModLoaded(id),
+                        gm.claims().names(), host, !ua.zentix.almighty.GmConfig.BRIDGE_TLS_CERT.get().isBlank(),
+                        ua.zentix.almighty.GmConfig.BRIDGE_PLAIN_OFF_LOOPBACK.get(), ua.zentix.almighty.GmConfig.BRIDGE_PUBLIC_URL.get(),
+                        ua.zentix.almighty.GmConfig.SCRIPTS_ENABLED.get())));
         return out;
     }
 

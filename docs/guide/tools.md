@@ -25,7 +25,7 @@ with one-line descriptions; `act` there combines `command`, `build` and `say`.
 
 ## status
 
-Without player: the server - tick time (mspt, tps), player names, chunks, entities, time and weather per dimension, the game master's jobs and chunks. With player (a name): that player in detail - position, health, game mode, inventory by slot, effects, respawn point, the block they look at.
+Without player: the server - tick time (mspt, tps), player names, chunks, entities, time and weather per dimension, the game master's jobs and chunks, your rights, and connection (this server's setup: preset, owners, identity, permissions, claims, Bedrock, TLS, and problems with their fixes: on first connect, tell the owner about any). With player (a name): that player in detail - position, health, game mode, inventory by slot, effects, respawn point, the block they look at.
 
 | Parameter | Type | Notes |
 |---|---|---|

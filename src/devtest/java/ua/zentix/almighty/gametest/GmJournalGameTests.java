@@ -92,7 +92,9 @@ public final class GmJournalGameTests {
             check(job[0] > 0 && gm.jobs().get(job[0]).state().finished(), "revert finished");
             JsonObject d = gm.jobs().get(job[0]).describe();
             check(!d.has("conflicts"), "no false conflict: " + d);
-            check(h.getLevel().getBlockState(wire).isAir() && h.getLevel().getBlockState(block).isAir(), "both reverted");
+            check(h.getLevel().getBlockState(wire).isAir() && h.getLevel().getBlockState(block).isAir(), "both reverted: job " + d
+                    + " (" + gm.jobs().get(job[0]).state() + "), wire " + h.getLevel().getBlockState(wire) + ", block " + h.getLevel().getBlockState(block)
+                    + ", change " + gm.journal().describe(id) + ", areas " + gm.areas().describe());
         });
     }
 

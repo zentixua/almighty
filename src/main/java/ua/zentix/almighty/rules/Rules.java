@@ -153,7 +153,9 @@ public final class Rules {
             throw RpcException.badRequest("priority: highest, high, normal, low or lowest");
         }
         boolean canceled = a.bool("canceled", false);
+        // Below owner (plan 4.11) a rule holds the tick no longer than a script may: 20 x budget_ms within 50 ms.
         double budget = a.number("budget_ms", 5, 0.1, 1000);
+        if (!owner) budget = Math.min(budget, BUDGET_BELOW_OWNER);
         boolean persist = a.bool("persist", false);
         String code = a.string("script", null);
         Scripts.Compiled script = null;
@@ -168,6 +170,9 @@ public final class Rules {
         }
         return new Spec(params, event, code, script, name, every, limit, priority, canceled, budget, persist, decl, creator, expires);
     }
+
+    /** The most {@code budget_ms} below owner: one run then stops at 50 ms, as a script does. */
+    static final double BUDGET_BELOW_OWNER = 2.5;
 
     /** One-run deadline: the whole window's budget, at least 50 ms and at most 10 s. */
     static long runLimitMs(double budgetMs) {

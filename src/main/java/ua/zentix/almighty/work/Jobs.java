@@ -94,7 +94,8 @@ public final class Jobs {
             }
             for (Job job : runnable) {
                 if (!all.left()) break;
-                if (!job.state().finished()) run(job, all);
+                // Only jobs already running: a waiting job counts its wait per step, so a second step would halve its timeout.
+                if (job.state() == Job.State.RUNNING) run(job, all);
             }
         }
         active.removeIf(job -> {

@@ -22,7 +22,7 @@ Component, BuiltInRegistries...). The returned value comes back as JSON; `printl
 - Never load chunks from a script (`level.getChunk`, own tickets): use `getChunkNow` and `area prepare` for a
   distant place.
 - Never sleep or wait on the server thread; never exit the JVM or start processes.
-- `timeout_ms` (up to 10000) interrupts loops; what was done stays. There is no undo for script changes: large block
+- `timeout_ms` (up to 10000; 50 below owner, and a rule below owner has budget_ms at most 2.5) interrupts loops; what was done stays. There is no undo for script changes: large block
   changes belong in `build`.
 
 ## Rules

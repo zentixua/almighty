@@ -89,10 +89,10 @@ public description and to look up a Minecraft skin when the agent asks for a bot
 1. Put the jar for your Minecraft version and loader into the server's `mods` folder and start the server.
 2. Tell your AI app: "connect to my Minecraft server at http://127.0.0.1:25650/mcp". For Claude Code that sentence
    is enough. `/almighty connect` shows the exact line or link for each app.
-3. The app opens a sign-in page with a four-digit code. In game, as a level-4 operator with a verified Minecraft
-   account, type `/almighty approve <code> <name> owner`; on a server with no owner yet, this also makes you its
-   owner. From the console, add your player name: `/almighty approve <code> <name> owner <player>`. Without `owner`
-   the app gets less: no scripts, and only the commands its rights allow.
+3. The app opens a sign-in page with a four-digit code and the command to type. Type it in game as a level-4
+   operator with a verified Minecraft account: `/almighty approve <code>`. On a new server this makes you its owner
+   and gives your app your rights; there is no other step. Later apps get less (no scripts, only the commands their
+   rights allow) unless you approve them with `/almighty approve <code> <name> owner`.
 
 Players' `/gm` messages then reach your app, with nothing more to set up.
 
@@ -249,10 +249,11 @@ Almighty — это управление вашим сервером со сто
 1. Положите jar для своей версии Minecraft и загрузчика в папку `mods` сервера и запустите его.
 2. Скажите своему ИИ-приложению: «connect to my Minecraft server at http://127.0.0.1:25650/mcp». Для Claude Code
    этой фразы достаточно. Команда `/almighty connect` покажет точную строку или ссылку для каждого приложения.
-3. Приложение откроет страницу входа с четырёхзначным кодом. В игре, как оператор уровня 4 с подтверждённым
-   аккаунтом Minecraft, введите `/almighty approve <код> <имя> owner`; на сервере, у которого ещё нет владельца, это
-   заодно сделает владельцем вас. Из консоли добавьте своё имя игрока: `/almighty approve <код> <имя> owner <игрок>`.
-   Без `owner` приложение получит меньше: без скриптов и только те команды, которые позволяют его права.
+3. Приложение откроет страницу входа с четырёхзначным кодом и командой, которую нужно ввести. Введите её в игре как
+   оператор уровня 4 с подтверждённым аккаунтом Minecraft: `/almighty approve <код>`. На новом сервере это сделает
+   вас его владельцем и даст вашему приложению ваши права; других шагов нет. Следующие приложения получат меньше
+   (без скриптов и только те команды, которые позволяют их права), если не одобрить их командой
+   `/almighty approve <код> <имя> owner`.
 
 После этого сообщения игроков через `/gm` приходят вашему приложению, больше ничего настраивать не нужно.
 

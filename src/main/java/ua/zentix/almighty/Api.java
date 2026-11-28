@@ -465,6 +465,16 @@ public final class Api {
         double[] at = a.has("at") ? numbers(a, "at") : null;
         float yaw = (float) a.number("yaw", 0, -360, 360), pitch = (float) a.number("pitch", 0, -90, 90);
         if ((name != null ? 1 : 0) + (uuid != null ? 1 : 0) + (at != null ? 1 : 0) != 1) throw RpcException.badRequest("see: exactly one of name, uuid or at");
+        // A free camera (at) is no one's eyes: without observe.players it lists no players but bots (rights audit M4).
+        boolean hidePlayers = false;
+        if (at != null) {
+            try {
+                gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.OBSERVE_PLAYERS, "players seen from a free camera");
+            } catch (RpcException e) {
+                hidePlayers = true;
+            }
+        }
+        boolean hide = hidePlayers;
         GmServer.MainCall<Object[]> look = () -> {
             Entity viewer = null;
             ServerLevel level;
@@ -494,7 +504,17 @@ public final class Api {
             }
             Eye.Camera cam = Eye.Camera.of(eye, y, p, fov, (double) width / height);
             Bot bot = viewer instanceof ServerPlayer sp ? gm.bots().of(sp) : null;
-            return new Object[] {level, cam, viewer, Eye.observe(level, cam, viewer, bot, radius, distance, sounds)};
+            JsonObject seen = Eye.observe(level, cam, viewer, bot, radius, distance, sounds);
+            if (hide && seen.get("entities") instanceof com.google.gson.JsonArray list) {
+                com.google.gson.JsonArray kept = new com.google.gson.JsonArray();
+                for (JsonElement e : list) {
+                    JsonObject o = e.getAsJsonObject();
+                    boolean player = "minecraft:player".equals(o.has("type") ? o.get("type").getAsString() : null);
+                    if (!player || (o.has("name") && gm.bots().isBotName(o.get("name").getAsString()))) kept.add(o);
+                }
+                seen.add("entities", kept);
+            }
+            return new Object[] {level, cam, viewer, seen};
         };
         if (!image) return gm.onMain(() -> (JsonObject) look.run()[3]);
         return view(gm, a, () -> {

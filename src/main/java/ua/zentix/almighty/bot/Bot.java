@@ -498,6 +498,8 @@ public final class Bot {
         m.addProperty("kind", kind);
         if (from != null) m.addProperty("from", from);
         m.addProperty("text", text);
+        // What a bot hears was written by players or by whatever sent it (tellraw, titles, signs): data (plan 4.11, P4).
+        if (!text.isEmpty()) m.add("untrusted", from != null ? ua.zentix.almighty.feed.Inbox.untrusted("text", "from") : ua.zentix.almighty.feed.Inbox.untrusted("text"));
         inbox.addLast(m);
         while (inbox.size() > INBOX) inbox.removeFirst();
         return m;

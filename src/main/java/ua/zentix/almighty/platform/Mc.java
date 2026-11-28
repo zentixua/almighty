@@ -492,7 +492,12 @@ public final class Mc {
         var no = new net.minecraft.server.dialog.ActionButton(new net.minecraft.server.dialog.CommonButtonData(
                 Component.literal("Deny").withStyle(net.minecraft.ChatFormatting.RED), 150),
                 java.util.Optional.of(new net.minecraft.server.dialog.action.StaticAction(new ClickEvent.RunCommand(deny))));
-        player.openDialog(net.minecraft.core.Holder.direct(new net.minecraft.server.dialog.ConfirmationDialog(common, yes, no)));
+        // Allow, Deny and Later: closing (Escape, Later) leaves the request waiting; it is answered from chat or the
+        // typed command until it expires. A confirmation dialog would turn Escape into Deny.
+        var later = new net.minecraft.server.dialog.ActionButton(new net.minecraft.server.dialog.CommonButtonData(
+                Component.literal("Later"), 100), java.util.Optional.empty());
+        player.openDialog(net.minecraft.core.Holder.direct(new net.minecraft.server.dialog.MultiActionDialog(common,
+                java.util.List.of(yes, no), java.util.Optional.of(later), 2)));
         return true;
         *///?} else {
         return false;

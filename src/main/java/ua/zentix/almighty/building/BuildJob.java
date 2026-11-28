@@ -89,6 +89,17 @@ public final class BuildJob extends Job {
     private long waited, placed, unchanged, kept, done, conflicts;
     /** The journal change this job reverts (0: none). */
     private long revertOf;
+    /**
+     * A piece of a revert that must wait for the piece reverting later writes ({@link #after}): writes are undone in
+     * exactly the reverse order they were made, also across pieces (a block next to a piece edge may rewrite itself
+     * when its neighbour changes).
+     */
+    private ua.zentix.almighty.work.Job after;
+
+    /** Start only after {@code job} has finished, and fail if it did not complete (revert pieces in order). */
+    public void after(ua.zentix.almighty.work.Job job) {
+        this.after = job;
+    }
     private int restoreAt;
 
     private BuildJob(String kind, ServerLevel level, Areas areas, int[] bounds, long timeoutTicks,
@@ -173,6 +184,14 @@ public final class BuildJob extends Job {
 
     @Override
     protected void step(Budget budget) {
+        if (after != null) {
+            if (!after.state().finished()) return;
+            if (after.state() != State.DONE) {
+                fail("An earlier piece of this revert (job #" + after.id() + ") did not complete: " + after.state().name().toLowerCase(java.util.Locale.ROOT));
+                return;
+            }
+            after = null;
+        }
         if (state() == State.WAITING) {
             if (!lease.isReady()) {
                 String refusal = lease.refusal();

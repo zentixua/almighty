@@ -151,6 +151,12 @@ public final class GmJournalGameTests {
             commands.add(String.format(java.util.Locale.ROOT, "setblock %d %d %d minecraft:stone", a.getX() + (i % 10), a.getY(), a.getZ() + i / 10));
             commands.add(String.format(java.util.Locale.ROOT, "setblock %d %d %d minecraft:stone", b.getX() + (i % 10), b.getY(), b.getZ() + i / 10));
         }
+        java.util.Set<Long> regions = new java.util.HashSet<>();
+        for (int i = 0; i < 50; i++) {
+            for (BlockPos at : new BlockPos[] {a.offset(i % 10, 0, i / 10), b.offset(i % 10, 0, i / 10)}) {
+                regions.add(((long) (at.getX() >> 7) << 32) ^ (at.getZ() >> 7));
+            }
+        }
         JsonObject call = new JsonObject();
         call.add("commands", commands);
         gm.dispatch().invoke(GM, "command", call).join();
@@ -158,7 +164,7 @@ public final class GmJournalGameTests {
         JsonObject[] out = new JsonObject[1];
         gm.dispatch().invoke(GM, "undo", params("{\"change\":%d,\"wait\":0}", id)).thenAccept(o -> out[0] = o.getAsJsonObject());
         h.succeedWhen(() -> {
-            check(out[0] != null && out[0].getAsJsonArray("jobs").size() == 2, "one piece per region, not per run: " + out[0]);
+            check(out[0] != null && out[0].getAsJsonArray("jobs").size() == regions.size(), "one piece per region (" + regions.size() + "), not per run: " + out[0]);
             for (var j : out[0].getAsJsonArray("jobs")) {
                 check(gm.jobs().get(j.getAsLong()).state() == ua.zentix.almighty.work.Job.State.DONE, "piece " + gm.jobs().get(j.getAsLong()).describe());
             }

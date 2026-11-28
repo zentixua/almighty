@@ -136,6 +136,7 @@ public final class GmJournalGameTests {
         var blocks = h.getLevel().registryAccess().lookupOrThrow(Registries.BLOCK);
         java.util.concurrent.atomic.AtomicReference<Journal.Records> seen = new java.util.concurrent.atomic.AtomicReference<>();
         java.util.concurrent.atomic.AtomicLong id = new java.util.concurrent.atomic.AtomicLong();
+        java.util.Set<String> reasons = java.util.Collections.synchronizedSet(new java.util.LinkedHashSet<>());
         // The clock goes back even if the test times out (other batches share it).
         h.runAfterDelay(290, () -> GmServer.clock = clock);
         h.startSequence()
@@ -158,14 +159,21 @@ public final class GmJournalGameTests {
                 .thenWaitUntil(() -> {
                     try {
                         JsonObject live = gm.journal().describe(id.get());
-                        check(live != null && live.has("open"), "the build is no longer running: " + live + ", jobs " + gm.jobs().describe());
-                        Journal restarted = new Journal(dir);
-                        JsonObject meta = restarted.describe(id.get());
-                        check(meta != null, "the change is not on disk yet");
-                        check(meta.has("interrupted"), "after a restart the change is listed as interrupted: " + meta);
-                        Journal.Records r = restarted.read(id.get(), tag -> NbtUtils.readBlockState(blocks, tag));
-                        check(r.size() > 0, "no write on disk yet");
-                        seen.set(r);
+                        check(live != null && live.has("open"), "the build is no longer running: " + live + "; until then: " + reasons
+                                + ", jobs " + gm.jobs().describe());
+                        try {
+                            Journal restarted = new Journal(dir);
+                            JsonObject meta = restarted.describe(id.get());
+                            check(meta != null, "the change is not on disk yet");
+                            check(meta.has("interrupted"), "after a restart the change is listed as interrupted: " + meta);
+                            Journal.Records r = restarted.read(id.get(), tag -> NbtUtils.readBlockState(blocks, tag));
+                            check(r.size() > 0, "no write on disk yet");
+                            seen.set(r);
+                        } catch (java.io.IOException | RuntimeException e) {
+                            // Each distinct reason, for the message if the build ends before the checks pass.
+                            reasons.add(e.getClass().getSimpleName() + ": " + e.getMessage());
+                            throw e;
+                        }
                     } catch (java.io.IOException e) {
                         throw new GameTestAssertException(e.toString());
                     }

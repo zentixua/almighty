@@ -74,6 +74,7 @@ public final class GmServer {
     private final Inbox inbox;
     private final Pause pause = new Pause();
     private final ua.zentix.almighty.policy.Quotas quotas = new ua.zentix.almighty.policy.Quotas(System::currentTimeMillis);
+    private final ua.zentix.almighty.bridge.CallRate callRate = new ua.zentix.almighty.bridge.CallRate(System::currentTimeMillis);
     private final ua.zentix.almighty.policy.Roles roles;
     private final ua.zentix.almighty.world.Claims claims = ua.zentix.almighty.compat.Compat.claims();
     private final Journal journal;
@@ -123,6 +124,9 @@ public final class GmServer {
         gate.confirmations(decisions.confirmations(), decisions::prompt);
         Confirmations.players(name -> Nodes.online(name));
         this.dispatch = new Dispatch(Api.methods(this), List.of(
+                (caller, method, params) -> {
+                    if (caller.agent() != null) callRate.charge(caller.name(), policies.current().limits().callsPerMinute());
+                },
                 (caller, method, params) -> DenyList.check(method, params),
                 (caller, method, params) -> {
                     // Cancelling, releasing and removing only reduce effects: allowed, so a paused agent can clean up.

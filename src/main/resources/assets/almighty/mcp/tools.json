@@ -170,7 +170,7 @@
     "destructiveHint": true,
     "openWorldHint": false
    },
-   "description": "Groovy code on the server thread: everything in the game and in any mod is reachable. Variables: server; gm (gm.command, gm.commandAs(entity, ...), gm.emit(data), gm.player(name), gm.level(dim), gm.bot(name), gm.ship(name)); state - a map shared by scripts and rules until restart; args. Common classes are imported. The returned value comes back as JSON, println as output; an error gives ok=false, error and line. timeout_ms (up to 10000) interrupts loops; what was done stays; no undo. Never hand closures or script objects to the game (tickets, listeners, deferred tasks) and never load chunks: react with rule, load places with area prepare.",
+   "description": "Groovy code on the server thread: everything in the game and in any mod is reachable. Variables: server; gm (gm.command, gm.commandAs(entity, ...), gm.emit(data), gm.player(name), gm.level(dim), gm.bot(name), gm.ship(name)); state - a map shared by scripts and rules until restart; args. Common classes are imported. The returned value comes back as JSON, println as output; an error gives ok=false, error and line. timeout_ms (up to 10000; 50 below owner) interrupts loops; what was done stays; no undo. Never hand closures or script objects to the game (tickets, listeners, deferred tasks) and never load chunks: react with rule, load places with area prepare.",
    "inputSchema": {
     "type": "object",
     "properties": {

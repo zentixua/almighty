@@ -148,7 +148,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
 - `Api`: method table. Parse parameters on the bridge thread; access the world only on the server thread:
   `GmServer.onMain` (`server.execute`, between ticks) or a job (`work/`) within the tick budget.
 - `work/`: job queue, processed in order at tick end (`ServerTickEvent.Post`) while time remains (`work.ms_per_tick`,
-  3 ms); the first job gets at least one slice. Completion emits a `job` feed event (except snapshots). History:
+  3 ms); the first job gets at least one slice. With several agents' jobs each agent gets an equal share and one slice,
+  the first turn rotating per tick (`JobsTest`). Completion emits a `job` feed event (except snapshots). History:
   last 50 jobs, undo snapshots totaling at most 4 million positions.
 - `world/Areas`: GM chunks, leased as a chunk rectangle with a one-chunk ring of neighbors.
 - `building/`: plan (`BuildPlan`: fill/set/layers, no world needed for unit tests) and build/undo job (`BuildJob`).
@@ -223,7 +224,9 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `bot.spawn`, and commands at their source position); unasked above the floor, `build`/`area.prepare`/`bot.spawn`
   pass the gate only with an internal marker (`Gate.ZONE_ONLY`, dropped from incoming parameters) and must lie
   wholly inside a zone whose `agent_may` lists the node. `[quotas] build_blocks, give_items` per player per hour
-  below owner (`policy/Quotas`; 429). Role ladder without a plugin: `/almighty role <player> <role|clear>
+  below owner (`policy/Quotas`; 429); per agent `calls_per_minute` (1200, any agent, `bridge/CallRate`; 429) and
+  `bot_minutes` (240 an hour for bots spawned below owner: spawn refused, a running bot removed). Below owner a
+  script runs at most 50 ms (`Api.SCRIPT_MS_BELOW_OWNER`). Role ladder without a plugin: `/almighty role <player> <role|clear>
   [duration]` (admins and the console, only below their own role; never owner; `config/almighty/roles.json`,
   `policy/Roles`); `/almighty owner add|remove <player>` (level 4) edits `owners` in place, validated
   (`policy/PolicyFile`). `Nodes.handler` stands in for a permission handler in GameTest (the LuckPerms path).

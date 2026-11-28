@@ -83,7 +83,12 @@ public final class Bots {
 
     /** Bot login parameters: parsed and validated on the bridge thread. */
     public record Spec(String name, double[] pos, String dimension, float yaw, float pitch, GameType gamemode,
-                       String skinOf, Property textures, boolean marker, boolean autoRespawn) {
+                       String skinOf, Property textures, boolean marker, boolean autoRespawn, String meter) {
+        /** The same bot, its online minutes charged to {@code agent}'s {@code bot_minutes} (spawned below owner). */
+        public Spec metered(String agent) {
+            return new Spec(name, pos, dimension, yaw, pitch, gamemode, skinOf, textures, marker, autoRespawn, agent);
+        }
+
         public static Spec parse(Args a) throws RpcException {
             String name = a.string("name");
             if (!NAME.matcher(name).matches()) throw RpcException.badRequest("name: 3–16 Latin letters, digits or _ (the names commands accept)");
@@ -106,7 +111,7 @@ public final class Bots {
                 }
             }
             return new Spec(name, pos, a.string("dimension", null), (float) a.number("yaw", 0, -360, 360), (float) a.number("pitch", 0, -90, 90),
-                    mode, skinOf, textures, a.bool("marker", true), a.bool("auto_respawn", true));
+                    mode, skinOf, textures, a.bool("marker", true), a.bool("auto_respawn", true), null);
         }
     }
 
@@ -114,6 +119,8 @@ public final class Bots {
     public CompletableFuture<JsonObject> spawn(Spec spec) {
         return gm.onMain(() -> {
             check(spec);
+            // The first minute up front: an agent whose bot minutes are used up gets 429 before anything loads.
+            if (spec.meter() != null) chargeMinute(spec.meter());
             return spec;
         }).thenCompose(s -> s.skinOf() == null
                 ? CompletableFuture.completedFuture(Optional.ofNullable(s.textures()))
@@ -253,6 +260,7 @@ public final class Bots {
         ServerPlayer player = new BotPlayer(server, server.overworld(), profile, info);
         //?}
         Bot bot = new Bot(this, profile, spec.marker(), spec.autoRespawn());
+        bot.meter = spec.meter();
         // Before login: the tab name is computed during login, and the event must already know the bot.
         byName.put(key(spec.name()), bot);
         names.add(key(spec.name()));
@@ -322,6 +330,12 @@ public final class Bots {
         List<String> out = new ArrayList<>();
         for (Bot b : byName.values()) out.add(b.name);
         return out;
+    }
+
+    static final int MINUTE_TICKS = 1200;
+
+    private void chargeMinute(String agent) throws RpcException {
+        gm.quotas().charge("agent:" + agent, "bot_minutes", 1, gm.policies().current().limits().botMinutes());
     }
 
     /** Whether {@code agent} is paused by the owner (its bots get no new programs). */
@@ -394,6 +408,16 @@ public final class Bots {
         });
         if (byName.isEmpty()) return;
         for (Bot bot : all()) {
+            // Plan F12: a bot spawned below owner costs its agent a minute of bot_minutes per online minute; when they
+            // run out, the bot leaves (its chunks with it).
+            if (bot.meter != null && ++bot.meteredTicks % MINUTE_TICKS == 0) {
+                try {
+                    chargeMinute(bot.meter);
+                } catch (RpcException e) {
+                    remove(bot, "bot minutes of agent " + bot.meter + " used up ([quotas] bot_minutes)");
+                    continue;
+                }
+            }
             if (!bot.tick()) {
                 bot.closed();
                 gone(bot);

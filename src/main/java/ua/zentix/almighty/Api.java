@@ -62,6 +62,8 @@ public final class Api {
     static final long CHUNK_WAIT_TICKS = 2400;
     /** The longest one-shot script: the server thread is blocked for that duration. */
     static final int MAX_SCRIPT_MS = 10_000;
+    /** Plan 4.11: the longest a script may run below owner. */
+    static final int SCRIPT_MS_BELOW_OWNER = 50;
     private static final Logger LOG = LogUtils.getLogger();
     /** Methods that may wait for seconds (feed long poll, job waits): served by the bridge's long-poll pool. */
     public static final java.util.Set<String> LONG = java.util.Set.of(
@@ -263,7 +265,9 @@ public final class Api {
                 dim = Dims.id(l);
             }
             gm.gate().zone(a.caller(), a.raw(), gm.gate().nodeOf("bot.spawn", a.raw()), dim, at, at);
-            return gm.bots().spawn(spec).thenApply(o -> o);
+            boolean metered = a.caller().agent() != null
+                    && gm.gate().rights(a.caller(), a.raw()).effective() != ua.zentix.almighty.policy.Role.OWNER;
+            return gm.bots().spawn(metered ? spec.metered(a.caller().name()) : spec).thenApply(o -> o);
         });
         m.put("bot.remove", a -> {
             String name = a.string("name");
@@ -401,6 +405,11 @@ public final class Api {
         String code = named ? gm.files().approvedScript(scriptName) : a.string("code");
         if (code.length() > Rules.MAX_SCRIPT) throw RpcException.badRequest("code: at most " + Rules.MAX_SCRIPT / 1024 + " KB");
         int timeout = a.integer("timeout_ms", 1000, 1, MAX_SCRIPT_MS);
+        // Plan 4.11: below owner (a granted engine node, an approved script run by a builder) a script holds the tick
+        // for at most SCRIPT_MS_BELOW_OWNER.
+        boolean capped = a.caller().agent() != null && timeout > SCRIPT_MS_BELOW_OWNER
+                && gm.gate().rights(a.caller(), a.raw()).effective() != ua.zentix.almighty.policy.Role.OWNER;
+        if (capped) timeout = SCRIPT_MS_BELOW_OWNER;
         Object args = a.has("args") ? Json.toJava(a.raw().get("args")) : new LinkedHashMap<String, Object>();
         Scripts.Compiled compiled;
         try {
@@ -432,6 +441,7 @@ public final class Api {
                 if (r.line() > 0) out.addProperty("line", r.line());
                 if (!r.output().isEmpty()) out.addProperty("output", r.output());
                 out.addProperty("ms", Math.round(r.nanos() / 1e4) / 100.0);
+                if (capped) out.addProperty("timeout_ms", SCRIPT_MS_BELOW_OWNER);
                 return out;
             } finally {
                 compiled.close();

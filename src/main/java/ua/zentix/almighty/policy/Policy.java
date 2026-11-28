@@ -62,9 +62,25 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
         }
     }
 
-    /** {@code [quotas]}: what one player's requests may take per hour below owner (plan 4.3). */
-    public record Limits(long buildBlocks, long giveItems) {
-        public static final Limits DEFAULT = new Limits(50_000, 128);
+    /**
+     * {@code [quotas]}: what one player's requests may take per hour below owner (plan 4.3), and per agent (plan S6,
+     * F2, F12, F14): {@code callsPerMinute} bridge calls of any agent (0: no limit), {@code botMinutes} minutes its bots
+     * may be online per hour when spawned below owner.
+     */
+    public record Limits(long buildBlocks, long giveItems, long callsPerMinute, long botMinutes) {
+        public static final Limits DEFAULT = new Limits(50_000, 128, 1200, 240);
+
+        static final Set<String> KEYS = Set.of("build_blocks", "give_items", "calls_per_minute", "bot_minutes");
+
+        /** Whether any limit here is larger than in {@code old} (0 calls per minute is no limit). */
+        boolean wider(Limits old) {
+            return buildBlocks > old.buildBlocks || giveItems > old.giveItems || botMinutes > old.botMinutes
+                    || calls(callsPerMinute) > calls(old.callsPerMinute);
+        }
+
+        private static long calls(long perMinute) {
+            return perMinute == 0 ? Long.MAX_VALUE : perMinute;
+        }
     }
 
     /**
@@ -244,10 +260,12 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
         Object q = c.get("quotas");
         if (q instanceof Config t) {
             for (Config.Entry k : t.entrySet()) {
-                if (!Set.of("build_blocks", "give_items").contains(k.getKey())) errors.add("quotas: unknown key " + k.getKey());
+                if (!Limits.KEYS.contains(k.getKey())) errors.add("quotas: unknown key " + k.getKey());
             }
             limits = new Limits(count(t.get("build_blocks"), "quotas.build_blocks", Limits.DEFAULT.buildBlocks(), errors),
-                    count(t.get("give_items"), "quotas.give_items", Limits.DEFAULT.giveItems(), errors));
+                    count(t.get("give_items"), "quotas.give_items", Limits.DEFAULT.giveItems(), errors),
+                    count(t.get("calls_per_minute"), "quotas.calls_per_minute", Limits.DEFAULT.callsPerMinute(), errors),
+                    count(t.get("bot_minutes"), "quotas.bot_minutes", Limits.DEFAULT.botMinutes(), errors));
         } else if (q != null) {
             errors.add("quotas: a table [quotas]");
         }
@@ -362,6 +380,10 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 [quotas]
                 build_blocks = 50000
                 give_items = 128
+                # Per agent: bridge calls per minute (0: no limit; a runaway loop gets 429), and how many minutes its bots
+                # may be online per hour when it spawned them below owner (then the bot is removed).
+                calls_per_minute = 1200
+                bot_minutes = 240
 
                 # Zones: boxes where some rights are denied below owner, or where the agent may act on its own.
                 # deny: build, area, bots (bots.admin too), command. Commands are checked at their source and at every

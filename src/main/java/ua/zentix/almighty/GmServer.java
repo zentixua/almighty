@@ -233,8 +233,8 @@ public final class GmServer {
                     return gm;
                 }
                 if (tls == null && !loopback(GmConfig.BRIDGE_HOST.get())) {
-                    LOG.warn("Almighty bridge listens on {} without TLS (bridge.allow_plain_http_off_loopback): keep that address"
-                            + " reachable only from this machine", GmConfig.BRIDGE_HOST.get());
+                    LOG.warn("Almighty bridge listens on {} without TLS (bridge.allow_plain_http_off_loopback): tokens and calls cross"
+                            + " the network in plain text, so keep that address reachable only from this machine", GmConfig.BRIDGE_HOST.get());
                 }
                 gm.bridge = new Bridge(address, agents, gm.dispatch, Api.LONG, new HashSet<>(GmConfig.BRIDGE_ALLOWED_ORIGINS.get()), tls);
                 gm.mcp = Mcp.mount(server, gm.bridge, configDir, GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PUBLIC_URL.get(),

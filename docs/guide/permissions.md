@@ -163,8 +163,8 @@ marked as its words, then what really runs in the server's own words (the action
 call itself), with `[Allow]`, `[Deny]` and `[Details]`:
 
 ```
-[Almighty] Cloudien wants to “snow over your base” (its own words) — what runs: change blocks at 0 64 0 … 20 70 20.
-It cannot be undone. [Allow] [Deny] [Details]
+[Almighty] Cloudien wants to “clear the arena” (its own words) — what runs: kill — target: every player.
+It cannot be undone. [Allow] [Deny] [Details] (no clicks: type /almighty confirm <id> to allow, …)
 ```
 
 The summary is optional, at most 80 characters, and can never hide or change the server's part. The exact call is

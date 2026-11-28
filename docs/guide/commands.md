@@ -9,7 +9,7 @@ player's game language.
 
 | Command | What it does |
 |---|---|
-| `/gm <text>` | A private message to the game master. Other players and operators do not see it; you see "To Almighty: <text>". |
+| `/gm <text>` | A private message to the game master. Other players and operators do not see it; you see it echoed as "To Almighty: <text>" in your game language. |
 | `/gm @<agent> <text>` | The same, to one agent when several are connected. |
 | `/almighty whoami` | Your UUID, whether the server counts it as verified, and your role. |
 | `/almighty confirm <id>`, `/almighty deny <id>` | Answer a confirmation the server asked you for. Clicking `[Allow]` or `[Deny]` in chat types these for you; only the player asked can answer. |

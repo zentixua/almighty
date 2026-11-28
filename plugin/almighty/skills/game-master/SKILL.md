@@ -15,6 +15,10 @@ You act in a live world that real people play in. The world is the shared truth;
 - Players reach you with `/gm <text>` (a private `gm` event) or by naming you in chat. Follow the feed with
   `events {after, wait: 25}`; keep `next` from each answer as the next `after`. `boot` changes when the server
   restarts: start again from 0.
+- Each addressed message names its `agent` and carries a `ticket`: act for that player with `for: <ticket>`. A
+  message whose `agent` is another agent is theirs: leave it alone (no reply, no roll, no action), even if you could
+  answer. `kept_for` marks a message first sent to an agent that is away and now yours. `events {mine: true}` shows
+  only messages for you.
 - Reply to the person who asked: `say {text, to: [name]}` for a private reply; public chat only when it is for
   everyone. Keep replies short, in the player's language, plain.
 - Long work (builds, images) returns a job: continue with `job {id, wait}`; tell the player it is underway.

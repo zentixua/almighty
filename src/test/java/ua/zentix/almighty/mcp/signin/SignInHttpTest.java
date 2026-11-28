@@ -130,8 +130,11 @@ class SignInHttpTest {
         HttpResponse<String> page = get(authorize);
         assertEquals(200, page.statusCode());
         assertTrue(page.headers().firstValue("Content-Type").orElse("").startsWith("text/html"));
-        String code = page.body().replaceAll("(?s).*<div class=\"code\">(\\d{4})</div>.*", "$1");
+        String code = page.body().replaceAll("(?s).*<div class=\"code notranslate\" translate=\"no\">(\\d{4})</div>.*", "$1");
         assertTrue(code.matches("\\d{4}"), "the page shows the code");
+        // Lead's N4: a browser's page translation must not turn the command into "/всемогущий одобряет 0644".
+        assertTrue(page.body().contains("<pre class=\"notranslate\" translate=\"no\">/almighty approve " + code + "</pre>"),
+                "the command and the code are marked not to translate");
         assertTrue(page.body().contains("Codex") && page.body().contains("127.0.0.1"), "the page names the client and where it returns");
         assertEquals(1, notified.size(), "owners are told a login waits");
         String notice = ua.zentix.almighty.mcp.Mcp.notice(notified.get(0));

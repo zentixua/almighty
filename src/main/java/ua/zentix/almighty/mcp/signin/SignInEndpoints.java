@@ -223,10 +223,10 @@ public final class SignInEndpoints implements HttpHandler {
         String host = URI.create(p.redirect()).getHost();
         String body = "<p class=\"who\"><b>" + esc(client.name()) + "</b> wants to connect to this Minecraft server"
                 + (host == null ? "" : " and will return to <b>" + esc(host) + "</b>") + ".</p>"
-                + "<div class=\"code\">" + p.code() + "</div>"
+                + "<div class=\"code notranslate\" translate=\"no\">" + p.code() + "</div>"
                 + "<p>To allow it, type in the game (as an operator) or in the server console:</p>"
-                + "<pre>/almighty approve " + p.code() + "</pre>"
-                + "<p class=\"small\">Only the person running the server can do this. To refuse: <code>/almighty deny " + p.code()
+                + "<pre class=\"notranslate\" translate=\"no\">/almighty approve " + p.code() + "</pre>"
+                + "<p class=\"small\">Only the person running the server can do this. To refuse: <code class=\"notranslate\" translate=\"no\">/almighty deny " + p.code()
                 + "</code>. The code expires in 10 minutes.</p><p id=\"state\" class=\"small\">Waiting for approval…</p>";
         html(exchange, 200, page("Connect to Almighty", body, p.id()));
     }

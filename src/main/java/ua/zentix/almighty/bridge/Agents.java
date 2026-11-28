@@ -166,6 +166,17 @@ public final class Agents {
         return best != null ? best.name() : configured;
     }
 
+    /**
+     * Whether a message routed by default to {@code from} now belongs to {@code to} (lead's N6): {@code to} is where
+     * players are routed now ({@code routed}, {@link #route}) and {@code from} is away (no call within
+     * {@code presentMs}) or gone.
+     */
+    public boolean handsOver(String from, String to, String routed, long presentMs) {
+        if (from.equals(to) || !to.equals(routed) || get(to) == null) return false;
+        Agent f = get(from);
+        return f == null || !f.present(presentMs);
+    }
+
     public List<String> names() {
         return new ArrayList<>(byName.keySet());
     }

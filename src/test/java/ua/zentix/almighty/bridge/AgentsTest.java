@@ -8,6 +8,8 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -91,5 +93,18 @@ class AgentsTest {
         assertEquals("gm", a.route("gm", 60_000, n -> false), "never to an agent without an owner ceiling (review of #101)");
         a.get("gm").seen("127.0.0.1");
         assertEquals("gm", a.route("gm", 60_000, owners), "the configured agent while it runs");
+    }
+
+    /** Lead's N6: a message routed to an absent agent belongs to the agent players are routed to now. */
+    @Test
+    void aKeptMessageMovesOnlyFromAnAbsentAgent() {
+        Agents a = Agents.of(java.util.Map.of("gm", "g".repeat(32), "claude-code", "c".repeat(32), "film", "f".repeat(32)));
+        assertTrue(a.handsOver("gm", "claude-code", "claude-code", 60_000), "gm never ran");
+        assertFalse(a.handsOver("gm", "film", "claude-code", 60_000), "only to where players are routed now");
+        assertFalse(a.handsOver("gm", "gm", "gm", 60_000), "not to itself");
+        assertFalse(a.handsOver("gm", "nobody", "nobody", 60_000), "not to an unknown agent");
+        assertTrue(a.handsOver("removed", "claude-code", "claude-code", 60_000), "from an agent that is gone");
+        a.get("gm").seen("127.0.0.1");
+        assertFalse(a.handsOver("gm", "claude-code", "claude-code", 60_000), "gm runs: the message is still gm's");
     }
 }

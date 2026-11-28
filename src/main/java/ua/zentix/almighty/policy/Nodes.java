@@ -122,7 +122,16 @@ public final class Nodes {
      * snapshots and the permission handler, as the gate reads them.
      */
     public static boolean covers(UUID id, Role floor) {
-        for (Node n : Node.values()) if (floor.atLeast(n.defaultRole()) && !holds(id, n)) return false;
+        return covers(id, floor, false);
+    }
+
+    /**
+     * As {@link #covers}; {@code noWait}: an offline player's nodes come from the ladder, never from a permission
+     * plugin that may load the user from storage (the feed filter runs under the feed lock, which the server thread
+     * needs for every event).
+     */
+    public static boolean covers(UUID id, Role floor, boolean noWait) {
+        for (Node n : Node.values()) if (floor.atLeast(n.defaultRole()) && !holds(id, n, noWait)) return false;
         Integer op = Identity.verified(id) ? ops.get(id) : null;
         int level = Math.max(op == null ? 0 : op, role(id).commandLevel());
         return level >= floor.commandLevel();
@@ -165,6 +174,10 @@ public final class Nodes {
 
     /** Whether a player holds a node: the permission handler for an online player, the offline query otherwise. */
     public static boolean holds(UUID id, Node node) {
+        return holds(id, node, false);
+    }
+
+    private static boolean holds(UUID id, Node node, boolean noWait) {
         // An owner is the owner whatever a plugin says; an unverified identity (anyone can claim an offline name) is a
         // guest whatever a plugin says; everyone else is the handler's to decide.
         Role ladder = role(id);
@@ -175,7 +188,7 @@ public final class Nodes {
         if (forced != null) return forced;
         ServerPlayer player = server == null ? null : online.get(id);
         // No platform (unit tests), no handler yet, or nodes not gathered: the ladder answers.
-        Boolean v = Platform.present() ? Platform.get().permission(id, player, node) : null;
+        Boolean v = Platform.present() && (player != null || !noWait) ? Platform.get().permission(id, player, node) : null;
         return v != null ? v : ladder.atLeast(node.defaultRole());
     }
 }

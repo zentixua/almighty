@@ -219,7 +219,10 @@ public final class Gate implements Dispatch.Check {
                 java.util.List<String> texts = new java.util.ArrayList<>();
                 if (o.get("chat") instanceof com.google.gson.JsonPrimitive chat) texts.add(chat.getAsString());
                 for (String k : new String[] {"lines", "text"}) {
-                    if (o.has("sign") && o.get(k) instanceof JsonArray lines) for (JsonElement l : lines) if (l.isJsonPrimitive()) texts.add(l.getAsString());
+                    if (!o.has("sign")) continue;
+                    // One line as a plain string too (Steps reads either; final audit m1).
+                    if (o.get(k) instanceof JsonArray lines) for (JsonElement l : lines) if (l.isJsonPrimitive()) texts.add(l.getAsString());
+                    if (o.get(k) instanceof com.google.gson.JsonPrimitive line) texts.add(line.getAsString());
                 }
                 for (String t : texts) {
                     String why = Forgery.refusal(t);

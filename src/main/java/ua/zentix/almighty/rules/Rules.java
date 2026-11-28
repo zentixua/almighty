@@ -101,7 +101,12 @@ public final class Rules {
     /** Parsed rule: original parameters (for persistence), event and script. */
     public record Spec(JsonObject params, GameEvents.Found event, String code, Scripts.Compiled script, String name, int every,
                        long limit, Priority priority, boolean canceled, double budgetMs, boolean persist,
-                       Declarative.Decl decl, Declarative.Creator creator, long expires) {}
+                       Declarative.Decl decl, Declarative.Creator creator, long expires) {
+        /** Whether fires write the event's fields to the feed: no script, and no then or a then with emit. */
+        public boolean writesFields() {
+            return code == null && (decl == null || decl.emits());
+        }
+    }
 
     /** TTL of a rule made below owner (plan 4.12): 7 days at most. */
     public static final long TTL_MAX_MS = 7L * 24 * 3_600_000;
@@ -496,6 +501,7 @@ public final class Rules {
             if (owner) return lacking = null;
             lacking = guard.lacks(spec.creator(), spec.script() != null ? ua.zentix.almighty.policy.Node.ENGINE : ua.zentix.almighty.policy.Node.RULES);
             if (lacking == null && spec.decl() != null && spec.decl().commands()) lacking = guard.lacks(spec.creator(), ua.zentix.almighty.policy.Node.COMMAND);
+            if (lacking == null && spec.writesFields()) lacking = guard.lacks(spec.creator(), ua.zentix.almighty.policy.Node.OBSERVE_PLAYERS);
             return lacking;
         }
 

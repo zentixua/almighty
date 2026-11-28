@@ -125,6 +125,23 @@ public final class GmRuleGameTests {
         });
     }
 
+    /** Final audit M1: below owner, a rule that writes event fields to the feed (they carry players' places) needs observe.players. */
+    @GameTest(template = "floor", batch = "gm_rules_fields")
+    public static void fieldRulesNeedObservePlayers(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        try {
+            gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\n[agents.gm]\nfloor = \"builder\"\n"));
+            RpcException e = refused(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"watch\"}");
+            check(e.status() == 403 && e.getMessage().contains("observe.players"), "a builder's field rule: " + e.getMessage());
+            check(refused(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"watch\",\"then\":[\"emit\"]}").status() == 403,
+                    "emit too");
+        } finally {
+            gm.policies().set(before);
+        }
+        h.succeed();
+    }
+
     /**
      * Pausing one agent stops its rules, not only its builds (AGENTS.md "Pause"); and a rule without a script on
      * command events never puts a player's private message into the feed (the feed's own filter, FeedListeners).
@@ -217,8 +234,10 @@ public final class GmRuleGameTests {
             check(state(gm, "short").equals("gone"), "an expired rule is removed");
             // A same name does not replace someone else's rule (here the owner's).
             gm.dispatch().invoke(Caller.INTERNAL, "rule.add", params("{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"owners\",\"then\":[\"emit\"]}"));
-            check(refused(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"owners\",\"then\":[\"emit\"],\"for\":\"" + t + "\"}").status() == 403,
-                    "the owner's rule is not replaced by name");
+            // A then the builder may add (cancel where they build), so the refusal is the name's, not observe.players'.
+            RpcException byName = refused(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"owners\",\"when\":" + when
+                    + ",\"then\":[\"cancel\"],\"for\":\"" + t + "\"}");
+            check(byName.status() == 403 && !byName.getMessage().contains("observe.players"), "the owner's rule is not replaced by name: " + byName.getMessage());
             // Rule commands get the same checks as command calls below owner.
             check(refused(gm, "rule.add", "{\"event\":\"" + Gt.LOGIN_EVENT + "\",\"name\":\"click\",\"then\":[{\"command\":"
                     + "\"tellraw @a {\\\"text\\\":\\\"x\\\",\\\"clickEvent\\\":{\\\"action\\\":\\\"run_command\\\",\\\"value\\\":\\\"/op me\\\"}}\"}],\"for\":\"" + t + "\"}")

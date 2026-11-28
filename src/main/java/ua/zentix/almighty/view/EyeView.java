@@ -54,7 +54,16 @@ public final class EyeView extends View {
 
     /** {@code self} is the viewer (excluded from the image, along with its vehicle); null means a free camera. */
     public EyeView(ServerLevel level, Eye.Camera cam, int width, int height, double distance, Entity self, JsonObject seen) {
+        this(level, cam, width, height, distance, self, seen, e -> true);
+    }
+
+    /** {@code shown}: which entities the picture draws (without observe.players, no players but bots). */
+    private final java.util.function.Predicate<Entity> shown;
+
+    public EyeView(ServerLevel level, Eye.Camera cam, int width, int height, double distance, Entity self, JsonObject seen,
+                   java.util.function.Predicate<Entity> shown) {
         super("eye");
+        this.shown = shown;
         this.level = level;
         this.cam = cam;
         this.width = width;
@@ -75,7 +84,7 @@ public final class EyeView extends View {
         AABB around = new AABB(cam.eye(), cam.eye()).inflate(distance);
         Entity root = self == null ? null : self.getRootVehicle();
         List<Entity> found = new ArrayList<>(level.getEntities(self, around, e -> !e.isSpectator() && !e.isInvisible()
-                && (root == null || e.getRootVehicle() != root)));
+                && (root == null || e.getRootVehicle() != root) && shown.test(e)));
         found.sort(Comparator.comparingDouble(e -> e.distanceToSqr(cam.eye())));
         double tanH = cam.tanH(), tanV = cam.tanV();
         for (Entity e : found) {

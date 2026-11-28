@@ -46,5 +46,5 @@ Component, BuiltInRegistries...). The returned value comes back as JSON; `printl
 - `every` (ticks), `limit` (runs, then removed), `name` (replaces the rule with that name), `persist` (survives
   restarts).
 - A rule turns itself off (`rule.off` in the feed, with the reason) when its average time per tick goes over
-  `budget_ms` (default 5), one run takes over 20 x budget, 10 errors in a row, or it writes over 200 feed entries in
+  `budget_ms` (default 5, at most 2.5 below owner), one run takes over 20 x budget, 10 errors in a row, or it writes over 200 feed entries in
   a second, or when its event fires off the server thread. Bots it drove stop. Fix it and add it again.

@@ -224,8 +224,11 @@ public final class Api {
             return gm.onMain(() -> {
                 Job job = gm.jobs().get(id);
                 if (job == null) throw RpcException.notFound("No job #" + id);
-                if (!job.agent().equals(a.caller().name())) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.UNDO_ANY,
-                        "job #" + id + " is agent " + job.agent() + "'s");
+                // As undo: the same agent and the same requester (or none); anyone else's needs undo.any (final audit m4).
+                if (!job.agent().equals(a.caller().name()) || !java.util.Objects.equals(job.requester(), a.caller().requester())) {
+                    gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.UNDO_ANY,
+                            "job #" + id + " was made for someone else");
+                }
                 if (!gm.jobs().cancel(id)) throw RpcException.conflict("Job #" + id + " has already finished: " + job.state().id());
                 return job.describe();
             });
@@ -323,6 +326,11 @@ public final class Api {
             ua.zentix.almighty.rules.Declarative.Creator creator = creator(gm, a);
             boolean owner = creator.agent() == null || gm.gate().role(creator.agent(), creator.player()) == ua.zentix.almighty.policy.Role.OWNER;
             Rules.Spec spec = Rules.parse(a, creator, owner, System.currentTimeMillis());
+            // Event fields in the feed carry players' names and places (final audit M1): below owner, observe.players.
+            if (!owner && spec.writesFields()) {
+                gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.OBSERVE_PLAYERS,
+                        "a rule that writes event fields to the feed shows where players are");
+            }
             if (!owner && spec.decl() != null) {
                 if (spec.decl().cancels() && !ua.zentix.almighty.rules.Declarative.placed(spec.event().type())) {
                     throw new RpcException(403, "policy", spec.event().name() + " has no place in the world: a rule that cancels it everywhere needs the owner");
@@ -405,7 +413,9 @@ public final class Api {
     static java.util.function.Predicate<java.util.UUID> heardBy(GmServer gm, ua.zentix.almighty.bridge.Caller caller) {
         if (caller.agent() == null) return id -> true;
         ua.zentix.almighty.policy.Role floor = gm.policies().current().floor(caller.agent().name());
-        return id -> ua.zentix.almighty.policy.Nodes.covers(id, floor);
+        // Once per author per read, never waiting on a permission plugin: this runs under the feed lock (final audit).
+        java.util.Map<java.util.UUID, Boolean> seen = new java.util.HashMap<>();
+        return id -> seen.computeIfAbsent(id, x -> ua.zentix.almighty.policy.Nodes.covers(x, floor, true));
     }
 
     /** The same rule creator: the same player, or the same agent unasked (the owner's rules are nobody's below admin). */
@@ -545,7 +555,9 @@ public final class Api {
         if (!image) return gm.onMain(() -> (JsonObject) look.run()[3]);
         return view(gm, a, () -> {
             Object[] l = look.run();
-            return new EyeView((ServerLevel) l[0], (Eye.Camera) l[1], width, height, distance, (Entity) l[2], (JsonObject) l[3]);
+            // The picture hides players as the text does (final audit m3: boxes drew every entity).
+            return new EyeView((ServerLevel) l[0], (Eye.Camera) l[1], width, height, distance, (Entity) l[2], (JsonObject) l[3],
+                    hide ? e -> !(e instanceof ServerPlayer sp) || gm.bots().of(sp) != null : e -> true);
         });
     }
 

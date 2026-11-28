@@ -81,6 +81,10 @@ public final class Declarative {
         public boolean commands() {
             return then.stream().anyMatch(a -> a.kind.equals("command"));
         }
+
+        public boolean emits() {
+            return then.stream().anyMatch(a -> a.kind.equals("emit"));
+        }
     }
 
     /** Whether a say speaks to everyone: anything but a chat line to the creator player themself (case-insensitive). */

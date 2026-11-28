@@ -34,6 +34,13 @@ public final class OwnerApp {
 
     /** Adds the agent with ceiling owner; returns null, or why nothing was changed. */
     public static String grant(Path policyFile, String agent) throws IOException {
+        // The same lock as every other policy.toml write (final audit: an agent's file write could land in between).
+        synchronized (ua.zentix.almighty.policy.PolicyFile.LOCK) {
+            return grantLocked(policyFile, agent);
+        }
+    }
+
+    private static String grantLocked(Path policyFile, String agent) throws IOException {
         String old = Files.isRegularFile(policyFile) ? Files.readString(policyFile, StandardCharsets.UTF_8) : "";
         String listed = listed(policyFile, agent);
         if (listed != null) return listed;

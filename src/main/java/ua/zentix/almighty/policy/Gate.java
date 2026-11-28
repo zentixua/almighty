@@ -187,11 +187,8 @@ public final class Gate implements Dispatch.Check {
         // (tellraw, title, signs, books, data): a forged "[Almighty] … [Allow]" would run as the admin who clicks it.
         if ((method.equals("command") || method.equals("function")) && r.effective() != Role.OWNER) {
             for (String c : Confirmations.commands(method, params)) {
-                String low = c.toLowerCase(java.util.Locale.ROOT);
-                if (low.contains("run_command") || low.contains("suggest_command") || c.contains(ua.zentix.almighty.act.Chat.RESERVED)) {
-                    throw new RpcException(403, "policy", "Below owner, commands may not carry run_command/suggest_command clicks or "
-                            + ua.zentix.almighty.act.Chat.RESERVED);
-                }
+                String why = Forgery.refusal(c);
+                if (why != null) throw new RpcException(403, "policy", why);
             }
         }
         if (r.holds(node, holder)) {

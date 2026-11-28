@@ -121,6 +121,9 @@ public final class Api {
             });
         });
         m.put("function", a -> {
+            if (a.caller().agent() != null && a.has("args") && !a.raw().get("args").isJsonObject()) {
+                throw RpcException.badRequest("args: an object of macro values");
+            }
             if (a.caller().agent() != null) CommandVolume.check(ua.zentix.almighty.policy.Confirmations.commands("function", a.raw()));
             ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
             return gm.onMain(() -> {
@@ -307,16 +310,16 @@ public final class Api {
                 if (spec.decl().cancels()) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.BUILD, "a rule that cancels acts where its creator may build");
                 if (spec.decl().saysToAll(creator)) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.SPEAK_ALL, "a rule that speaks to anyone but its creator");
                 for (ua.zentix.almighty.rules.Declarative.Action s : spec.decl().actions("say")) {
-                    if (s.text().contains(ua.zentix.almighty.act.Chat.RESERVED)) throw new RpcException(403, "policy", "Rule text may not carry " + ua.zentix.almighty.act.Chat.RESERVED);
+                    if (s.text().toLowerCase(java.util.Locale.ROOT).contains(ua.zentix.almighty.policy.Forgery.PREFIX)) {
+                        throw new RpcException(403, "policy", "Rule text may not carry " + ua.zentix.almighty.act.Chat.RESERVED);
+                    }
                 }
                 if (spec.decl().commands()) {
                     // The same checks a command call gets below owner, on the template (fields fill only plain names and numbers).
                     gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.COMMAND, "a rule that runs commands");
                     for (ua.zentix.almighty.rules.Declarative.Action c : spec.decl().actions("command")) {
-                        String low = c.text().toLowerCase(java.util.Locale.ROOT);
-                        if (low.contains("run_command") || low.contains("suggest_command") || c.text().contains(ua.zentix.almighty.act.Chat.RESERVED)) {
-                            throw new RpcException(403, "policy", "Below owner, commands may not carry run_command/suggest_command clicks or " + ua.zentix.almighty.act.Chat.RESERVED);
-                        }
+                        String forged = ua.zentix.almighty.policy.Forgery.refusal(c.text());
+                        if (forged != null) throw new RpcException(403, "policy", forged);
                         JsonObject one = new JsonObject();
                         com.google.gson.JsonArray list = new com.google.gson.JsonArray();
                         list.add(c.text());

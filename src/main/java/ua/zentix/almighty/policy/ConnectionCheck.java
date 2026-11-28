@@ -40,7 +40,8 @@ public final class ConnectionCheck {
         if (policy.owners().isEmpty()) {
             problems.add("No owners in policy.toml: nobody is trusted as the owner" + (policy.preset() == Policy.Preset.PRIVATE
                     ? ", and on preset private only players at an agent's ceiling (owners, for the owner's agent) reach it" : "")
-                    + ". Fix: the owner types /almighty whoami in game, then /almighty owner add <their name> at the console.");
+                    + ". Fix: the owner, as a level-4 operator in game, approves this app with /almighty approve <code> <name> owner (the first"
+                    + " approver becomes the owner), or at the console: /almighty owner add <their name>.");
         }
         Identity.Mode id = policy.identity();
         if (!f.onlineMode() && (id == Identity.Mode.AUTO || id == Identity.Mode.MOJANG)) {

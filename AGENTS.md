@@ -123,7 +123,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `https://chatgpt.com/oauth/codex/client.json`, Claude Code `https://claude.ai/oauth/claude-code-client-metadata`;
   `ClientMetadata` fetches HTTPS only, no private addresses, 16 KB, 5 s), RFC 9207 `iss`, refresh rotation. Consent:
   the login page shows a 4-digit code; the owner types `/almighty approve <code> [name]` (console or a verified
-  policy owner, as `agent add`); notices never show the code; at most 16 waiting, 2 per address and 2 per client. An approved client becomes an ordinary agent (its access token is the
+  policy owner, as `agent add`; while policy.toml lists no owner, a verified level-4 operator typing it becomes the first
+  owner, `SignInCommand.claimFirstOwner`; the console may add `owner <player>` to make that player an owner too); notices never show the code; at most 16 waiting, 2 per address and 2 per client. An approved client becomes an ordinary agent (its access token is the
   agent's token, `config/almighty/agents/<name>.token`); sign-in only ever rotates agents it created. State:
   `config/almighty/oauth/` (clients, hashed refresh tokens). `/almighty connect`: address, per-product lines and
   secret-free links (`mcp/Connect`). The issuer is `bridge.public_url` or the request's loopback/bridge host.

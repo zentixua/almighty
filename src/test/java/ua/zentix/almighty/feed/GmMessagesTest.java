@@ -21,7 +21,7 @@ class GmMessagesTest {
         for (String k : en.keySet()) {
             assertEquals(count(en.get(k).getAsString()), count(ru.get(k).getAsString()), k);
         }
-        assertEquals("Сделано для вас: /time set day ", GmMessages.get("almighty.receipt.done", "ru_ru", "/time set day").getString());
+        assertEquals("Сделано по вашей просьбе: /time set day ", GmMessages.get("almighty.receipt.done", "ru_ru", "/time set day").getString());
         assertEquals("Not allowed: x", GmMessages.get("almighty.outcome.not_allowed", "en_gb", "x").getString());
     }
 

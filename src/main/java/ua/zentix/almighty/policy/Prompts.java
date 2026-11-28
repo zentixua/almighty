@@ -60,10 +60,6 @@ public final class Prompts {
         }
     }
 
-    static Component question(Confirmations.Pending p) {
-        return question(p, "en_us");
-    }
-
     static Component question(Confirmations.Pending p, String lang) {
         return prefix().append(t("almighty.prompt.asks", lang, GmConfig.NAME.get()).copy().withStyle(ChatFormatting.WHITE))
                 .append(Component.literal(p.text).withStyle(ChatFormatting.YELLOW))

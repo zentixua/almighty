@@ -7,16 +7,16 @@
   "almighty.prompt.asks": "%s хочет выполнить от вашего имени: ",
   "almighty.prompt.irreversible": " — это нельзя отменить. ",
   "almighty.prompt.allow": "Разрешить",
-  "almighty.prompt.deny": "Запретить",
+  "almighty.prompt.deny": "Отклонить",
   "almighty.prompt.later": "Позже",
   "almighty.prompt.typed": " или введите %s",
   "almighty.prompt.dialog_title": "%s спрашивает",
   "almighty.prompt.dialog_body": "%s хочет выполнить от вашего имени:",
   "almighty.prompt.dialog_irreversible": "Это нельзя отменить.",
-  "almighty.receipt.done": "Сделано для вас: %s ",
+  "almighty.receipt.done": "Сделано по вашей просьбе: %s ",
   "almighty.receipt.undo": "[Отменить]",
-  "almighty.outcome.not_allowed": "Не разрешено: %s",
+  "almighty.outcome.not_allowed": "Отклонено: %s",
   "almighty.outcome.done": "Готово: %s",
   "almighty.outcome.failed": "Не получилось: %s",
-  "almighty.outcome.expired": "Время запроса вышло: %s"
+  "almighty.outcome.expired": "Запрос истёк: %s"
 }

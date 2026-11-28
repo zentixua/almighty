@@ -241,7 +241,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `policy/Roles`); `/almighty owner add|remove <player>` (level 4) edits `owners` in place, validated
   (`policy/PolicyFile`). `Nodes.handler` stands in for a permission handler in GameTest (the LuckPerms path).
   Claims (`world/Claims`, `compat/opac/OpacClaims`, `compat/ftbchunks/FtbChunksClaims`, `compat/cpa/CommonProtectionClaims` on Fabric through
-  Patbox's Common Protection API (any protection mod registered with it), compile only, loaded only when installed): below owner a build runs only on chunks the requester may build in (unasked: unclaimed only),
+  Patbox's Common Protection API (any protection mod registered with it), compile only, loaded only when installed): below owner a build, a command's block edits and a rule's commands run only on chunks the requester (or
+  creator) may build in (unasked: unclaimed only; with claims, `execute` moves are refused as with guarding zones),
   checked on the server thread through each mod's own read-only API.
 - Content limits (step 7, `policy/ContentLimits`): below owner (the call's effective role), `build` takes block
   states only (any NBT → 403) and never a block in `#almighty:never_build` (command, structure, jigsaw blocks,

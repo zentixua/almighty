@@ -215,6 +215,56 @@ public final class GmLadderGameTests {
     }
     *///?}
 
+    /**
+     * Rights audit M6: below owner a command's block edits are checked against claims as a build's are. An agent
+     * at builder floor (level 2) may setblock outside a claimed chunk, not inside it; a box too large to check is refused.
+     */
+    @GameTest(template = "floor", batch = "gm_ladder_command_claims")
+    public static void commandsRespectClaims(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        BlockPos in = h.absolutePos(new BlockPos(3, 2, 3));
+        int cx = in.getX() >> 4, cz = in.getZ() >> 4;
+        BlockPos out = new BlockPos((cx + 1) << 4, in.getY(), in.getZ());
+        h.getLevel().getChunk(cx + 1, cz);
+        Claims.testSource(new Claims.Source() {
+            public String name() {
+                return "test claims";
+            }
+
+            public boolean mayBuild(UUID player, net.minecraft.server.level.ServerLevel level, int x, int z) {
+                return x != cx || z != cz;
+            }
+        });
+        try {
+            gm.policies().set(Policy.parse("preset = \"friends\"\n[agents.gm]\nceiling = \"admin\"\nfloor = \"builder\""));
+            RpcException claimed = null;
+            try {
+                gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"setblock %d %d %d minecraft:gold_block\"]}", in.getX(), in.getY(), in.getZ())).join();
+            } catch (java.util.concurrent.CompletionException e) {
+                claimed = e.getCause() instanceof RpcException r ? r : null;
+            }
+            check(claimed != null && claimed.status() == 403 && claimed.getMessage().contains("claimed"), "setblock in a claim: " + claimed);
+            check(!h.getLevel().getBlockState(in).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK), "nothing placed in the claim");
+            // A box far too large to check (far coordinates) is refused, never walked on the server thread.
+            RpcException far = null;
+            try {
+                gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"execute if block 19999999 0 19999999 air run setblock %d %d %d minecraft:stone\"]}",
+                        out.getX(), out.getY(), out.getZ())).join();
+            } catch (java.util.concurrent.CompletionException e) {
+                far = e.getCause() instanceof RpcException r ? r : null;
+            }
+            check(far != null && far.status() == 403 && far.getMessage().contains("too large"), "a far box: " + far);
+            gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"setblock %d %d %d minecraft:gold_block\"]}", out.getX(), out.getY(), out.getZ())).join();
+            check(h.getLevel().getBlockState(out).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK), "setblock outside the claim runs");
+            h.getLevel().setBlockAndUpdate(out, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+        } finally {
+            Claims.testSource(null);
+            gm.policies().set(before);
+        }
+        h.succeed();
+    }
+
     /** Review of step 9: commands reaching into a zone by coordinates, execute relocation, bots in a zone without pos. */
     @GameTest(template = "floor", batch = "gm_ladder_commands")
     public static void zonesCoverCommandsAndBots(GameTestHelper h) throws Exception {

@@ -21,6 +21,8 @@ public final class Claims {
     }
 
     private static final List<Source> extra = new ArrayList<>();
+    /** The most chunks one check visits (a build is bounded by its leases; a command's box is not). */
+    static final long MAX_CHUNKS = 4096;
     private final List<Source> sources;
 
     public Claims(List<Source> sources) {
@@ -34,6 +36,11 @@ public final class Claims {
         return out;
     }
 
+    /** Whether any claim mod (or a test source) is checked: commands below owner are then checked at their places. */
+    public boolean active() {
+        return !sources.isEmpty() || !extra.isEmpty();
+    }
+
     /** GameTest: a source standing in for a claim mod. */
     public static void testSource(Source s) {
         extra.clear();
@@ -45,6 +52,9 @@ public final class Claims {
         List<Source> all = new ArrayList<>(sources);
         all.addAll(extra);
         if (all.isEmpty()) return null;
+        // A box too large to check chunk by chunk on the server thread (a command naming far coordinates) is refused.
+        long chunks = ((long) (maxX >> 4) - (minX >> 4) + 1) * ((long) (maxZ >> 4) - (minZ >> 4) + 1);
+        if (chunks > MAX_CHUNKS) return "the box spans " + chunks + " chunks: too large to check against claims (at most " + MAX_CHUNKS + ")";
         for (int cx = minX >> 4; cx <= maxX >> 4; cx++) {
             for (int cz = minZ >> 4; cz <= maxZ >> 4; cz++) {
                 for (Source s : all) {

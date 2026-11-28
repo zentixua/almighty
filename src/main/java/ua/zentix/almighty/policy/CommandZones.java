@@ -34,7 +34,9 @@ public final class CommandZones {
 
     /** {@code execute} subcommands that change the source's position, dimension or entity. */
     static final Set<String> MOVES = Set.of("as", "at", "positioned", "in", "align", "anchored", "rotated", "facing", "on", "summon");
-    static final Set<String> EDITS = Set.of("fill", "setblock", "clone", "place", "fillbiome");
+    static final Set<String> EDITS = Set.of("fill", "setblock", "clone", "place", "fillbiome", "summon", "loot");
+    /** Commands that run other commands unseen (a datapack function's lines): refused while places are protected. */
+    static final Set<String> UNSEEN = Set.of("function", "schedule");
     static final Set<String> WRITES = Set.of("modify", "merge", "remove", "replace", "insert", "store");
     /** How far {@code place} may reach from its position (jigsaw structures spread up to 128 blocks). */
     static final int PLACE_REACH = 128;
@@ -51,7 +53,7 @@ public final class CommandZones {
         if (!parsed.getExceptions().isEmpty() || parsed.getReader().canRead()) return;
         List<String> literals = new ArrayList<>();
         List<int[]> points = new ArrayList<>();
-        boolean inExecute = false;
+        boolean inExecute = false, cloning = false;
         for (CommandContextBuilder<CommandSourceStack> c = parsed.getContext(); c != null; c = c.getChild()) {
             for (ParsedCommandNode<CommandSourceStack> n : c.getNodes()) {
                 if (!(n.getNode() instanceof LiteralCommandNode<CommandSourceStack> l)) continue;
@@ -60,7 +62,20 @@ public final class CommandZones {
                 else if (lit.equals("run")) inExecute = false;
                 else if (inExecute && MOVES.contains(lit)) {
                     throw new RpcException(403, "policy", "Not run: execute " + lit + " moves where the command runs, and zones "
-                            + "protect places on this server; run it without execute " + lit);
+                            + "or claims protect places on this server; run it without execute " + lit);
+                }
+                if (literals.isEmpty() && UNSEEN.contains(lit)) {
+                    throw new RpcException(403, "policy", "Not run: " + lit + " runs commands that cannot be checked first, and zones or"
+                            + " claims protect places on this server");
+                }
+                // clone from/to another dimension writes where this check does not look.
+                if (lit.equals("clone")) cloning = true;
+                else if (cloning && (lit.equals("from") || lit.equals("to"))) {
+                    throw new RpcException(403, "policy", "Not run: clone across dimensions, while zones or claims protect places on this server");
+                }
+                if (!literals.isEmpty() && UNSEEN.contains(lit) && literals.get(literals.size() - 1).equals("run")) {
+                    throw new RpcException(403, "policy", "Not run: " + lit + " runs commands that cannot be checked first, and zones or"
+                            + " claims protect places on this server");
                 }
                 literals.add(lit);
             }
@@ -101,8 +116,8 @@ public final class CommandZones {
     /** Function lines that cannot be checked before they run: macro lines and continued lines. Null if fine. */
     public static String unchecked(String line) {
         String t = line.strip();
-        if (t.startsWith("$")) return "a macro line ($...) cannot be checked against zones before it runs";
-        if (t.endsWith("\\")) return "a continued line (\\) cannot be checked against zones line by line";
+        if (t.startsWith("$")) return "a macro line ($...) cannot be checked against zones or claims before it runs";
+        if (t.endsWith("\\")) return "a continued line (\\) cannot be checked against zones or claims line by line";
         return null;
     }
 }

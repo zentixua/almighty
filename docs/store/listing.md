@@ -76,8 +76,8 @@ publish workflow uploads each as its own file named `Almighty <version> (<game v
 | `almighty-<v>+1.21.1-neoforge.jar` | NeoForge 21.1.264+ | 1.21.1 | 21 | | LuckPerms, Immersive Aircraft, Sable, Open Parties and Claims, FTB Chunks |
 | `almighty-<v>+26.1.2-neoforge.jar` | NeoForge 26.1.2.130+ | 26.1.2 | 25 | | LuckPerms, Immersive Aircraft, Open Parties and Claims, FTB Chunks |
 | `almighty-<v>+26.3-neoforge.jar` | NeoForge 26.3.0.118+ | 26.3 | 25 | | LuckPerms, Open Parties and Claims |
-| `almighty-<v>+26.1.2-fabric.jar` | Fabric Loader 0.20.1+ | 26.1.2 | 25 | Fabric API | LuckPerms, Immersive Aircraft, Open Parties and Claims, FTB Chunks |
-| `almighty-<v>+26.3-fabric.jar` | Fabric Loader 0.20.1+ | 26.3 | 25 | Fabric API | LuckPerms, Open Parties and Claims |
+| `almighty-<v>+26.1.2-fabric.jar` | Fabric Loader 0.20.1+ | 26.1.2 | 25 | Fabric API 0.155.3+ | LuckPerms, Immersive Aircraft, Open Parties and Claims, FTB Chunks |
+| `almighty-<v>+26.3-fabric.jar` | Fabric Loader 0.20.1+ | 26.3 | 25 | Fabric API 0.167.0+ | LuckPerms, Open Parties and Claims |
 
 Java and the optional list come from each node's `gradle.properties` (`java_version`, `compat_*` keys; the publish
 workflow's `plan` job). `plan` reads `versions/*/gradle.properties` from the branch the run starts on, not from the

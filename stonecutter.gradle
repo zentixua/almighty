@@ -12,7 +12,7 @@ stonecutter.parameters {
     constants.match(loader, 'neoforge', 'fabric')
     // Mod compatibility present on this node (versions/<node>/gradle.properties compat_<mod>): a constant for
     // conditions (//? if ia), and the module's files are left out where the mod has no build for this version.
-    Map<String, String> compat = [ia: 'immersiveaircraft', opac: 'opac', ftbchunks: 'ftbchunks', sable: 'sable']
+    Map<String, String> compat = [ia: 'immersiveaircraft', opac: 'opac', ftbchunks: 'ftbchunks', sable: 'sable', cpa: 'cpa']
     compat.each { key, dir ->
         boolean present = node.project.findProperty("compat_${key}" as String) != null
         constants.put(key, present)

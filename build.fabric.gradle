@@ -45,6 +45,11 @@ repositories {
         forRepository { maven { url = 'https://maven.ftb.dev/releases' } }
         filter { includeGroupAndSubgroups 'dev.ftb.mods' }
     }
+    exclusiveContent {
+        // Common Protection API (Patbox): compat/cpa.
+        forRepository { maven { url = 'https://maven.nucleoid.xyz' } }
+        filter { includeGroup 'eu.pb4' }
+    }
 }
 
 loom {
@@ -109,6 +114,10 @@ dependencies {
         devtestRuntimeOnly "maven.modrinth:immersive-aircraft:${compat_ia}"
     }
     if (project.findProperty('compat_opac')) compileOnly "maven.modrinth:open-parties-and-claims:${compat_opac}"
+    if (project.findProperty('compat_cpa')) {
+        compileOnly "eu.pb4:common-protection-api:${compat_cpa}"
+        devtestRuntimeOnly "eu.pb4:common-protection-api:${compat_cpa}"
+    }
     if (project.findProperty('compat_ftbchunks')) {
         def (chunks, library, teams) = compat_ftbchunks.split(':')
         compileOnly("dev.ftb.mods:ftb-chunks-fabric:${chunks}") { transitive = false }

@@ -33,6 +33,8 @@ public final class Compat {
         if (Platform.get().isModLoaded(ua.zentix.almighty.compat.opac.OpacClaims.MOD_ID)) s.add(new ua.zentix.almighty.compat.opac.OpacClaims());
         //? if ftbchunks
         if (Platform.get().isModLoaded(ua.zentix.almighty.compat.ftbchunks.FtbChunksClaims.MOD_ID)) s.add(new ua.zentix.almighty.compat.ftbchunks.FtbChunksClaims());
+        //? if cpa
+        /*if (Platform.get().isModLoaded(ua.zentix.almighty.compat.cpa.CommonProtectionClaims.MOD_ID)) s.add(new ua.zentix.almighty.compat.cpa.CommonProtectionClaims());*/
         return new ua.zentix.almighty.world.Claims(s);
     }
 

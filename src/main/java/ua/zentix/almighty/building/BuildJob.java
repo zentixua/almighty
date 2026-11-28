@@ -239,14 +239,7 @@ public final class BuildJob extends Job {
             }
             running();
         }
-        // Lead's N9: a block an undone (or built) block held up — a lantern under a removed ceiling, a torch on a removed
-        // wall — breaks in the knock-on shape update, where vanilla drops it; with this job writing, it drops no item.
-        WRITING.set(Boolean.TRUE);
-        try {
-            slices(budget);
-        } finally {
-            WRITING.remove();
-        }
+        slices(budget);
     }
 
     private static final ThreadLocal<Boolean> WRITING = new ThreadLocal<>();
@@ -265,6 +258,11 @@ public final class BuildJob extends Job {
             // A portion is UNIT positions, including unchanged ones (air over air, keep); otherwise an empty box would run in one portion.
             int n = 0;
             boolean more = true;
+            // Lead's N9: a block an undone (or built) block held up — a lantern under a removed ceiling — breaks in the
+            // knock-on shape update, where vanilla drops it; while this job writes, it drops no item. Only around the
+            // writes and their updates, never around finish() (its continuations are other people's work).
+            WRITING.set(Boolean.TRUE);
+            try {
             for (int k = 0; k < UNIT && (more = advance(pos)); k++) {
                 if (put(pos)) {
                     //? if >=26.1
@@ -279,6 +277,9 @@ public final class BuildJob extends Job {
                 *///?} else {
                 level.blockUpdated(pos, level.getBlockState(pos).getBlock());
                 //?}
+            }
+            } finally {
+                WRITING.remove();
             }
             if (!more) {
                 finish();

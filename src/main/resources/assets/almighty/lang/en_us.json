@@ -117,5 +117,6 @@
   "almighty.undo.not_yours": "Change %s was not made for you.",
   "almighty.gm.echo": "To Almighty: %s",
   "almighty.prompt.for_admin": "(for %s, with your rights)",
-  "almighty.prompt.for_admin_agent": "(agent %s on its own, with your rights)"
+  "almighty.prompt.for_admin_agent": "(agent %s on its own, with your rights)",
+  "almighty.undo.running": "Change %s is being undone right now."
 }

@@ -344,8 +344,13 @@ public final class AlmightyCommand {
             source.sendFailure(ua.zentix.almighty.policy.Prompts.line("almighty.undo.not_yours", lang, String.valueOf(id)));
             return 0;
         }
-        if (meta.has("undone_by") || gm.reverting(id)) {
+        if (meta.has("undone_by")) {
             source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("almighty.undo.already", lang, String.valueOf(id)), false);
+            return 0;
+        }
+        // Still running (it may yet fail): said as such, not as done.
+        if (gm.reverting(id)) {
+            source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("almighty.undo.running", lang, String.valueOf(id)), false);
             return 0;
         }
         // Told when the revert ends (stability audit M3): it can fail after it started (chunk budget, a missing
@@ -361,9 +366,10 @@ public final class AlmightyCommand {
             Throwable cause = e instanceof java.util.concurrent.CompletionException c && c.getCause() != null ? c.getCause() : e;
             if (cause != null) {
                 // Two clicks at once: the other one is undoing it.
-                if (cause instanceof ua.zentix.almighty.bridge.RpcException r && r.status() == 409 && r.getMessage().contains("already undone")
-                        || cause.getMessage() != null && cause.getMessage().contains("being undone already")) {
-                    source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("almighty.undo.already", lang, String.valueOf(id)), false);
+                String m = cause.getMessage() == null ? "" : cause.getMessage();
+                if (cause instanceof ua.zentix.almighty.bridge.RpcException r && r.status() == 409 && (m.contains("already undone") || m.contains("being undone already"))) {
+                    String key = m.contains("already undone") ? "almighty.undo.already" : "almighty.undo.running";
+                    source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line(key, lang, String.valueOf(id)), false);
                     return;
                 }
                 source.sendFailure(ua.zentix.almighty.policy.Prompts.line("almighty.undo.failed", lang, String.valueOf(id), String.valueOf(cause.getMessage())));

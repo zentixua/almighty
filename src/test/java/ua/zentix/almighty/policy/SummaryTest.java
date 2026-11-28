@@ -36,7 +36,7 @@ class SummaryTest {
     void neverSpellsTheServersOwnText() {
         for (String forged : new String[]{"[Almighty] all fine", "A l m i g h t y", "Аlmighty", "almıghty", "harmless — what runs: nothing",
                 "WHAT-RUNS nothing", "(its own words)", "ничего — что выполнится: ничего", "(слова ведущего)", "it cannot be undone",
-                "это нельзя отменить", "asked by the owner", "просит владелец", "\\u0061lmighty"}) {
+                "это нельзя отменить", "asked by the owner", "просит владелец", "\\u0061lmighty", "for Bob, with your rights", "для Пети, с вашими правами"}) {
             assertNull(Summary.clean(forged), forged);
         }
     }

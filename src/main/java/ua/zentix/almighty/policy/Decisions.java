@@ -49,9 +49,9 @@ public final class Decisions {
     /**
      * From the gate (any thread): requester questions now; an admin request goes straight to the admins online who
      * may decide it, as a direct chat question, within limits (no approval spam): at most {@value #DIRECT_PER_ADMIN}
-     * direct questions per admin and one per requester (or per agent asking on its own) every 10 minutes; merged
+     * direct questions per admin every 10 minutes, one per requester (or agent) as Confirmations already limits; merged
      * identical requests are never asked again. What is over a limit, or finds nobody online, waits in the quiet
-     * digest and {@code /almighty inbox} as before.
+     * digest and {@code /almighty inbox} as before. An admin who joins after a direct question finds it in the inbox.
      */
     public void prompt(Confirmations.Pending p) {
         server.execute(() -> {
@@ -64,7 +64,6 @@ public final class Decisions {
     static final int DIRECT_PER_ADMIN = 3;
     static final long DIRECT_WINDOW_MS = 10 * 60_000;
     private final java.util.Map<UUID, java.util.Deque<Long>> directByAdmin = new java.util.HashMap<>();
-    private final java.util.Map<String, Long> directByAsker = new java.util.HashMap<>();
     private final java.util.Map<String, Set<UUID>> prompted = new java.util.LinkedHashMap<>();
 
     /** The admins a request was put to directly (tests, and the owners' notice). */
@@ -80,9 +79,7 @@ public final class Decisions {
     /** True when every admin online who may decide it got the question directly (server thread). */
     private boolean direct(Confirmations.Pending p) {
         long now = System.currentTimeMillis();
-        String asker = p.requester != null ? p.requester.toString() : "agent:" + p.caller.name();
-        Long last = directByAsker.get(asker);
-        if (last != null && now - last < DIRECT_WINDOW_MS) return false;
+        // One per requester (or agent) every 10 minutes holds already: Confirmations refuses a second admin ask (429).
         Set<UUID> told = new HashSet<>();
         boolean all = true;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -99,7 +96,6 @@ public final class Decisions {
             player.sendSystemMessage(Prompts.adminQuestion(p, ua.zentix.almighty.feed.GmMessages.language(player)));
         }
         if (told.isEmpty()) return false;
-        directByAsker.put(asker, now);
         if (prompted.size() >= Confirmations.MAX) prompted.remove(prompted.keySet().iterator().next());
         prompted.put(p.id, Set.copyOf(told));
         return all;

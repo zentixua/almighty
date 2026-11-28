@@ -37,8 +37,12 @@ public final class Summary {
         if (letters.contains("almighty")) return "it spells the server's name";
         for (String key : RESERVED_KEYS) {
             for (String lang : List.of("en_us", "ru_ru")) {
-                String label = letters(Forgery.fold(GmMessages.raw(key, lang).replaceAll("%(\\d+\\$)?s", " ")));
-                if (!label.isEmpty() && letters.contains(label)) return "it spells the server's own words";
+                // A label with an argument in it ("(for %s, with your rights)") is checked part by part: the summary
+                // may not spell any part of it, whatever name it puts between them.
+                for (String part : GmMessages.raw(key, lang).split("%(\\d+\\$)?s")) {
+                    String label = letters(Forgery.fold(part));
+                    if (label.length() >= 6 && letters.contains(label)) return "it spells the server's own words";
+                }
             }
         }
         return null;

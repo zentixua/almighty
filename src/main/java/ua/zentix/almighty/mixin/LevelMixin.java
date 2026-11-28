@@ -11,6 +11,8 @@ import ua.zentix.almighty.building.BuildJob;
  * lantern hanging from a ceiling the undo removed, a torch on a removed wall) drops no item: vanilla clears
  * {@code UPDATE_SUPPRESS_DROPS} for the shape updates of neighbours, so the job's own flag does not reach them.
  * Anything else that destroys a block (a player, an explosion, another mod) is untouched: one thread-local read.
+ * Not covered: blocks that pop off in {@code neighborChanged} through {@code dropResources} (rails, redstone wire,
+ * repeaters) rather than {@code destroyBlock}.
  */
 @Mixin(Level.class)
 abstract class LevelMixin {

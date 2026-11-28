@@ -234,7 +234,7 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   commands: when the player's own source cannot parse it; the decider needs `almighty.approve` and the call's own node): merged with an
   identical waiting one, 1 per player per 10 minutes, 20 per hour; put straight to the deciders online as a chat
   question with the facts and the exact call (`Decisions.direct`: at most 3 per admin and 1 per requester or agent
-  every 10 minutes, never for a merged repeat), the rest in one digest line at most every 10 minutes and
+  every 10 minutes, never for a merged repeat; an admin joining later finds it in the inbox), the rest in one digest line at most every 10 minutes and
   `/almighty inbox`; it runs as the requester with the admin's rights for that one call (`Pending.decider`; no
   ticket is minted). Owners' requests apply at once. Below owner, commands may not carry
   clicks that act as whoever clicks, dialogs, or `[Almighty]` (forged prompts via tellraw, signs, books), checked by
@@ -517,6 +517,7 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
   `Clearable.tryClear`, `BlockInput.place` with `UPDATE_CLIENTS`, then `blockUpdated` after the slice. Writes suppress drops (`UPDATE_SUPPRESS_DROPS`):
   a door half or a torch that a write breaks drops no free item (lead's F4); a block broken by a write's knock-on
   shape update (a lantern under a ceiling an undo removed), where vanilla clears that flag, drops nothing either
+  (not blocks that pop off in `neighborChanged`: rails, redstone wire)
   (`BuildJob.writing`, `mixin/LevelMixin`, lead's N9; `aHangingLanternDropsNothingOnUndo`). Undo does not restore entities.
 - A completed job's description in its future is shared by all waiters: copy responses (`GmServer.await`), or a
   snapshot would append the image to the shared object, retaining it in history and returning it again.

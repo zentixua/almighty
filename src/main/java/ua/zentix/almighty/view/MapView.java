@@ -40,6 +40,14 @@ public final class MapView extends View {
     private final double[] north;
     private int row = -1, col;
 
+    /** Which players get a marker (the caller's observe.players; else bots only). */
+    private java.util.function.Predicate<ServerPlayer> players = p -> true;
+
+    public MapView players(java.util.function.Predicate<ServerPlayer> which) {
+        this.players = which;
+        return this;
+    }
+
     /** GM mark on the map. */
     public record Mark(String label, int x, int z) {}
 
@@ -143,6 +151,7 @@ public final class MapView extends View {
         JsonArray markers = new JsonArray();
         int n = 0;
         for (ServerPlayer p : level.players()) {
+            if (!players.test(p)) continue;
             if (marker(Mc.name(p.getGameProfile()), "player", p.getBlockX(), p.getBlockZ(), MARKERS[n % MARKERS.length], markers)) n++;
         }
         for (Mark m : marks) {

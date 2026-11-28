@@ -130,6 +130,7 @@ public final class GmGateGameTests {
                     at.getX(), at.getY() + 1, at.getZ() - 2)).join().getAsJsonObject();
             String entities = seen.get("entities").toString();
             check(entities.contains("minecraft:pig") && !entities.contains("text-watched"), "a guest-floor free camera: " + entities);
+            check(!seen.toString().contains("text-watched"), "nor on its view ray: " + seen.get("aim_far"));
         } finally {
             gm.policies().set(before);
             pig.discard();

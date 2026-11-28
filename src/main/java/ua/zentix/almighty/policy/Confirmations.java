@@ -318,7 +318,7 @@ public final class Confirmations {
         if (kind == Kind.ADMIN) {
             for (Pending p : byId.values()) {
                 if (p.kind == Kind.ADMIN && p.state == State.WAITING && p.shown.equals(shown) && p.method.equals(method)
-                        && p.caller.name().equals(caller.name()) && java.util.Objects.equals(p.requester, requester)) {
+                        && p.caller.name().equals(caller.name())) {
                     p.count++;
                     return p;
                 }

@@ -227,14 +227,16 @@ public final class Gate implements Dispatch.Check {
                 }
             }
         }
-        // Above the requester's rights: only kinds the owner listed in ask_admin may go to an admin; the rest is refused.
-        if (!decided && confirmations != null && r.ticket != null && r.ceiling.atLeast(node.defaultRole())) {
+        // Above the requester's rights, or unasked above the agent's floor (plan 4.8 item 5, the agent's own elevation):
+        // only kinds the owner listed in ask_admin may go to an admin; the rest is refused. The agent's own asks are
+        // limited as a player's are (one per 10 minutes each, the hourly total shared).
+        if (!decided && confirmations != null && r.ceiling.atLeast(node.defaultRole())) {
             java.util.Set<String> ask = policies.current().safety().askAdmin();
             boolean listed = false;
             for (String k : Confirmations.kinds(method, params)) if (ask.contains(k)) listed = true;
             if (listed) {
                 Confirmations.Pending p = confirmations.ask(Confirmations.Kind.ADMIN, caller, method, params, null, node,
-                        r.ticket.player(), r.ticket.name());
+                        r.ticket == null ? null : r.ticket.player(), r.ticket == null ? "agent " + r.agent : r.ticket.name());
                 if (p.count == 1) prompter.prompt(p);
                 throw Confirmations.waiting(p, "an admin");
             }

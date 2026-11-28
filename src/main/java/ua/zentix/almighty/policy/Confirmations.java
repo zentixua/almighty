@@ -323,13 +323,17 @@ public final class Confirmations {
                     return p;
                 }
             }
-            Long last = lastAsk.get(requester);
+            // The agent's own ask (no requester) is limited per agent, as a player's per player.
+            UUID asker = requester != null ? requester
+                    : UUID.nameUUIDFromBytes(("agent:" + caller.name()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            Long last = lastAsk.get(asker);
             if (last != null && now - last < PER_PLAYER_MS) {
-                throw new RpcException(429, "ask_limit", "This player asked the admins less than 10 minutes ago; try again later");
+                throw new RpcException(429, "ask_limit", (requester != null ? "This player" : "This agent")
+                        + " asked the admins less than 10 minutes ago; try again later");
             }
             while (!asks.isEmpty() && now - asks.peekFirst() >= 3_600_000) asks.pollFirst();
             if (asks.size() >= PER_HOUR) throw new RpcException(429, "ask_limit", "The admins are busy (too many requests this hour)");
-            lastAsk.put(requester, now);
+            lastAsk.put(asker, now);
             asks.addLast(now);
         }
         if (byId.size() >= MAX) byId.values().removeIf(p -> p.state != State.WAITING);

@@ -211,7 +211,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   that player (the exact call, `[Allow]`/`[Deny]` and the typed `/almighty confirm <nonce>`; on 26.x also a vanilla
   confirmation dialog with the same buttons, `Mc.confirmDialog`, except for Bedrock players; never clipped: a call
   too long to show is refused); only that player may answer; at most 3 waiting per player and 20 per agent;
-  2 minutes. A request above the player's rights whose kind is in `[safety] ask_admin` → 202 for an admin (for
+  2 minutes. A request above the player's rights (or the agent's own call above its floor, for methods; limited per agent
+  the same way) whose kind is in `[safety] ask_admin` → 202 for an admin; the owners online are told every admin decision (for
   commands: when the player's own source cannot parse it; the decider needs `almighty.approve`): merged with an
   identical waiting one, 1 per player per 10 minutes, 20 per hour, one digest line at most every 10 minutes,
   `/almighty inbox`; it runs as the requester with the admin's rights for that one call (`Pending.decider`; no

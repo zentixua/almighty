@@ -243,6 +243,20 @@ public final class GmConfirmGameTests {
             var server = h.getLevel().getServer();
             server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), "almighty deny " + p3.nonce());
             check(p3.describe().get("state").getAsString().equals("denied"), "the console's typed deny: " + p3.describe());
+            // The agent's own elevation (plan 4.8 item 5): unasked, above its floor, a listed kind waits for an admin
+            // too, at most once per 10 minutes per agent.
+            try {
+                gm.dispatch().invoke(GM, "area.prepare", params("{\"from\":[128,128],\"to\":[129,129]}"));
+                throw new GameTestAssertException("a guest-floor agent prepared an area unasked");
+            } catch (RpcException e) {
+                check(e.status() == 202, "the agent's own ask waits for an admin: " + e.status() + " " + e.getMessage());
+            }
+            try {
+                gm.dispatch().invoke(GM, "area.prepare", params("{\"from\":[192,192],\"to\":[193,193]}"));
+                throw new GameTestAssertException("a second ask went through");
+            } catch (RpcException e) {
+                check(e.status() == 429, "one ask per 10 minutes per agent: " + e.status() + " " + e.getMessage());
+            }
             h.succeedWhen(() -> {
                 String state = p.describe().get("state").getAsString();
                 check(state.equals("done"), "ran with the admin's rights: " + p.describe());

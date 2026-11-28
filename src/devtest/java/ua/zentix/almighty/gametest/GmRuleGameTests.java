@@ -234,8 +234,10 @@ public final class GmRuleGameTests {
             check(state(gm, "short").equals("gone"), "an expired rule is removed");
             // A same name does not replace someone else's rule (here the owner's).
             gm.dispatch().invoke(Caller.INTERNAL, "rule.add", params("{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"owners\",\"then\":[\"emit\"]}"));
-            check(refused(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"owners\",\"then\":[\"emit\"],\"for\":\"" + t + "\"}").status() == 403,
-                    "the owner's rule is not replaced by name");
+            // A then the builder may add (cancel where they build), so the refusal is the name's, not observe.players'.
+            RpcException byName = refused(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"owners\",\"when\":" + when
+                    + ",\"then\":[\"cancel\"],\"for\":\"" + t + "\"}");
+            check(byName.status() == 403 && !byName.getMessage().contains("observe.players"), "the owner's rule is not replaced by name: " + byName.getMessage());
             // Rule commands get the same checks as command calls below owner.
             check(refused(gm, "rule.add", "{\"event\":\"" + Gt.LOGIN_EVENT + "\",\"name\":\"click\",\"then\":[{\"command\":"
                     + "\"tellraw @a {\\\"text\\\":\\\"x\\\",\\\"clickEvent\\\":{\\\"action\\\":\\\"run_command\\\",\\\"value\\\":\\\"/op me\\\"}}\"}],\"for\":\"" + t + "\"}")

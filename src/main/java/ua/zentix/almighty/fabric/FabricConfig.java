@@ -54,6 +54,8 @@ final class FabricConfig {
             ((Setting) s).bind(cell::get, v -> {
                 cell.set(v);
                 synchronized (config) {
+                    // After a failed reload the in-memory file may be partial: never write it over the owner's file.
+                    if (unreadable) return;
                     config.set(path, v instanceof List<?> l ? new ArrayList<>(l) : v);
                     config.save();
                 }
@@ -75,6 +77,9 @@ final class FabricConfig {
      * Server thread, now and then: an owner's edit of the file applies without a restart, as NeoForge's config watcher
      * does (the emergency switch {@code scripts.enabled} included). An invalid value keeps the current one.
      */
+    /** The last reload failed: the file on disk is the owner's to fix; nothing is saved over it until it loads. */
+    private static volatile boolean unreadable;
+
     static void reloadIfChanged() {
         if (file == null) return;
         long now = lastModified();
@@ -84,7 +89,9 @@ final class FabricConfig {
             // A file with a mistake (or caught half-written) keeps the current values; never an exception in the tick.
             try {
                 file.load();
+                unreadable = false;
             } catch (RuntimeException e) {
+                unreadable = true;
                 LOG.error("config/almighty-common.toml cannot be read ({}); keeping the current settings until it is fixed", e.toString());
                 return;
             }

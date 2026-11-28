@@ -413,7 +413,7 @@ public final class Confirmations {
             // An admin decision runs with the decider's rights: they hold the call's node, and almighty.approve
             // (final audit m2: holding the call's node alone let any member decide "admin" requests).
             if (p.kind == Kind.ADMIN && !(Identity.verified(byUuid) && holds.test(p.node) && (p.node == Node.ENGINE || holds.test(Node.APPROVE)))) {
-                return "you do not hold " + p.node.key() + (holds.test(p.node) ? " and " + Node.APPROVE.key() : "");
+                return "you do not hold " + (holds.test(p.node) ? Node.APPROVE.key() : p.node.key());
             }
         }
         p.decidedBy = byName;

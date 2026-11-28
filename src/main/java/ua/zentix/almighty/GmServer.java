@@ -866,7 +866,7 @@ public final class GmServer {
                 }
                 pieces.add(new Object[] {rec.dims().get(rec.dim()[idx.get(0)]), pos, before, after, tags, n});
             }
-        } catch (RpcException | RuntimeException e) {
+        } catch (RpcException | RuntimeException | Error e) {
             reverting.remove(id);
             throw e;
         }

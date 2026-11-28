@@ -58,15 +58,30 @@ public final class Prompts {
         return GmConfig.NAME.get();
     }
 
-    /** The dialog's text: who asks, the summary and facts, the exact call in full, and that it cannot be undone. */
-    static Component dialogBody(Confirmations.Pending p, String lang) {
+    /** The dialog's text: who asks, the summary and facts, the exact call in full, and whether it can be undone where that is known. */
+    public static Component dialogBody(Confirmations.Pending p, String lang) {
         MutableComponent body = t("almighty.prompt.dialog_body", lang, name()).copy().withStyle(ChatFormatting.WHITE);
         if (p.confirmer != null && !p.confirmer.equals(p.requester)) {
             body.append(" ").append(t("almighty.prompt.asked_by", lang, p.requesterName).copy().withStyle(ChatFormatting.WHITE));
         }
-        return body.append("\n").append(what(p.summary, p.facts, p.text, lang, true)).append("\n\n")
-                .append(t("almighty.prompt.exact", lang, p.text).copy().withStyle(ChatFormatting.GRAY)).append("\n\n")
-                .append(t("almighty.prompt.dialog_irreversible", lang).copy().withStyle(ChatFormatting.GRAY));
+        body.append("\n").append(what(p.summary, p.facts, p.text, lang, true)).append("\n\n")
+                .append(t("almighty.prompt.exact", lang, p.text).copy().withStyle(ChatFormatting.GRAY));
+        String undo = switch (p.undo) {
+            case REVERTIBLE -> "almighty.prompt.dialog_undoable";
+            case PERMANENT -> "almighty.prompt.dialog_irreversible";
+            case UNSTATED -> null;
+        };
+        if (undo != null) body.append("\n\n").append(t(undo, lang).copy().withStyle(ChatFormatting.GRAY));
+        return body;
+    }
+
+    /** The question's end after the facts: whether it can be undone, only where that is true ({@link Confirmations#undo}). */
+    static String ending(Confirmations.Undo undo) {
+        return switch (undo) {
+            case REVERTIBLE -> "almighty.prompt.undoable";
+            case PERMANENT -> "almighty.prompt.irreversible";
+            case UNSTATED -> "almighty.prompt.end";
+        };
     }
 
     /** The agent's words in the language's quotes (a summary holds no quote characters, so it cannot close them). */
@@ -103,20 +118,25 @@ public final class Prompts {
             c.append(t("almighty.prompt.asked_by", lang, p.requesterName).copy().withStyle(ChatFormatting.WHITE)).append(" ");
         }
         c.append(what(p.summary, p.facts, p.text, lang, true))
-                .append(t("almighty.prompt.irreversible", lang).copy().withStyle(ChatFormatting.GRAY));
-        buttons(c, p, lang);
-        if (bedrock) c.append(" ").append(t("almighty.prompt.exact", lang, p.text).copy().withStyle(ChatFormatting.GRAY));
+                .append(t(ending(p.undo), lang).copy().withStyle(ChatFormatting.GRAY));
+        buttons(c, p, lang, bedrock);
         return c;
     }
 
-    private static void buttons(MutableComponent c, Confirmations.Pending p, String lang) {
+    /**
+     * [Allow] [Deny] [Details]; the line ends there for clients that click (the exact call is on hover and behind
+     * [Details]). {@code noClicks} (Bedrock through Geyser, the console): the typed commands and the exact call written out.
+     */
+    private static void buttons(MutableComponent c, Confirmations.Pending p, String lang, boolean noClicks) {
         String confirm = "/almighty confirm " + p.nonce(), deny = "/almighty deny " + p.nonce(), show = "/almighty show " + p.nonce();
         c.append(button(t("almighty.prompt.allow", lang), confirm, ChatFormatting.GREEN)).append(" ")
                 .append(button(t("almighty.prompt.deny", lang), deny, ChatFormatting.RED)).append(" ")
                 .append(Component.literal("[").append(t("almighty.prompt.details", lang)).append("]").withStyle(s -> s
                         .withColor(ChatFormatting.AQUA).withClickEvent(Mc.runCommand(show))
-                        .withHoverEvent(Mc.showText(t("almighty.prompt.exact", lang, p.text)))))
-                .append(t("almighty.prompt.typed", lang, confirm, deny, show).copy().withStyle(ChatFormatting.DARK_GRAY));
+                        .withHoverEvent(Mc.showText(t("almighty.prompt.exact", lang, p.text)))));
+        if (!noClicks) return;
+        c.append(t("almighty.prompt.typed", lang, confirm, deny, show).copy().withStyle(ChatFormatting.DARK_GRAY))
+                .append(" ").append(t("almighty.prompt.exact", lang, p.text).copy().withStyle(ChatFormatting.GRAY));
     }
 
     /** {@code /almighty show <nonce>}: the exact call written out, for clients without hover (Bedrock) and the console. */
@@ -127,27 +147,28 @@ public final class Prompts {
 
     /**
      * An admin request put straight to an admin online: "[Almighty] Cloudien wants to “summary” (its own words) — what
-     * runs: … (for Alex, with your rights) [Allow] [Deny] [Details]", the exact call written out after it.
+     * runs: … (for Alex, with your rights) [Allow] [Deny] [Details]"; {@code noClicks}: the typed commands and the
+     * exact call written out after it.
      */
-    public static Component adminQuestion(Confirmations.Pending p, String lang) {
+    public static Component adminQuestion(Confirmations.Pending p, String lang, boolean noClicks) {
         MutableComponent c = prefix().append(t("almighty.prompt.wants", lang, name()).copy().withStyle(ChatFormatting.WHITE))
                 .append(what(p.summary, p.facts, p.text, lang, true)).append(" ")
                 .append((p.requester != null ? t("almighty.prompt.for_admin", lang, p.requesterName)
                         : t("almighty.prompt.for_admin_agent", lang, p.caller.name())).copy().withStyle(ChatFormatting.WHITE)).append(" ");
-        buttons(c, p, lang);
-        return c.append(" ").append(t("almighty.prompt.exact", lang, p.text).copy().withStyle(ChatFormatting.GRAY));
+        buttons(c, p, lang, noClicks);
+        return c;
     }
 
-    /** One admin request in {@code /almighty inbox}, in the admin's language. */
-    public static Component inboxLine(Confirmations.Pending p, String lang) {
+    /** One admin request in {@code /almighty inbox}, in the admin's language ({@code noClicks}: as {@link #adminQuestion}). */
+    public static Component inboxLine(Confirmations.Pending p, String lang, boolean noClicks) {
         MutableComponent c = prefix().append((p.requester != null
                 ? t("almighty.inbox.player", lang, p.requesterName, name()) : t("almighty.inbox.agent", lang, p.caller.name()))
                 .copy().withStyle(ChatFormatting.WHITE))
                 .append(what(p.summary, p.facts, p.text, lang, true))
                 .append(Component.literal(p.count > 1 ? " (×" + p.count + ") " : " "));
-        buttons(c, p, lang);
-        // An admin reads the exact call written out, not only on hover (it runs with their rights).
-        return c.append(" ").append(t("almighty.prompt.exact", lang, p.text).copy().withStyle(ChatFormatting.GRAY));
+        // The facts stay in the line; the exact call is on hover, behind [Details], or written out without clicks.
+        buttons(c, p, lang, noClicks);
+        return c;
     }
 
     /** The quiet digest: one line, never one per request. */

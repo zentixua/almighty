@@ -21,7 +21,7 @@ class SummaryTest {
         assertEquals("a b c", Summary.clean("  a\n§cb\t\"c\"  "));
         assertEquals("Allow cake", Summary.clean("[Allow] «cake»"), "no fake buttons, no closing of its own quote");
         assertEquals("ab", Summary.clean("a‮b​"), "no bidi overrides or zero-width characters");
-        assertEquals("x", Summary.clean("{x}<>`'“”"));
+        assertEquals("x\u2019", Summary.clean("{x}<>`'“”"), "an apostrophe is kept as ’ (Summary.keepsApostrophes)");
         assertNull(Summary.clean(" \n§ "));
     }
 
@@ -39,6 +39,13 @@ class SummaryTest {
                 "это нельзя отменить", "asked by the owner", "просит владелец", "\\u0061lmighty", "for Bob, with your rights", "для Пети, с вашими правами"}) {
             assertNull(Summary.clean(forged), forged);
         }
+    }
+
+    /** A straight apostrophe becomes the typographic one (it closes neither “…” nor «…»), not dropped. */
+    @Test
+    void keepsApostrophes() {
+        assertEquals("ZentixUA\u2019s base", Summary.clean("ZentixUA's base"));
+        assertEquals("light the way", Summary.clean("light \"the\" way"), "double quotes still go");
     }
 
     @Test

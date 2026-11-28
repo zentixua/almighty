@@ -93,7 +93,7 @@ public final class Decisions {
             }
             recent.addLast(now);
             told.add(id);
-            player.sendSystemMessage(Prompts.adminQuestion(p, ua.zentix.almighty.feed.GmMessages.language(player)));
+            player.sendSystemMessage(Prompts.adminQuestion(p, ua.zentix.almighty.feed.GmMessages.language(player), Identity.bedrock(id)));
         }
         if (told.isEmpty()) return false;
         if (prompted.size() >= Confirmations.MAX) prompted.remove(prompted.keySet().iterator().next());
@@ -107,9 +107,10 @@ public final class Decisions {
 
     /** {@code /almighty confirm|deny <nonce>}: {@code by} null is the console. Returns the answer for the decider. */
     public String decide(String nonce, ServerPlayer by, boolean allow) {
-        Confirmations.Pending p = confirmations.byNonce(nonce);
-        if (p == null) return "No such request (it may have expired)";
         UUID id = by == null ? null : by.getUUID();
+        if (confirmations.guessLocked(id)) return "No such request: too many wrong codes, try again in 10 minutes";
+        Confirmations.Pending p = confirmations.byNonce(nonce, id);
+        if (p == null) return "No such request (it may have expired)";
         String name = by == null ? "the console" : Mc.name(by.getGameProfile());
         String why = confirmations.decide(p, id, name, allow, node -> Nodes.holds(id, node));
         if (why != null) return "Not decided: " + why;

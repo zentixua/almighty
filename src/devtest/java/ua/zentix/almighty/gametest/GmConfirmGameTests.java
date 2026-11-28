@@ -226,6 +226,10 @@ public final class GmConfirmGameTests {
                     || k.contains("/almighty show " + n)), lang + " clicks: " + clicks);
             check(q.toString().contains("/kill @a"), lang + " the exact call on hover");
             check(ua.zentix.almighty.policy.Prompts.question(honest, lang, true).getString().contains("/kill @a"), lang + " Bedrock: written out");
+            String javaLine = fallbacks(q), bedrockLine = fallbacks(ua.zentix.almighty.policy.Prompts.question(honest, lang, true));
+            check(javaLine.endsWith("]") && !javaLine.contains("/almighty confirm"), lang + " Java: no typed hint: " + javaLine);
+            check(bedrockLine.contains("/almighty confirm " + n), lang + " Bedrock: the typed hint: " + bedrockLine);
+            check(n.matches("[0-9a-f]{8}"), "8 hex characters: " + n);
             check(ua.zentix.almighty.policy.Prompts.show(honest, lang).getString().contains("/kill @a"), lang + " /almighty show");
         }
         JsonObject forged = params("{\"commands\": \"kill @a\"}");
@@ -234,6 +238,25 @@ public final class GmConfirmGameTests {
                 alex, "Alex"), "en_us", false).getString();
         check(plain.contains("wants to kill — target: every player. It cannot be undone.") && !plain.contains("nothing"),
                 "a forged summary is dropped and the facts read alone: " + plain);
+        // The last line is true in both languages: undo for journaled block writes, nothing for a confirm_first teleport.
+        UUID sam = UUID.randomUUID();
+        Confirmations.Pending fill = c.ask(Confirmations.Kind.REQUESTER, GM, "command", params("{\"commands\": \"fill 0 64 0 9 64 9 stone\"}"),
+                sam, null, sam, "Sam");
+        Confirmations.Pending tp = c.ask(Confirmations.Kind.REQUESTER, GM, "command", params("{\"commands\": \"tp @s 0 80 0\"}"),
+                sam, null, sam, "Sam");
+        for (String lang : new String[]{"en_us", "ru_ru"}) {
+            boolean en = lang.equals("en_us");
+            String never = en ? "cannot be undone" : "нельзя отменить", can = en ? "You can undo it." : "Это можно отменить.";
+            String f = fallbacks(ua.zentix.almighty.policy.Prompts.question(fill, lang, false));
+            check(f.contains(can) && !f.contains(never), lang + " a fill can be undone: " + f);
+            String t = fallbacks(ua.zentix.almighty.policy.Prompts.question(tp, lang, false));
+            check(!t.contains(never) && !t.contains(can) && t.contains(". ["), lang + " a teleport claims neither: " + t);
+            String k = fallbacks(ua.zentix.almighty.policy.Prompts.question(honest, lang, false));
+            check(k.contains(en ? ". It cannot be undone. [" : ". Это нельзя отменить. ["), lang + " a kill cannot be undone: " + k);
+            String d = fallbacks(ua.zentix.almighty.policy.Prompts.dialogBody(fill, lang));
+            check(d.contains(can) && !d.contains(never), lang + " dialog: " + d);
+            check(!fallbacks(ua.zentix.almighty.policy.Prompts.dialogBody(tp, lang)).contains(never), lang + " teleport dialog");
+        }
         // A receipt reads as a sentence too, with the exact call on hover.
         JsonObject build = params("{\"ops\": [{\"op\": \"fill\", \"from\": [0, 64, 0], \"to\": [9, 70, 9], \"block\": \"snow\"}]}");
         net.minecraft.network.chat.Component r = ua.zentix.almighty.policy.Prompts.receipt("snow over your base",
@@ -268,6 +291,7 @@ public final class GmConfirmGameTests {
         GmServer gm = gm(h);
         Policy before = gm.policies().current();
         ServerPlayer alex = player(h, "level_alex", UUID.randomUUID());
+        ServerPlayer admin = null;
         try {
             gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\""));
             String t = ticket(h, gm, alex, "summon a zombie");
@@ -277,9 +301,29 @@ public final class GmConfirmGameTests {
             } catch (RpcException e) {
                 check(e.status() == 403 && e.details() != null && e.details().has("needs_level"), "refused with needs_level: " + e.status() + " " + e.getMessage());
             }
+            // Listed in ask_admin, the same command goes to an admin instead (the requester could not allow it). An
+            // admin online gets it directly (otherwise the server-wide digest would be left due for later tests).
+            gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\n[safety]\nask_admin = [\"summon\"]"));
+            admin = player(h, "level_admin", UUID.randomUUID());
+            op(h, admin, 3);
+            String t2 = ticket(h, gm, alex, "summon a zombie please");
+            try {
+                gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"summon zombie ~ ~ ~\"],\"for\":\"%s\"}", t2)).join();
+                throw new GameTestAssertException("a member's summon ran");
+            } catch (RpcException | java.util.concurrent.CompletionException e) {
+                Throwable cause = e instanceof java.util.concurrent.CompletionException ? e.getCause() : e;
+                check(cause instanceof RpcException r && r.status() == 202, "waits: " + cause);
+                Confirmations.Pending p = gm.decisions().confirmations().get(((RpcException) cause).details().get("id").getAsString());
+                check(p.kind == Confirmations.Kind.ADMIN, "for an admin, not the requester: " + p.describe());
+                gm.decisions().decide(p.nonce(), null, false);
+            }
         } finally {
             gm.policies().set(before);
             h.getLevel().getServer().getPlayerList().remove(alex);
+            if (admin != null) {
+                deop(h, admin);
+                h.getLevel().getServer().getPlayerList().remove(admin);
+            }
         }
         h.succeed();
     }
@@ -544,9 +588,23 @@ public final class GmConfirmGameTests {
                     "the fourth spills into the digest and the inbox: " + gm.decisions().promptedFor(ids.get(3)));
             check(gm.decisions().confirmations().waitingForAdmins().size() >= 4, "all wait in the inbox");
             // What the admin read: the GM's sentence, the summary, the server's facts and the exact call.
-            String shown = fallbacks(ua.zentix.almighty.policy.Prompts.adminQuestion(gm.decisions().confirmations().get(ids.get(1)), "en_us"));
-            check(shown.contains("wants to \u201cmake it day\u201d (its own words) — what runs: change the time of day")
-                    && shown.contains("(for direct-guest1, with your rights)") && shown.contains("Exact call: /time set 1001"), "direct question: " + shown);
+            // A Java admin clicks: the line ends at [Details], the exact call on hover; the facts stay in the line.
+            Confirmations.Pending asked = gm.decisions().confirmations().get(ids.get(1));
+            for (String lang : new String[]{"en_us", "ru_ru"}) {
+                net.minecraft.network.chat.Component java = ua.zentix.almighty.policy.Prompts.adminQuestion(asked, lang, false);
+                String shown = fallbacks(java);
+                boolean en = lang.equals("en_us");
+                check(shown.contains(en ? "wants to \u201cmake it day\u201d (its own words) — what runs: change the time of day"
+                        : "хочет «make it day» (слова ведущего) — что выполнится: ")
+                        && shown.contains(en ? "(for direct-guest1, with your rights)" : "(для direct-guest1, с вашими правами)"), lang + " direct question: " + shown);
+                check(shown.endsWith("[" + (en ? "Details" : "Подробно") + "]") && !shown.contains("/time set 1001") && !shown.contains("/almighty confirm"),
+                        lang + " Java: ends at the buttons: " + shown);
+                check(java.toString().contains("/time set 1001"), lang + " Java: the exact call on hover");
+                String bedrock = fallbacks(ua.zentix.almighty.policy.Prompts.adminQuestion(asked, lang, true));
+                check(bedrock.contains("/time set 1001") && bedrock.contains("/almighty confirm " + asked.nonce()), lang + " no clicks: written out: " + bedrock);
+                String inbox = fallbacks(ua.zentix.almighty.policy.Prompts.inboxLine(asked, lang, false));
+                check(inbox.endsWith("]") && !inbox.contains("/time set 1001"), lang + " inbox on Java: " + inbox);
+            }
             for (String id : ids) gm.decisions().decide(gm.decisions().confirmations().get(id).nonce(), admin, false);
             h.succeed();
         } finally {

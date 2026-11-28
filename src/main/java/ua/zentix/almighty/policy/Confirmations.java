@@ -69,6 +69,8 @@ public final class Confirmations {
         public final String id;
         final String nonce;
         public final Kind kind;
+        /** What the question says of undoing it ({@link #undo}). */
+        public final Undo undo;
         public final Caller caller;
         public final String method;
         public final JsonObject params;
@@ -98,9 +100,15 @@ public final class Confirmations {
 
         Pending(Kind kind, Caller caller, String method, JsonObject params, String text, UUID confirmer, Node node,
                 UUID requester, String requesterName, long expires) {
+            this(kind, caller, method, params, text, confirmer, node, requester, requesterName, expires, hex(NONCE_BYTES));
+        }
+
+        Pending(Kind kind, Caller caller, String method, JsonObject params, String text, UUID confirmer, Node node,
+                UUID requester, String requesterName, long expires, String nonce) {
             this.id = hex(6);
-            this.nonce = hex(12);
+            this.nonce = nonce;
             this.kind = kind;
+            this.undo = Confirmations.undo(method, params, requesterName, requester);
             this.caller = caller;
             this.method = method;
             this.params = params.deepCopy();
@@ -151,6 +159,11 @@ public final class Confirmations {
     private final Map<String, Pending> byId = new LinkedHashMap<>();
     private final Map<UUID, Long> lastAsk = new LinkedHashMap<>();
     private final Deque<Long> asks = new ArrayDeque<>();
+    /** Unknown nonces typed per player (wrong guesses), for {@link #guessLocked}. */
+    private final Map<UUID, Deque<Long>> wrong = new LinkedHashMap<>();
+    /** A nonce is 8 hex characters: short to type, and with expiry, binding and the guess limit enough. */
+    static final int NONCE_BYTES = 4;
+    static final int WRONG_GUESSES = 5;
     /** Set while a confirmed call runs again: the confirmation check lets it through. */
     private static final ThreadLocal<Pending> RUNNING = new ThreadLocal<>();
 
@@ -232,6 +245,51 @@ public final class Confirmations {
             if ((selfOnly || executes) && !onlySelf(c, requesterName, requester)) return true;
         }
         return false;
+    }
+
+    /** What a question may truthfully say of undoing a call afterwards. */
+    public enum Undo {
+        /** Only block writes the change journal records and the requester's [Undo] reverts: "You can undo it." */
+        REVERTIBLE,
+        /** Asked because it is irreversible for others (kills, items, effects …), which no undo covers: "It cannot be undone." */
+        PERMANENT,
+        /** Neither claim is true: asked only through {@code confirm_first}, or a teleport (nothing is lost, nothing reverts it). */
+        UNSTATED
+    }
+
+    /** Commands whose every effect is block writes the change journal records and reverts ({@code audit/Journal}). */
+    static final Set<String> JOURNALED = Set.of("setblock", "fill", "clone");
+
+    /**
+     * What undo covers for a call: {@link Undo#PERMANENT} when the call is asked for being irreversible for others (as
+     * {@link #needsRequester} without {@code confirm_first}: lava under another player is a fill, and their death is
+     * not undone) and is not a teleport; else {@link Undo#REVERTIBLE} for {@code build} and for commands that only set,
+     * fill or clone blocks (no {@code destroy} mode, whose drops stay; under {@code execute} without {@code store},
+     * which writes scores or data the journal does not keep); else {@link Undo#UNSTATED}.
+     */
+    public static Undo undo(String method, JsonObject p, String requesterName, UUID requester) {
+        if (method.equals("build")) return Undo.REVERTIBLE;
+        if (!method.equals("command") && !method.equals("function")) return Undo.UNSTATED;
+        List<String> commands = commands(method, p);
+        if (commands.isEmpty()) return Undo.UNSTATED;
+        boolean journaled = true, teleports = true;
+        for (String c : commands) {
+            List<String> segs = segments(c);
+            if (root(segs.get(0)).equals("execute") && segs.get(0).matches("(?is).*\\bstore\\b.*")) journaled = false;
+            if (segs.get(segs.size() - 1).matches("(?is).*\\sdestroy\\b.*")) journaled = false;
+            boolean acts = false;
+            for (String seg : segs) {
+                String root = root(seg);
+                if (root.equals("execute") || root.equals("return")) continue;
+                acts = true;
+                if (!JOURNALED.contains(root)) journaled = false;
+                if (!root.equals("tp") && !root.equals("teleport")) teleports = false;
+            }
+            if (!acts) journaled = teleports = false;
+        }
+        if (teleports) return Undo.UNSTATED;
+        if (needsRequester(method, p, requesterName, requester, Set.of())) return Undo.PERMANENT;
+        return journaled ? Undo.REVERTIBLE : Undo.UNSTATED;
     }
 
     /**
@@ -372,8 +430,10 @@ public final class Confirmations {
         }
         if (byId.size() >= MAX) byId.values().removeIf(p -> p.state != State.WAITING);
         if (byId.size() >= MAX) throw new RpcException(429, "ask_limit", "Too many questions waiting");
+        String nonce;
+        do nonce = hex(NONCE_BYTES); while (byNonce(nonce) != null);
         Pending p = new Pending(kind, caller, method, params, text, confirmer, node, requester, requesterName,
-                now + (kind == Kind.ADMIN ? ADMIN_TTL_MS : REQUESTER_TTL_MS));
+                now + (kind == Kind.ADMIN ? ADMIN_TTL_MS : REQUESTER_TTL_MS), nonce);
         byId.put(p.id, p);
         return p;
     }
@@ -385,6 +445,30 @@ public final class Confirmations {
     public synchronized Pending byNonce(String nonce) {
         for (Pending p : byId.values()) if (p.nonce.equals(nonce)) return p;
         return null;
+    }
+
+    /**
+     * A typed nonce from player {@code by} (null: the console, never limited): null when unknown, and after
+     * {@value #WRONG_GUESSES} unknown ones in 10 minutes nothing is looked up for that player until the window passes
+     * ({@link #guessLocked}). With 8 hex characters (2^32), a waiting question's few minutes and its binding to the
+     * players who may decide it, guessing cannot find one in practice.
+     */
+    public synchronized Pending byNonce(String nonce, UUID by) {
+        if (by == null) return byNonce(nonce);
+        if (guessLocked(by)) return null;
+        Pending p = byNonce(nonce);
+        if (p == null) wrong.computeIfAbsent(by, k -> new ArrayDeque<>()).addLast(clockMillis.getAsLong());
+        return p;
+    }
+
+    /** Whether player {@code by} typed {@value #WRONG_GUESSES} unknown nonces in the last 10 minutes. */
+    public synchronized boolean guessLocked(UUID by) {
+        Deque<Long> d = by == null ? null : wrong.get(by);
+        if (d == null) return false;
+        long now = clockMillis.getAsLong();
+        while (!d.isEmpty() && now - d.peekFirst() >= PER_PLAYER_MS) d.pollFirst();
+        if (d.isEmpty()) wrong.remove(by);
+        return d.size() >= WRONG_GUESSES;
     }
 
     /** Waiting admin requests (for the digest and {@code /almighty inbox}). */

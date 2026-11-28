@@ -124,6 +124,16 @@ public final class GmServer {
         this.gate = new Gate(policies, tickets, Nodes::holds, bots::isBotName);
         this.decisions = new Decisions(server, new Confirmations(System::currentTimeMillis), tickets, feed);
         gate.confirmations(decisions.confirmations(), decisions::prompt);
+        gate.adminCheck((caller, method, params, rights) -> {
+            try {
+                return onMain(() -> adminAsks(rights, method, params, commandAs(rights))).get(10, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException e) {
+                return false;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        });
         // Lead's F1: whether a request's commands parse at the requester's level, checked where they would run.
         gate.levelCheck((caller, method, params, rights) -> {
             CompletableFuture<Integer> needed = onMain(() -> {
@@ -757,9 +767,23 @@ public final class GmServer {
      */
     public void askAdmin(ua.zentix.almighty.bridge.Caller caller, Gate.Rights r, String method, JsonObject params,
                          ua.zentix.almighty.act.CommandRunner.As as) throws RpcException {
-        if (r == null || r.ticket() == null || as.player() == null || Confirmations.running() != null) return;
+        if (Confirmations.running() != null) return;
+        if (!adminAsks(r, method, params, as)) {
+            // The gate skipped the requester's question for an admin's; never run it with neither.
+            if (params.has(Gate.ADMIN_ONLY)) throw RpcException.conflict("Not run: this request no longer goes to an admin; ask again");
+            return;
+        }
+        Confirmations.Pending p = decisions.confirmations().ask(Confirmations.Kind.ADMIN, caller, method, params, null,
+                ua.zentix.almighty.policy.Node.APPROVE, r.ticket().player(), r.ticket().name());
+        if (p.count() == 1) decisions.prompt(p);
+        throw Confirmations.waiting(p, "an admin");
+    }
+
+    /** Whether one of a request's commands is listed in {@code ask_admin} and the player's own source cannot run it (server thread). */
+    boolean adminAsks(Gate.Rights r, String method, JsonObject params, ua.zentix.almighty.act.CommandRunner.As as) {
+        if (r == null || r.ticket() == null || as.player() == null) return false;
         java.util.Set<String> listed = policies.current().safety().askAdmin();
-        if (listed.isEmpty()) return;
+        if (listed.isEmpty()) return false;
         var dispatcher = server.getCommands().getDispatcher();
         net.minecraft.commands.CommandSourceStack mine = Mc.withLevel(as.player().createCommandSourceStack(), as.level());
         for (String c : Confirmations.commands(method, params)) {
@@ -768,13 +792,9 @@ public final class GmServer {
             for (String k : Confirmations.kinds("command", commandParams(text))) if (listed.contains(k)) asked = true;
             if (!asked) continue;
             var parsed = dispatcher.parse(text, mine);
-            if (parsed.getReader().canRead() || parsed.getContext().getCommand() == null) {
-                Confirmations.Pending p = decisions.confirmations().ask(Confirmations.Kind.ADMIN, caller, method, params, null,
-                        ua.zentix.almighty.policy.Node.APPROVE, r.ticket().player(), r.ticket().name());
-                if (p.count() == 1) decisions.prompt(p);
-                throw Confirmations.waiting(p, "an admin");
-            }
+            if (parsed.getReader().canRead() || parsed.getContext().getCommand() == null) return true;
         }
+        return false;
     }
 
     private static JsonObject commandParams(String command) {

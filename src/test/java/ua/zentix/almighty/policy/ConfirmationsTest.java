@@ -68,6 +68,53 @@ class ConfirmationsTest {
         Confirmations.players(n -> true);
     }
 
+    /** The question's last line is true: undo covers journaled block writes only; "cannot be undone" only for what is asked as irreversible. */
+    @Test
+    void theQuestionSaysUndoOnlyWhereItIsTrue() {
+        Confirmations.players(n -> n.equalsIgnoreCase("Bob"));
+        UUID me = UUID.randomUUID();
+        assertEquals(Confirmations.Undo.REVERTIBLE, Confirmations.undo("command", cmd("fill 0 64 0 9 64 9 stone"), "Alex", me));
+        assertEquals(Confirmations.Undo.REVERTIBLE, Confirmations.undo("command", cmd("execute at @s run setblock ~ ~ ~ lava"), "Alex", me));
+        assertEquals(Confirmations.Undo.REVERTIBLE, Confirmations.undo("function", fn("clone 0 0 0 1 1 1 5 5 5", "{}"), "Alex", me));
+        assertEquals(Confirmations.Undo.REVERTIBLE, Confirmations.undo("build", new JsonObject(), "Alex", me));
+        // Irreversible for others: asked without confirm_first, and no undo brings it back.
+        JsonObject both = new JsonObject();
+        both.add("commands", JsonParser.parseString("[\"setblock 0 64 0 stone\", \"kill Bob\"]"));
+        assertEquals(Confirmations.Undo.PERMANENT, Confirmations.undo("command", cmd("kill @a"), "Alex", me));
+        assertEquals(Confirmations.Undo.PERMANENT, Confirmations.undo("command", cmd("give Bob diamond 64"), "Alex", me));
+        assertEquals(Confirmations.Undo.PERMANENT, Confirmations.undo("command", both, "Alex", me));
+        // Blocks at another player: the blocks revert, what they did to that player does not.
+        assertEquals(Confirmations.Undo.PERMANENT, Confirmations.undo("command", cmd("execute at Bob run fill ~-1 ~-1 ~-1 ~1 ~1 ~1 lava"), "Alex", me));
+        // destroy drops items the undo leaves behind: no claim.
+        assertEquals(Confirmations.Undo.UNSTATED, Confirmations.undo("command", cmd("fill 0 64 0 9 64 9 air destroy"), "Alex", me));
+        // execute store writes a score or data the journal does not keep.
+        assertEquals(Confirmations.Undo.PERMANENT,
+                Confirmations.undo("command", cmd("execute as Bob store result score Bob x run setblock ~ ~ ~ air"), "Alex", me));
+        // Asked only because the owner listed it in confirm_first (reversible kinds), or a teleport: neither claim.
+        assertTrue(Confirmations.needsRequester("command", cmd("tp @s 0 80 0"), "Alex", me, Set.of("tp")));
+        assertEquals(Confirmations.Undo.UNSTATED, Confirmations.undo("command", cmd("tp @s 0 80 0"), "Alex", me));
+        assertEquals(Confirmations.Undo.UNSTATED, Confirmations.undo("command", cmd("tp Bob"), "Alex", me));
+        assertEquals(Confirmations.Undo.UNSTATED, Confirmations.undo("command", cmd("time set night"), "Alex", me));
+        assertEquals(Confirmations.Undo.UNSTATED, Confirmations.undo("command", cmd("fillbiome 0 0 0 9 9 9 desert"), "Alex", me));
+        assertEquals(Confirmations.Undo.UNSTATED, Confirmations.undo("give", new JsonObject(), "Alex", me));
+    }
+
+    /** Short nonces stay unguessable in practice: five unknown ones in 10 minutes and that player's lookups stop. */
+    @Test
+    void wrongNoncesAreLimited() throws Exception {
+        Confirmations.Pending p = c.ask(Confirmations.Kind.REQUESTER, gm, "command", cmd("kill @a"), alex, Node.COMMAND, alex, "Alex");
+        assertTrue(p.nonce().matches("[0-9a-f]{8}"), p.nonce());
+        UUID guesser = UUID.randomUUID();
+        for (int i = 0; i < Confirmations.WRONG_GUESSES; i++) assertNull(c.byNonce(String.format("x%07d", i), guesser));
+        assertTrue(c.guessLocked(guesser));
+        assertNull(c.byNonce(p.nonce(), guesser), "locked: not even the right one is looked up");
+        assertSame(p, c.byNonce(p.nonce(), alex), "others are not locked");
+        assertSame(p, c.byNonce(p.nonce(), null), "the console is never locked");
+        now.addAndGet(Confirmations.PER_PLAYER_MS);
+        assertFalse(c.guessLocked(guesser));
+        assertSame(p, c.byNonce(p.nonce(), guesser), "after 10 minutes");
+    }
+
     @Test
     void requesterQuestionsAreLimited() throws Exception {
         for (int i = 0; i < Confirmations.PER_REQUESTER; i++) c.ask(Confirmations.Kind.REQUESTER, gm, "command", cmd("kill @e" + i), alex, Node.COMMAND, alex, "Alex");

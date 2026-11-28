@@ -20,7 +20,7 @@ public final class Summary {
 
     /** Lang keys whose text is the server's own voice in a prompt or receipt; a summary may not spell them. */
     private static final List<String> RESERVED_KEYS = List.of("almighty.prompt.what_runs", "almighty.prompt.its_words",
-            "almighty.prompt.irreversible", "almighty.prompt.asked_by", "almighty.prompt.for_admin", "almighty.prompt.for_admin_agent");
+            "almighty.prompt.irreversible", "almighty.prompt.undoable", "almighty.prompt.asked_by", "almighty.prompt.for_admin", "almighty.prompt.for_admin_agent");
 
     private Summary() {}
 
@@ -61,6 +61,8 @@ public final class Summary {
                 if (i < raw.length()) i += Character.charCount(raw.codePointAt(i));
                 continue;
             }
+            // A straight apostrophe (ZentixUA's) reads as the typographic one: it closes none of the quotes around a summary.
+            if (cp == '\'') cp = '\u2019';
             if (type == Character.FORMAT || type == Character.PRIVATE_USE || type == Character.SURROGATE
                     || type == Character.UNASSIGNED || "[]{}<>\"'`“”„‟«»‹›＂＇［］｛｝＜＞〈〉《》「」『』【】".indexOf(cp) >= 0) continue;
             if (Character.isWhitespace(cp) || Character.isISOControl(cp) || Character.isSpaceChar(cp)) {

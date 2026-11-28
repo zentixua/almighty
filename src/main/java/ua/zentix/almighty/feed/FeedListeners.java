@@ -39,6 +39,11 @@ public final class FeedListeners {
 
     public static void onLogin(ServerPlayer p) {
         add(p, "join", where(p));
+        GmServer gm = GmServer.of(Mc.server(p));
+        // Plan 4.5: joining players are told an AI reads messages addressed to it (safety.privacy_notice); not bots.
+        if (gm != null && gm.bots().of(p) == null && gm.policies().current().safety().privacyNotice()) {
+            p.sendSystemMessage(GmMessages.get("almighty.gm.privacy_notice", p.clientInformation().language(), ua.zentix.almighty.GmConfig.NAME.get()));
+        }
     }
 
     public static void onLogout(ServerPlayer p) {

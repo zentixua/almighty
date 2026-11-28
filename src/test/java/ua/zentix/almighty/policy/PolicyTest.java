@@ -73,4 +73,21 @@ class PolicyTest {
         assertEquals(Role.GUEST, fresh.current().floor("gm"));
         assertTrue(fresh.current().owners().isEmpty());
     }
+
+    /** Plan 4.5: timezone (audit days, times shown) and privacy_notice (on unless turned off; turning it off is a grant). */
+    @Test
+    void timezoneAndPrivacyNotice() throws Exception {
+        Policy p = Policy.parse(Policy.template(Policy.Preset.FRIENDS));
+        assertTrue(p.safety().privacyNotice(), "the template tells joining players");
+        assertEquals(java.time.ZoneId.systemDefault(), p.timezone(), "unset: the machine's zone");
+        assertEquals(java.time.ZoneId.of("Europe/Warsaw"), Policy.parse("timezone = \"Europe/Warsaw\"").timezone());
+        Policy quiet = Policy.parse("[safety]\nprivacy_notice = false");
+        assertTrue(!quiet.safety().privacyNotice());
+        for (String bad : new String[]{"timezone = \"Mars/Olympus\"", "[safety]\nprivacy_notice = \"yes\""}) {
+            Policy.Invalid e = assertThrows(Policy.Invalid.class, () -> Policy.parse(bad), bad);
+            assertTrue(e.getMessage().contains(bad.contains("timezone") ? "timezone" : "privacy_notice"), e.getMessage());
+        }
+        assertTrue(PolicyEdits.grants(Policy.parse(""), quiet) != null, "silencing the notice needs an approval");
+        assertEquals(null, PolicyEdits.grants(quiet, Policy.parse("")), "turning it on does not");
+    }
 }

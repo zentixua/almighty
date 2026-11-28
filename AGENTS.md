@@ -265,7 +265,9 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   read records the agent's cursor. Away: the target agent made no call for 60 s, or has not read the message after
   `feed.away_seconds` (30) → the server tells the player (translated; only for `/gm` and named lines, at most once
   per player in 5 minutes); no bridge (GameTest) → no away replies. `identity` in `policy.toml` (auto, mojang,
-  proxy, offline) sets which UUIDs count as verified.
+  proxy, offline) sets which UUIDs count as verified. `timezone` (unset: the machine's) dates audit files and the
+  times `/almighty role` shows; `[safety] privacy_notice` (true) tells each joining player, not bots, that an AI reads
+  messages addressed to it (`almighty.gm.privacy_notice`); turning it off is a grant (`PolicyEdits`).
 - `script/`: Groovy scripts (`Scripts`: compilation with a deadline, execution), scripts' `gm` variable (`ScriptApi`),
   values ↔ JSON (`Json`: position `[x, y, z]`, block string as in `/setblock`, NBT as SNBT, event via its `getX()`).
 - `rules/`: rules (`Rules`), subscribing to any game-bus event, budgets, persistence with the world

@@ -18,7 +18,7 @@ import java.util.UUID;
  * and a bad file never replaces a good policy ({@link Policies}).
  */
 public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Map<String, AgentRules> agents, Safety safety,
-                     Map<String, Zone> zones, Limits limits) {
+                     Map<String, Zone> zones, Limits limits, java.time.ZoneId timezone) {
 
     /**
      * {@code [zones.<name>]} (plan 4.7): a box in a dimension where some nodes are denied below owner ({@code deny}),
@@ -72,8 +72,8 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
      * right (plan 4.8; empty: none); {@code confirm_first}, reversible kinds the requester must still confirm. A kind is
      * a command name ({@code kick}, {@code tp}) or a method ({@code build}).
      */
-    public record Safety(Set<String> askAdmin, Set<String> confirmFirst) {
-        public static final Safety NONE = new Safety(Set.of(), Set.of());
+    public record Safety(Set<String> askAdmin, Set<String> confirmFirst, boolean privacyNotice) {
+        public static final Safety NONE = new Safety(Set.of(), Set.of(), true);
     }
 
     /** How much other players' text reaches the agents, which fixes their trust floor (plan 4.2). */
@@ -125,12 +125,12 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
      * guest. A typo must never open the server wider than the owner chose.
      */
     public static Policy lockdown() {
-        return new Policy(Preset.PUBLIC, Set.of(), Identity.Mode.AUTO, Map.of(), Safety.NONE, Map.of(), Limits.DEFAULT);
+        return new Policy(Preset.PUBLIC, Set.of(), Identity.Mode.AUTO, Map.of(), Safety.NONE, Map.of(), Limits.DEFAULT, java.time.ZoneId.systemDefault());
     }
 
     /** The policy when the file has nothing to say: private, no owners, every agent at its default ceiling. */
     public static Policy defaults() {
-        return new Policy(Preset.PRIVATE, Set.of(), Identity.Mode.AUTO, Map.of(), Safety.NONE, Map.of(), Limits.DEFAULT);
+        return new Policy(Preset.PRIVATE, Set.of(), Identity.Mode.AUTO, Map.of(), Safety.NONE, Map.of(), Limits.DEFAULT, java.time.ZoneId.systemDefault());
     }
 
     public static final class Invalid extends Exception {
@@ -148,7 +148,7 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
             throw new Invalid("not valid TOML: " + e.getMessage());
         }
         List<String> errors = new ArrayList<>();
-        Set<String> known = Set.of("preset", "owners", "identity", "agents", "safety", "zones", "quotas", "version");
+        Set<String> known = Set.of("preset", "owners", "identity", "timezone", "agents", "safety", "zones", "quotas", "version");
         for (Config.Entry entry : c.entrySet()) if (!known.contains(entry.getKey())) errors.add("unknown key " + entry.getKey());
 
         Preset preset = Preset.PRIVATE;
@@ -208,9 +208,12 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
         Object sf = c.get("safety");
         if (sf instanceof Config t) {
             for (Config.Entry k : t.entrySet()) {
-                if (!Set.of("ask_admin", "confirm_first").contains(k.getKey())) errors.add("safety: unknown key " + k.getKey());
+                if (!Set.of("ask_admin", "confirm_first", "privacy_notice").contains(k.getKey())) errors.add("safety: unknown key " + k.getKey());
             }
-            safety = new Safety(kinds(t.get("ask_admin"), "safety.ask_admin", errors), kinds(t.get("confirm_first"), "safety.confirm_first", errors));
+            Object notice = t.get("privacy_notice");
+            if (notice != null && !(notice instanceof Boolean)) errors.add("safety.privacy_notice: true or false");
+            safety = new Safety(kinds(t.get("ask_admin"), "safety.ask_admin", errors), kinds(t.get("confirm_first"), "safety.confirm_first", errors),
+                    !(notice instanceof Boolean b) || b);
         } else if (sf != null) {
             errors.add("safety: a table [safety]");
         }
@@ -248,8 +251,17 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
         } else if (q != null) {
             errors.add("quotas: a table [quotas]");
         }
+        java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+        Object tz = c.get("timezone");
+        if (tz != null) {
+            try {
+                zone = java.time.ZoneId.of(String.valueOf(tz));
+            } catch (java.time.DateTimeException e) {
+                errors.add("timezone: a zone such as \"Europe/Warsaw\" or \"UTC\", not " + tz);
+            }
+        }
         if (!errors.isEmpty()) throw new Invalid(String.join("; ", errors));
-        return new Policy(preset, Set.copyOf(owners), identity, Map.copyOf(agents), safety, Map.copyOf(zones), limits);
+        return new Policy(preset, Set.copyOf(owners), identity, Map.copyOf(agents), safety, Map.copyOf(zones), limits, zone);
     }
 
     private static int[] point(Object v, String key, List<String> errors) {
@@ -328,6 +340,10 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 # Which UUIDs count as verified: auto (Mojang and Floodgate), mojang, proxy (Velocity forwarding), offline.
                 identity = "auto"
 
+                # Time zone for audit days and the times the server shows (for example "Europe/Warsaw"). Unset: the
+                # machine's own zone.
+                # timezone = "UTC"
+
                 # Each agent: ceiling = the most it may ever do (guest, member, builder, admin, owner); floor = what it may
                 # do unasked (derived from the preset unless set, never above the ceiling).
                 [agents.gm]
@@ -339,6 +355,8 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 ask_admin = []
                 # Kinds the requesting player must confirm even when allowed and reversible (for example "tp").
                 confirm_first = []
+                # Tell each joining player that an AI game master reads messages addressed to it.
+                privacy_notice = true
 
                 # What one player's requests may take per hour (below owner); the agent's own builds share one budget.
                 [quotas]

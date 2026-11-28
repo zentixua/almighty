@@ -402,9 +402,9 @@ public final class Bot {
                 /*String text = chat.unsignedContent().map(Component::getString).orElse(chat.body().content());
                 *///?} else
                 String text = chat.unsignedContent() != null ? chat.unsignedContent().getString() : chat.body().content();
-                chat(chat.chatType(), text);
+                chat(chat.chatType(), text, chat.sender());
             }
-            case ClientboundDisguisedChatPacket chat -> chat(chat.chatType(), chat.message().getString());
+            case ClientboundDisguisedChatPacket chat -> chat(chat.chatType(), chat.message().getString(), null);
             case ClientboundSystemChatPacket system -> mail(system.overlay() ? "actionbar" : "system", system.content().getString(), null);
             case ClientboundSetActionBarTextPacket bar -> mail("actionbar", bar.text().getString(), null);
             case ClientboundSetTitleTextPacket title -> mail("title", title.text().getString(), null);
@@ -464,16 +464,26 @@ public final class Bot {
         send(new ServerboundAcceptTeleportationPacket(teleportId));
     }
 
-    private void chat(ChatType.Bound type, String text) {
+    /**
+     * A chat line the bot received. The sender's UUID goes with it, so an agent reads it only if that player may reach
+     * the agent (its trust floor: {@code Api} filters the feed and the bot's inbox the same way).
+     */
+    private void chat(ChatType.Bound type, String text, java.util.UUID sender) {
         String kind = type.chatType().unwrapKey().map(k -> Mc.id(k).getPath()).orElse("chat");
         JsonObject m = mail(kind.startsWith("msg_command") || kind.startsWith("team_msg") ? "whisper" : "chat", text, type.name().getString());
         m.addProperty("chat_type", kind);
+        if (sender != null) m.addProperty("uuid", sender.toString());
         // A whisper to the bot goes to the GM: otherwise the feed hides private messages.
         if (kind.equals("msg_command_incoming") || kind.equals("team_msg_command_incoming")) {
             JsonObject d = new JsonObject();
             d.addProperty("bot", name);
             d.addProperty("from", type.name().getString());
             d.addProperty("text", text);
+            if (sender != null) d.addProperty("uuid", sender.toString());
+            JsonArray untrusted = new JsonArray();
+            untrusted.add("text");
+            untrusted.add("from");
+            d.add("untrusted", untrusted);
             bots.feed("bot_chat", d);
         }
     }
@@ -541,6 +551,11 @@ public final class Bot {
 
     /** Details: body (like {@code player}), open menu, keys, programs and inbox after {@code after}. */
     public JsonObject describe(long after) {
+        return describe(after, id -> true);
+    }
+
+    /** The bot's state; chat in its inbox only from players {@code heard} lets the reading agent hear. */
+    public JsonObject describe(long after, java.util.function.Predicate<java.util.UUID> heard) {
         JsonObject o = Observe.details(Mc.server(player()), player());
         o.addProperty("bot", true);
         o.addProperty("marked", marked);
@@ -559,7 +574,11 @@ public final class Bot {
         if (last != null) o.add("last_program", last.describe());
         o.addProperty("programs_queued", programs.size());
         JsonArray mail = new JsonArray();
-        for (JsonObject m : inbox) if (m.get("n").getAsLong() > after) mail.add(m.deepCopy());
+        for (JsonObject m : inbox) {
+            if (m.get("n").getAsLong() <= after) continue;
+            if (m.has("uuid") && !heard.test(java.util.UUID.fromString(m.get("uuid").getAsString()))) continue;
+            mail.add(m.deepCopy());
+        }
         o.add("inbox", mail);
         o.addProperty("inbox_next", inboxSeq);
         return o;

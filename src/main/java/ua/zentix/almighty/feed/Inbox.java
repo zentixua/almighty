@@ -75,6 +75,12 @@ public final class Inbox {
                 body = parts.length > 1 ? parts[1] : "";
             }
         }
+        // Below the agent's trust floor (private: anyone but an owner): the agent would act on it with more than the
+        // player's rights, so the message never reaches it; the server answers.
+        if (!heard(player, agent)) {
+            player.sendSystemMessage(GmMessages.get("almighty.gm.not_heard", lang(player)).copy().withStyle(ChatFormatting.GRAY));
+            return false;
+        }
         // Cooling down after repeated refusals: answered by the server, so the attempts cost no model tokens either.
         if (cooling(player.getUUID()) || !addressing.allow(player.getUUID(), GmConfig.FEED_GM_MESSAGES.get())) {
             player.sendSystemMessage(GmMessages.get("almighty.gm.slow_down", lang(player)).copy().withStyle(ChatFormatting.GRAY));
@@ -87,7 +93,20 @@ public final class Inbox {
         return true;
     }
 
-    /** A public chat line: addressed to the GM or not, always in the feed (as today). */
+    /**
+     * Whether an agent may hear this player: the player holds every right the agent has unasked (its trust floor;
+     * {@link ua.zentix.almighty.policy.Nodes#covers}). A GM bot is the GM's own voice.
+     */
+    public boolean heard(ServerPlayer player, String agent) {
+        if (bot(player)) return true;
+        return ua.zentix.almighty.policy.Nodes.covers(player.getUUID(), ua.zentix.almighty.policy.Nodes.policy().floor(agent));
+    }
+
+    /**
+     * A public chat line: addressed to the GM or not, always in the feed. An agent reads it only if its author may
+     * reach that agent (the feed read filters by trust floor, {@code Api.heardBy}); below the default agent's floor
+     * the line is never addressed (no ticket).
+     */
     public void chat(ServerPlayer player, JsonObject d, String text) {
         // A GM bot's chat is the GM's own voice, never a message to it.
         Addressing.Via via = bot(player) ? null
@@ -101,6 +120,7 @@ public final class Inbox {
             // reaching the GM; the player is never told off for chatting.
             via = null;
         }
+        if (via != null && !heard(player, GmConfig.FEED_DEFAULT_AGENT.get())) via = null;
         if (via == null) {
             d.addProperty("addressed", false);
             feed.add("chat", d);
@@ -218,7 +238,7 @@ public final class Inbox {
     }
 
     /** Untrusted fields of a player event: player-authored text is data, never instructions (plan 4.11). */
-    static JsonArray untrusted(String... fields) {
+    public static JsonArray untrusted(String... fields) {
         JsonArray a = new JsonArray();
         for (String f : fields) a.add(f);
         return a;

@@ -22,6 +22,7 @@ English · [Русский](troubleshooting.ru.md)
 |---|---|
 | A call is refused with `policy`, a node and what is allowed | The agent lacks that capability for this call. Unasked it acts at its floor (a member on a friends' server); see [Permissions](permissions.md#agents-ceiling-and-floor). |
 | Your own app cannot run operator commands or scripts | Approve it with `owner`, then either ask in game with `/gm` as an owner or give it `floor = "owner"` ([Your own app](permissions.md#your-own-app)). |
+| A player's `/gm` gets "The game master here takes requests only from players trusted with what it can do." | The player is below the agent's floor: on `private` only owners are heard, on `friends` only verified players ([Who an agent hears](permissions.md#who-an-agent-hears)). On `private`, switch to `friends` or add the player as an owner; on `friends`, the player must be verified (`/almighty whoami`). |
 | Your `/gm` requests do not carry owner rights | Add yourself with `/almighty owner add <name>` in the console; `/almighty whoami` must say verified. On an offline-mode server behind Velocity set `identity = "proxy"`. |
 | A call is refused with `denied` | It is on the list refused for every agent because it crashes or freezes servers ([Safety](security.md#what-protects-the-server)). Run it yourself in the console if you mean it. |
 | A call answers `423` | The agent is paused: `/almighty resume [agent]`. |

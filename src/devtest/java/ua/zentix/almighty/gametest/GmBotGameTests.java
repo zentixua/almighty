@@ -353,6 +353,18 @@ public final class GmBotGameTests {
     @GameTest(template = "floor", batch = "gm_bot_life", timeoutTicks = 300, skyAccess = true)
     public static void botDiesAndRespawns(GameTestHelper h) {
         Bot bot = spawn(h, "GmTestPhoenix", 10.5, 10.5, ",\"gamemode\":\"survival\"");
+        // Respawn on this test's floor, facing east along it: without a spawn point a player respawns at a random spot
+        // in the world spawn's radius, outside the test, where whatever stands in front of it can stop the walk below.
+        BlockPos home = h.absolutePos(new BlockPos(10, GROUND, 10));
+        // 1.21.1 takes an angle; 26.x a rotation (yaw and pitch).
+        //? if >=26.1 {
+        /*String facing = "-90 0";
+        *///?} else
+        String facing = "-90";
+        String spawnpoint = String.format(java.util.Locale.ROOT, "spawnpoint GmTestPhoenix %d %d %d %s", home.getX(), home.getY(), home.getZ(), facing);
+        com.google.gson.JsonArray set = ua.zentix.almighty.act.CommandRunner.run(h.getLevel().getServer(), h.getLevel(), Vec3.atBottomCenterOf(home),
+                null, java.util.List.of(spawnpoint), true).getAsJsonArray();
+        check(set.get(0).getAsJsonObject().get("ok").getAsBoolean(), "/" + spawnpoint + ": " + set);
         ServerPlayer first = bot.player();
         Gt.hurt(first, first.damageSources().genericKill(), Float.MAX_VALUE);
         AtomicReference<CompletableFuture<JsonElement>> walk = new AtomicReference<>();
@@ -363,11 +375,7 @@ public final class GmBotGameTests {
                     check(bot.online(), "bot left after death");
                     // The bot's class controls vehicles; respawn (a new entity) must retain that class.
                     check(first instanceof BotPlayer && bot.player() instanceof BotPlayer, "bot class after respawn: " + bot.player().getClass().getName());
-                    // 26.x keeps no spawn chunks loaded: load the respawn point now, as GameTest does elsewhere (the bot waits for it).
-                    //? if >=26.1 {
-                    /*int rx = bot.player().getBlockX() >> 4, rz = bot.player().getBlockZ() >> 4;
-                    for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) bot.player().level().getChunk(rx + i, rz + j);
-                    *///?}
+                    check(bot.player().blockPosition().closerThan(home, 2), "respawned away from its spawn point " + home + ": " + bot.player().position());
                     start.set(bot.player().position());
                     walk.set(act(h, "GmTestPhoenix", "[{\"hold\":\"forward\"},{\"wait\":10},{\"release\":\"forward\"}]"));
                 })

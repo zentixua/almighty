@@ -14,7 +14,7 @@ how much of that it may do, for whom and where. Players install nothing.
 
 - **See the world:** a top-down map, a building from any side, or the view through any player's or bot's eyes.
 - **Follow the game:** chat, joins, deaths, advancements and player commands reach it as they happen.
-- **Talk to players:** in chat, as a title or above the hotbar. Any player can write to it privately with
+- **Talk to players:** in chat, as a title or above the hotbar. Players can write to it privately with
   `/gm <text>`, or address it by name in chat ("Claude" by default).
 - **Build:** from a few blocks up to two million, placed a little each tick so the server keeps running.
 - **Run the game:** commands, items for players, and rules that react to events of the game and of other mods.
@@ -30,9 +30,9 @@ how much of that it may do, for whom and where. Players install nothing.
 
 - **A request is not an order:** when a player asks for something, the game master acts with that player's rights,
   never more.
-- **Presets:** a new server starts as `friends`: anyone may talk to the game master, and on its own it acts as a
-  member would. On a public server, use `public`: on its own it acts as a guest would. `private` is for a server where
-  only the owners talk to it: on its own, the game master acts with its full rights.
+- **Presets:** a new server starts as `friends`: players with a verified Minecraft account talk to the game master,
+  and on its own it acts as a member would. On a public server, use `public`: everyone talks to it, and on its own it
+  acts as a guest would. On `private`, only the owners talk to it, and on its own it acts with its full rights.
 - **Confirmation:** something that affects other players and cannot be undone waits until the player who asked
   presses [Allow] in chat. A request beyond the player's rights is refused, unless you list its kind under
   `ask_admin`; then an admin can approve it with one click.
@@ -156,7 +156,7 @@ Almighty подключает к серверу ИИ-агента, наприм�
 
 - **Видит мир:** карта сверху, постройка с любой стороны или вид глазами любого игрока или бота.
 - **Следит за игрой:** чат, входы, смерти, достижения и команды игроков приходят к нему сразу.
-- **Говорит с игроками:** в чате, заголовком или над хотбаром. Любой игрок может написать ему лично командой
+- **Говорит с игроками:** в чате, заголовком или над хотбаром. Игроки могут написать ему лично командой
   `/gm <текст>` или позвать по имени в чате (по умолчанию «Claude»).
 - **Строит:** от пары блоков до двух миллионов, понемногу каждый тик, так что сервер продолжает работать.
 - **Управляет игрой:** команды, предметы для игроков и правила, которые реагируют на события игры и других модов.
@@ -169,9 +169,10 @@ Almighty подключает к серверу ИИ-агента, наприм�
 ### Что ему можно, решаете вы
 
 - **Просьба — не приказ:** когда игрок о чём-то просит, ведущий действует с правами этого игрока, и не больше.
-- **Пресеты:** новый сервер начинает с `friends`: говорить с ведущим может любой, а сам по себе он действует как
-  участник. На публичном сервере ставьте `public`: сам по себе он действует как гость. `private` — для сервера, где с
-  ведущим говорят только владельцы: сам по себе он действует со всеми своими правами.
+- **Пресеты:** новый сервер начинает с `friends`: с ведущим говорят игроки с подтверждённым аккаунтом Minecraft, а
+  сам по себе он действует как участник. На публичном сервере ставьте `public`: говорить с ним может любой, а сам по
+  себе он действует как гость. На `private` с ним говорят только владельцы, а сам по себе он действует со всеми
+  своими правами.
 - **Подтверждение:** то, что затрагивает других игроков и не отменяется, ждёт, пока попросивший нажмёт [Allow] в
   чате. Просьба сверх прав игрока отклоняется, если только вы не впишете её вид в `ask_admin`; тогда её одним
   нажатием может одобрить админ.

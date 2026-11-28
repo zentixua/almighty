@@ -14,7 +14,7 @@ how much of that it may do, for whom and where. Players install nothing.
 
 - **See the world:** a top-down map, a building from any side, or the view through any player's or bot's eyes.
 - **Follow the game:** chat, joins, deaths, advancements and player commands reach it as they happen.
-- **Talk to players:** in chat, as a title or above the hotbar. Any player can write to it privately with
+- **Talk to players:** in chat, as a title or above the hotbar. Players can write to it privately with
   `/gm <text>`, or address it by name in chat ("Claude" by default).
 - **Build:** from a few blocks up to two million, placed a little each tick so the server keeps running.
 - **Run the game:** commands, items for players, and rules that react to events of the game and of other mods.
@@ -30,9 +30,9 @@ how much of that it may do, for whom and where. Players install nothing.
 
 - **A request is not an order:** when a player asks for something, the game master acts with that player's rights,
   never more.
-- **Presets:** a new server starts as `friends`: anyone may talk to the game master, and on its own it acts as a
-  member would. On a public server, use `public`: on its own it acts as a guest would. `private` is for a server where
-  only the owners talk to it: on its own, the game master acts with its full rights.
+- **Presets:** a new server starts as `friends`: players with a verified Minecraft account talk to the game master,
+  and on its own it acts as a member would. On a public server, use `public`: everyone talks to it, and on its own it
+  acts as a guest would. On `private`, only the owners talk to it, and on its own it acts with its full rights.
 - **Confirmation:** something that affects other players and cannot be undone waits until the player who asked
   presses [Allow] in chat. A request beyond the player's rights is refused, unless you list its kind under
   `ask_admin`; then an admin can approve it with one click.

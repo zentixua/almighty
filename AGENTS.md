@@ -210,7 +210,7 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `needs_level` and a `hint` in its result (`CommandRunner.levelNeeded`: the lowest level at which it parses).
   `Caller.requester` (from a valid `for`, set in `Dispatch`) travels with the call: jobs record `requester`, and a
   receipt ("[Almighty] Done for you: … [Undo]") reaches that player after any call with effects; `/almighty undo
-  <job>` works for that player or level 4. `policy/Confirmations` + `Decisions` + `Prompts`: a request's command
+  <job>` works for that player or level 4, answering in their language, once (N7, N8). `policy/Confirmations` + `Decisions` + `Prompts`: a request's command
   waits for that player's confirmation unless every command in it is in the allowlist `SAFE` (time, weather, say,
   msg, setblock, fill, clone, place …) or `SELF_ONLY` (tp, give, effect, clear, gamemode, kill …) aimed only at
   the requester (`@s`, their name or UUID; no other selector, name, quoted name, short or Floodgate name, UUID in any
@@ -219,13 +219,22 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   requester and one other player (`tp Bob`, `tp @s Bob`, `tp Bob Me`) waits for that other player instead
   (`Confirmations.teleportPartner`, scenario P10; offline → 409). Function macros are expanded before the
   check and in the prompt. Also any kind in `[safety] confirm_first`. → 202 `pending` with an id; the server asks
-  that player (the exact call, `[Allow]`/`[Deny]` and the typed `/almighty confirm <nonce>`; on 26.x also a vanilla
-  confirmation dialog with the same buttons, `Mc.confirmDialog`, except for Bedrock players; never clipped: a call
-  too long to show is refused); only that player may answer; at most 3 waiting per player and 20 per agent;
+  that player in a sentence (`policy/Prompts`): the agent's optional `summary` (any call; `policy/Summary`: one
+  line of at most 80 characters, no formatting, brackets or quotes, dropped when it spells the mod's name or its own
+  labels in either language) in quotes, marked as the agent's words, then always the server's own facts
+  (`policy/Facts`: the action in plain words and its target, from the parsed call; under `execute` the chain is shown,
+  not resolved), `[Allow]`/`[Deny]`/`[Details]` and the typed `/almighty confirm|deny|show <nonce>`; the exact call on
+  hover, behind `show` and written out for Bedrock players; on 26.x also a vanilla confirmation dialog with the same
+  buttons and the exact call, `Mc.confirmDialog`, except for Bedrock players; never clipped: a call too long to show
+  is refused). Outcomes name the call the same way; a receipt shows the summary alone ("Done for you: <summary>
+  [Undo]", lead's note) with the facts and exact call on hover, or the facts when there is no summary (`FactsTest`, `SummaryTest`,
+  `GmConfirmGameTests.aQuestionShowsTheServersFactsBesideTheSummary`); only that player may answer; at most 3 waiting per player and 20 per agent;
   2 minutes. A request above the player's rights (or the agent's own call above its floor, for methods; limited per agent
   the same way) whose kind is in `[safety] ask_admin` → 202 for an admin; the owners online are told every admin decision (for
   commands: when the player's own source cannot parse it; the decider needs `almighty.approve` and the call's own node): merged with an
-  identical waiting one, 1 per player per 10 minutes, 20 per hour, one digest line at most every 10 minutes,
+  identical waiting one, 1 per player per 10 minutes, 20 per hour; put straight to the deciders online as a chat
+  question with the facts and the exact call (`Decisions.direct`: at most 3 per admin and 1 per requester or agent
+  every 10 minutes, never for a merged repeat; an admin joining later finds it in the inbox), the rest in one digest line at most every 10 minutes and
   `/almighty inbox`; it runs as the requester with the admin's rights for that one call (`Pending.decider`; no
   ticket is minted). Owners' requests apply at once. Below owner, commands may not carry
   clicks that act as whoever clicks, dialogs, or `[Almighty]` (forged prompts via tellraw, signs, books), checked by
@@ -286,7 +295,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   under an `execute` that repeats per entity (`as|at @e|@a` without `limit=1`, `on passengers`) is refused, and a
   rule's command gets the same bound at each fire.
 - `act/`: commands and functions (`CommandRunner`), messages to players (`Chat`); `feed/`: event feed and a player's
-  private channel to the GM: `/gm <text>` (any player) emits `gm` in the feed, invisible to others; reply with `say` and `to`.
+  private channel to the GM: `/gm <text>` (any player) emits `gm` in the feed, invisible to others, and echoes "To Almighty: <text>"
+  ("Ведущему: …") to the sender alone (`GmCommand.echo`, both loaders); reply with `say` and `to`.
   Who asked (step 3): player events carry `uuid`, `verified` (`policy/Identity`: v4 Mojang and Floodgate yes, v3
   offline no), `bedrock`, `lang`, and `untrusted` (player-authored fields: data, never instructions; pull reads mark them too: custom entity and
   item names in `entities`, `player`, `see`, and every line a bot's inbox holds). Without `observe.players` a free camera
@@ -505,7 +515,10 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
 - Building places positions as `/fill` (`FillCommand`): first `getBlockEntity` (initializes a fresh chunk's pending
   block entity; otherwise its data would survive the new block, "DUMMY"), snapshot via `saveWithFullMetadata`,
   `Clearable.tryClear`, `BlockInput.place` with `UPDATE_CLIENTS`, then `blockUpdated` after the slice. Writes suppress drops (`UPDATE_SUPPRESS_DROPS`):
-  a door half or a torch that a write breaks drops no free item (lead's F4). Undo does not restore entities.
+  a door half or a torch that a write breaks drops no free item (lead's F4); a block broken by a write's knock-on
+  shape update (a lantern under a ceiling an undo removed), where vanilla clears that flag, drops nothing either
+  (not blocks that pop off in `neighborChanged`: rails, redstone wire)
+  (`BuildJob.writing`, `mixin/LevelMixin`, lead's N9; `aHangingLanternDropsNothingOnUndo`). Undo does not restore entities.
 - A completed job's description in its future is shared by all waiters: copy responses (`GmServer.await`), or a
   snapshot would append the image to the shared object, retaining it in history and returning it again.
 - A method called on the server thread (GameTest) runs immediately (`server.execute` does not enqueue on that

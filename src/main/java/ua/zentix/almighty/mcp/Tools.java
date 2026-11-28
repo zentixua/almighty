@@ -67,12 +67,23 @@ public final class Tools {
             + "the server then acts with that player's rights, asks them to confirm what cannot be undone and tells them "
             + "it was done. Without it the call runs with your own rights when unasked (your trust floor; status shows them).";
 
+    /** Every tool also takes {@code summary}: the agent's short words for the call, shown to the player beside the server's facts. */
+    static final String SUMMARY = "Pass with for: a short plain phrase (up to " + ua.zentix.almighty.policy.Summary.MAX
+            + " characters) of what this call does, in the player's words and language, e.g. \"snow over your base\". The "
+            + "player sees it in quotes, marked as your words, in their confirmation and receipt, always beside the server's own "
+            + "description of what runs; formatting, brackets and quotes are dropped, and a summary that spells the server's "
+            + "own words (its name, \"what runs\", \"asked by\", \"cannot be undone\", in English or Russian) is not shown.";
+
     private static void withFor(JsonObject tool) {
         JsonObject props = tool.getAsJsonObject("inputSchema").getAsJsonObject("properties");
         JsonObject f = new JsonObject();
         f.addProperty("type", "string");
         f.addProperty("description", FOR);
         props.add("for", f);
+        JsonObject s = new JsonObject();
+        s.addProperty("type", "string");
+        s.addProperty("description", SUMMARY);
+        props.add(ua.zentix.almighty.policy.Summary.PARAM, s);
     }
 
     /** Tool definitions for {@code tools/list}, in a fixed order. */
@@ -122,8 +133,8 @@ public final class Tools {
     }
 
     /**
-     * The bridge call for a tool call; {@link ToolError} for arguments the tool does not take. {@code for} goes
-     * through to the bridge call as is (for {@code call}, unless its params carry their own).
+     * The bridge call for a tool call; {@link ToolError} for arguments the tool does not take. {@code for} and
+     * {@code summary} go through to the bridge call as is (for {@code call}, unless its params carry their own).
      */
     public static Call route(String name, JsonObject args) throws ToolError {
         JsonObject rest = args == null ? new JsonObject() : args.deepCopy();
@@ -131,8 +142,15 @@ public final class Tools {
         if (ticket != null && !ticket.isJsonNull() && !(ticket.isJsonPrimitive() && ticket.getAsJsonPrimitive().isString())) {
             throw new ToolError(name + ": for is the ticket string of a player's message");
         }
+        JsonElement summary = rest.remove(ua.zentix.almighty.policy.Summary.PARAM);
+        if (summary != null && !summary.isJsonNull() && !(summary.isJsonPrimitive() && summary.getAsJsonPrimitive().isString())) {
+            throw new ToolError(name + ": summary is a short phrase");
+        }
         Call c = routeTool(name, rest);
         if (ticket != null && !ticket.isJsonNull() && !c.params().has("for")) c.params().add("for", ticket);
+        if (summary != null && !summary.isJsonNull() && !c.params().has(ua.zentix.almighty.policy.Summary.PARAM)) {
+            c.params().add(ua.zentix.almighty.policy.Summary.PARAM, summary);
+        }
         return c;
     }
 

@@ -47,6 +47,9 @@ public final class AlmightyCommand {
         root.then(Commands.literal("deny").then(Commands.argument("nonce", StringArgumentType.word())
                 .executes(c -> decide(c.getSource(), StringArgumentType.getString(c, "nonce"), false))));
         root.then(Commands.literal("inbox").executes(c -> inbox(c.getSource())));
+        // The exact call of a waiting question, written out (Bedrock players see no hover; the console).
+        root.then(Commands.literal("show").then(Commands.argument("nonce", StringArgumentType.word())
+                .executes(c -> show(c.getSource(), StringArgumentType.getString(c, "nonce")))));
         // Roles on the ladder (no permission plugin): admins and the console, only below their own role.
         root.then(Commands.literal("role").then(Commands.argument("player", StringArgumentType.word())
                 .then(Commands.argument("role", StringArgumentType.word())
@@ -276,16 +279,40 @@ public final class AlmightyCommand {
         return decided ? 1 : 0;
     }
 
+    /**
+     * The exact call of a question, for whoever was shown it: the player it asks (requester kind), an admin who may
+     * decide it, or the console. The nonce is only ever shown to them; an unknown or foreign one says nothing more.
+     */
+    private static int show(CommandSourceStack source, String nonce) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        var p = gm.decisions().confirmations().byNonce(nonce);
+        net.minecraft.server.level.ServerPlayer by = Mc.typedBy(source);
+        java.util.UUID id = by == null ? null : by.getUUID();
+        boolean may = p != null && (id == null ? source.getEntity() == null && Mc.has(source, 4)
+                : p.kind == ua.zentix.almighty.policy.Confirmations.Kind.REQUESTER ? id.equals(p.confirmer)
+                : ua.zentix.almighty.policy.Identity.verified(id) && ua.zentix.almighty.policy.Nodes.holds(id, p.node)
+                && (p.node == ua.zentix.almighty.policy.Node.ENGINE || ua.zentix.almighty.policy.Nodes.holds(id, ua.zentix.almighty.policy.Node.APPROVE)));
+        if (!may) {
+            source.sendFailure(ua.zentix.almighty.policy.Prompts.line("No such request (it may have expired)"));
+            return 0;
+        }
+        Component line = ua.zentix.almighty.policy.Prompts.show(p, ua.zentix.almighty.feed.GmMessages.language(by));
+        source.sendSuccess(() -> line, false);
+        return 1;
+    }
+
     /** Admin requests the viewer may decide (the console sees all). */
     private static int inbox(CommandSourceStack source) {
         GmServer gm = GmServer.of(source.getServer());
         if (gm == null) return 0;
         java.util.UUID id = source.getEntity() instanceof net.minecraft.server.level.ServerPlayer p ? p.getUUID() : null;
+        String lang = ua.zentix.almighty.feed.GmMessages.language(source.getEntity() instanceof net.minecraft.server.level.ServerPlayer q ? q : null);
         int n = 0;
         for (var p : gm.decisions().confirmations().waitingForAdmins()) {
             if (id == null ? !Mc.has(source, 4) : !(ua.zentix.almighty.policy.Identity.verified(id) && ua.zentix.almighty.policy.Nodes.holds(id, p.node)
                     && (p.node == ua.zentix.almighty.policy.Node.ENGINE || ua.zentix.almighty.policy.Nodes.holds(id, ua.zentix.almighty.policy.Node.APPROVE)))) continue;
-            Component line = ua.zentix.almighty.policy.Prompts.inboxLine(p);
+            Component line = ua.zentix.almighty.policy.Prompts.inboxLine(p, lang);
             source.sendSuccess(() -> line, false);
             n++;
         }
@@ -295,17 +322,35 @@ public final class AlmightyCommand {
 
     /** Undo a journal change: the player it was made for (typed by them), or the console / a level-4 operator. */
     private static int undo(CommandSourceStack source, int id) {
+        net.minecraft.server.level.ServerPlayer typed = Mc.typedBy(source);
+        return undo(source, id, ua.zentix.almighty.feed.GmMessages.language(typed));
+    }
+
+    /**
+     * {@code /almighty undo <change>} (a receipt's [Undo]): every reply in the player's language (lead's N7), said once
+     * and only when known (N8: "Undoing" only after the undo started; a second click says plainly it is already undone).
+     */
+    public static int undo(CommandSourceStack source, int id, String lang) {
         GmServer gm = GmServer.of(source.getServer());
         if (gm == null) return 0;
         var meta = gm.journal().describe(id);
         if (meta == null) {
-            source.sendFailure(Component.literal("No change " + id));
+            source.sendFailure(ua.zentix.almighty.policy.Prompts.line("almighty.undo.none", lang, String.valueOf(id)));
             return 0;
         }
         boolean mine = Mc.typedBy(source) instanceof net.minecraft.server.level.ServerPlayer p && meta.has("requester")
                 && p.getUUID().toString().equals(meta.get("requester").getAsString()) && !meta.get("method").getAsString().equals("undo");
         if (!mine && !Mc.has(source, 4)) {
-            source.sendFailure(Component.literal("Change " + id + " was not made for you"));
+            source.sendFailure(ua.zentix.almighty.policy.Prompts.line("almighty.undo.not_yours", lang, String.valueOf(id)));
+            return 0;
+        }
+        if (meta.has("undone_by")) {
+            source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("almighty.undo.already", lang, String.valueOf(id)), false);
+            return 0;
+        }
+        // Still running (it may yet fail): said as such, not as done.
+        if (gm.reverting(id)) {
+            source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("almighty.undo.running", lang, String.valueOf(id)), false);
             return 0;
         }
         // Told when the revert ends (stability audit M3): it can fail after it started (chunk budget, a missing
@@ -320,25 +365,32 @@ public final class AlmightyCommand {
         }).thenCompose(f -> f).whenComplete((started, e) -> source.getServer().execute(() -> {
             Throwable cause = e instanceof java.util.concurrent.CompletionException c && c.getCause() != null ? c.getCause() : e;
             if (cause != null) {
-                source.sendFailure(Component.literal("Change " + id + " was not undone: " + cause.getMessage()));
+                // Two clicks at once: the other one is undoing it.
+                String m = cause.getMessage() == null ? "" : cause.getMessage();
+                if (cause instanceof ua.zentix.almighty.bridge.RpcException r && r.status() == 409 && (m.contains("already undone") || m.contains("being undone already"))) {
+                    String key = m.contains("already undone") ? "almighty.undo.already" : "almighty.undo.running";
+                    source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line(key, lang, String.valueOf(id)), false);
+                    return;
+                }
+                source.sendFailure(ua.zentix.almighty.policy.Prompts.line("almighty.undo.failed", lang, String.valueOf(id), String.valueOf(cause.getMessage())));
                 return;
             }
+            source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("almighty.undo.started", lang, String.valueOf(id)), false);
             // Its pieces run over later ticks: a piece that fails (a timeout) is told when it ends.
             for (com.google.gson.JsonElement j : started.getAsJsonObject().getAsJsonArray("jobs")) {
                 ua.zentix.almighty.work.Job job = gm.jobs().get(j.getAsLong());
                 if (job != null) job.done().thenAccept(d -> source.getServer().execute(() -> {
                     if (job.state() != ua.zentix.almighty.work.Job.State.DONE) {
-                        source.sendFailure(Component.literal("Change " + id + ": part of the undo did not finish (job #" + job.id() + ", "
-                                + job.state().id() + (d.has("error") ? ": " + d.get("error").getAsString() : "") + ")"));
+                        source.sendFailure(ua.zentix.almighty.policy.Prompts.line("almighty.undo.partial", lang, String.valueOf(id),
+                                "#" + job.id() + ", " + job.state().id() + (d.has("error") ? ": " + d.get("error").getAsString() : "")));
                     }
                 }));
             }
         }));
         gm.audit().owner(source.getTextName(), "undo", "change " + id);
-        source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("Undoing change " + id
-                + " (positions changed since are left as they are)"), false);
         return 1;
     }
+
 
     /** A player by name: online, else the server's profile cache (players who joined before). */
     private static com.mojang.authlib.GameProfile profile(CommandSourceStack source, String name) {

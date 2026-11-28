@@ -88,8 +88,18 @@ class ToolsTest {
             for (var e : Tools.list(profile)) {
                 JsonObject t = e.getAsJsonObject();
                 assertTrue(t.getAsJsonObject("inputSchema").getAsJsonObject("properties").has("for"), profile + " " + t.get("name") + " lacks for");
+                assertTrue(t.getAsJsonObject("inputSchema").getAsJsonObject("properties").has("summary"), profile + " " + t.get("name") + " lacks summary");
             }
         }
+    }
+
+    /** Mission almighty-prompts: every tool takes the agent's short summary and passes it through, as for. */
+    @Test
+    void everyToolPassesTheSummary() throws Tools.ToolError {
+        call("command", "{\"commands\":[\"time set day\"],\"for\":\"t1\",\"summary\":\"make it day\"}", "command",
+                "{\"commands\":[\"time set day\"],\"for\":\"t1\",\"summary\":\"make it day\"}");
+        call("build", "{\"undo\":3,\"summary\":\"put it back\"}", "undo", "{\"job\":3,\"summary\":\"put it back\"}");
+        assertThrows(Tools.ToolError.class, () -> route("say", "{\"text\":\"hi\",\"summary\":[1]}"));
     }
 
     @Test

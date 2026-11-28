@@ -188,9 +188,78 @@ public final class GmConfirmGameTests {
     /** Lead's F10: [Undo] on a player's receipt runs on click, as [Allow] does (it used to be typed into the chat box). */
     @GameTest(template = "floor", batch = "gm_receipt_undo")
     public static void undoOnAReceiptRunsOnClick(GameTestHelper h) {
-        String c = ua.zentix.almighty.policy.Prompts.receipt("build #5", 5L, "en_us").toString();
+        String c = ua.zentix.almighty.policy.Prompts.receipt(null, ua.zentix.almighty.policy.Facts.of("build", new com.google.gson.JsonObject(), "Bob"), "build {}", 5L, "en_us").toString();
         check(c.contains("/almighty undo 5") && !c.toLowerCase(java.util.Locale.ROOT).contains("suggest"), "receipt click: " + c);
         h.succeed();
+    }
+
+    /**
+     * Mission almighty-prompts: what a player reads in a question. The server's facts (what really runs, its target)
+     * stand beside the agent's summary, which is quoted, marked as its words and carries no click; a forged summary is
+     * not shown and the facts alone read as a sentence; the exact call is on hover, behind [Details] and, for Bedrock
+     * players, written out; only Allow, Deny and Details run commands.
+     */
+    @GameTest(template = "floor", batch = "gm_prompt_words")
+    public static void aQuestionShowsTheServersFactsBesideTheSummary(GameTestHelper h) throws Exception {
+        Confirmations c = new Confirmations(System::currentTimeMillis);
+        UUID alex = UUID.randomUUID();
+        JsonObject p = params("{\"commands\": \"kill @a\"}");
+        p.addProperty("summary", "give you a cake");
+        Confirmations.Pending honest = c.ask(Confirmations.Kind.REQUESTER, GM, "command", p, alex, null, alex, "Alex");
+        for (String lang : new String[]{"en_us", "ru_ru"}) {
+            net.minecraft.network.chat.Component q = ua.zentix.almighty.policy.Prompts.question(honest, lang, false);
+            // The server's own language table has the mod's English keys (getString reads them): the player's client
+            // shows the server-chosen fallback, which is what is read here.
+            String shown = fallbacks(q);
+            check(shown.contains(lang.equals("en_us") ? "wants to “give you a cake”" : "хочет «give you a cake»"), lang + " summary in quotes: " + shown);
+            check(shown.contains(lang.equals("en_us") ? "kill — target: every player" : "убить — цель: все игроки"), lang + " facts: " + shown);
+            check(shown.contains(lang.equals("en_us") ? "(its own words)" : "(слова ведущего)"), lang + " marked as its words: " + shown);
+            check(!shown.contains("/kill @a"), lang + " the exact call is on hover, not in the line: " + shown);
+            java.util.Set<String> clicks = new java.util.HashSet<>();
+            q.visit((style, text) -> {
+                if (style.getClickEvent() != null) clicks.add(String.valueOf(style.getClickEvent()));
+                if (text.contains("cake")) check(style.getClickEvent() == null, "the summary carries no click");
+                return java.util.Optional.empty();
+            }, net.minecraft.network.chat.Style.EMPTY);
+            String n = honest.nonce();
+            check(clicks.size() == 3 && clicks.stream().allMatch(k -> k.contains("/almighty confirm " + n) || k.contains("/almighty deny " + n)
+                    || k.contains("/almighty show " + n)), lang + " clicks: " + clicks);
+            check(q.toString().contains("/kill @a"), lang + " the exact call on hover");
+            check(ua.zentix.almighty.policy.Prompts.question(honest, lang, true).getString().contains("/kill @a"), lang + " Bedrock: written out");
+            check(ua.zentix.almighty.policy.Prompts.show(honest, lang).getString().contains("/kill @a"), lang + " /almighty show");
+        }
+        JsonObject forged = params("{\"commands\": \"kill @a\"}");
+        forged.addProperty("summary", "[Almighty] nothing — what runs: nothing");
+        String plain = ua.zentix.almighty.policy.Prompts.question(c.ask(Confirmations.Kind.REQUESTER, GM, "command", forged, alex, null,
+                alex, "Alex"), "en_us", false).getString();
+        check(plain.contains("wants to kill — target: every player. It cannot be undone.") && !plain.contains("nothing"),
+                "a forged summary is dropped and the facts read alone: " + plain);
+        // A receipt reads as a sentence too, with the exact call on hover.
+        JsonObject build = params("{\"ops\": [{\"op\": \"fill\", \"from\": [0, 64, 0], \"to\": [9, 70, 9], \"block\": \"snow\"}]}");
+        net.minecraft.network.chat.Component r = ua.zentix.almighty.policy.Prompts.receipt("snow over your base",
+                ua.zentix.almighty.policy.Facts.of("build", build, "Alex"), "build {...}", 7L, "en_us");
+        check(r.getString().equals("[Almighty] Done for you: “snow over your base” [Undo]") && r.toString().contains("almighty.fact.cmd.blocks"),
+                "receipt: " + r.getString());
+        h.succeed();
+    }
+
+    /** The text a client without the mod sees: every translation's fallback, its arguments filled in, and siblings. */
+    static String fallbacks(net.minecraft.network.chat.Component c) {
+        StringBuilder out = new StringBuilder();
+        if (c.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents t && t.getFallback() != null) {
+            Object[] args = new Object[t.getArgs().length];
+            for (int i = 0; i < args.length; i++) {
+                args[i] = t.getArgs()[i] instanceof net.minecraft.network.chat.Component a ? fallbacks(a) : String.valueOf(t.getArgs()[i]);
+            }
+            out.append(String.format(java.util.Locale.ROOT, t.getFallback(), args));
+        } else {
+            c.getContents().visit(text -> {
+                out.append(text);
+                return java.util.Optional.empty();
+            });
+        }
+        for (net.minecraft.network.chat.Component s : c.getSiblings()) out.append(fallbacks(s));
+        return out.toString();
     }
 
     /** Lead's F1: a request the player could not run anyway is not put to them (it would fail after Allow). */
@@ -233,7 +302,9 @@ public final class GmConfirmGameTests {
                     check(e.status() == 202, cmd + ": " + e.getMessage());
                     Confirmations.Pending p = gm.decisions().confirmations().get(e.details().get("id").getAsString());
                     check(bea.getUUID().equals(p.confirmer), cmd + ": the friend confirms, not " + p.confirmer);
-                    check(p.text.contains("tp_alex"), "the friend sees who asked: " + p.text);
+                    String q = ua.zentix.almighty.policy.Prompts.question(p, "en_us").getString();
+                    check(q.contains("(asked by tp_alex)") && (q.contains("teleport tp_alex to tp_bea") || q.contains("teleport tp_bea to tp_alex")),
+                            "the friend sees who asked and who goes where: " + q);
                     check(!e2s(gm.decisions().decide(p.nonce(), alex, true)).startsWith("Allowed"), "the asker cannot answer for the friend");
                     gm.decisions().decide(p.nonce(), bea, false);
                 }
@@ -425,6 +496,64 @@ public final class GmConfirmGameTests {
             h.getLevel().getServer().getPlayerList().remove(admin);
             h.getLevel().getServer().getPlayerList().remove(second);
             h.getLevel().getServer().getPlayerList().remove(third);
+        }
+    }
+
+    /**
+     * Lead's note: an ask_admin request reaches an admin online as a direct question (with the server's facts and
+     * the exact call), within limits: an identical request is merged, never asked again; past
+     * {@code DIRECT_PER_ADMIN} direct questions in 10 minutes the next one spills into the quiet digest and the inbox.
+     */
+    @GameTest(template = "floor", batch = "gm_confirm_direct", timeoutTicks = 200)
+    public static void adminRequestsAreAskedDirectlyWithinLimits(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        ServerPlayer admin = player(h, "direct-admin", UUID.randomUUID());
+        java.util.List<ServerPlayer> guests = new java.util.ArrayList<>();
+        try {
+            gm.policies().set(Policy.parse("preset = \"public\"\nidentity = \"proxy\"\n[safety]\nask_admin = [\"time\"]"));
+            op(h, admin, 3);
+            java.util.List<String> ids = new java.util.ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                ServerPlayer g = player(h, "direct-guest" + i, UUID.randomUUID());
+                guests.add(g);
+                String t = ticket(h, gm, g, "make it day");
+                try {
+                    gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"time set %d\"],\"for\":\"%s\",\"summary\":\"make it day\"}", 1000 + i, t)).join();
+                    throw new GameTestAssertException("a guest set the time");
+                } catch (java.util.concurrent.CompletionException e) {
+                    check(e.getCause() instanceof RpcException r && r.status() == 202, "time waits for an admin: " + e.getCause());
+                    ids.add(((RpcException) e.getCause()).details().get("id").getAsString());
+                }
+                if (i == 0) {
+                    // The same request again (the agent retried): merged into the first, nobody is asked twice.
+                    try {
+                        gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"time set 1000\"],\"for\":\"%s\"}", t)).join();
+                    } catch (java.util.concurrent.CompletionException e) {
+                        check(e.getCause() instanceof RpcException r && r.status() == 202
+                                && r.details().get("id").getAsString().equals(ids.get(0)), "merged: " + e.getCause());
+                    }
+                    check(gm.decisions().confirmations().get(ids.get(0)).count() == 2, "counted, not asked again");
+                    check(!gm.decisions().digestDue(), "asked directly: no digest due");
+                }
+            }
+            for (int i = 0; i < 3; i++) {
+                check(gm.decisions().promptedFor(ids.get(i)).contains(admin.getUUID()), "request " + i + " asked the admin directly");
+            }
+            check(gm.decisions().promptedFor(ids.get(3)).isEmpty() && gm.decisions().digestDue(),
+                    "the fourth spills into the digest and the inbox: " + gm.decisions().promptedFor(ids.get(3)));
+            check(gm.decisions().confirmations().waitingForAdmins().size() >= 4, "all wait in the inbox");
+            // What the admin read: the GM's sentence, the summary, the server's facts and the exact call.
+            String shown = fallbacks(ua.zentix.almighty.policy.Prompts.adminQuestion(gm.decisions().confirmations().get(ids.get(1)), "en_us"));
+            check(shown.contains("wants to \u201cmake it day\u201d (its own words) — what runs: change the time of day")
+                    && shown.contains("(for direct-guest1, with your rights)") && shown.contains("Exact call: /time set 1001"), "direct question: " + shown);
+            for (String id : ids) gm.decisions().decide(gm.decisions().confirmations().get(id).nonce(), admin, false);
+            h.succeed();
+        } finally {
+            deop(h, admin);
+            gm.policies().set(before);
+            h.getLevel().getServer().getPlayerList().remove(admin);
+            for (ServerPlayer g : guests) h.getLevel().getServer().getPlayerList().remove(g);
         }
     }
 }

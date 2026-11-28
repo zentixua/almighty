@@ -210,16 +210,18 @@ public final class GmServer {
             if (method.equals("say")) return;
             // Commands report per command; a receipt only for what actually happened.
             if (ua.zentix.almighty.policy.Decisions.failed(result)) return;
-            Long job = result instanceof JsonObject o && o.has("kind") && o.get("id") instanceof com.google.gson.JsonPrimitive id
-                    && id.isNumber() && o.get("kind").getAsString().equals("build") ? id.getAsLong() : null;
-            String what = method.equals("command") || method.equals("function") ? Confirmations.render(method, params)
-                    : job != null ? "build #" + job : method;
+            // What the player reads: the agent's summary beside the server's own facts; the exact call on hover.
+            String exact = Confirmations.render(method, params);
+            String summary = ua.zentix.almighty.policy.Summary.of(params);
             long recorded = change;
             server.execute(() -> {
                 net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(caller.requester());
                 // [Undo] only for a change that recorded something (a change with no writes is gone by now).
                 Long undoable = recorded > 0 && journal.describe(recorded) != null ? recorded : null;
-                if (p != null) p.sendSystemMessage(ua.zentix.almighty.policy.Prompts.receipt(what, undoable, ua.zentix.almighty.feed.GmMessages.language(p)));
+                if (p == null) return;
+                // @s of a request is the requester (it runs as their own source).
+                var facts = ua.zentix.almighty.policy.Facts.of(method, params, Mc.name(p.getGameProfile()));
+                p.sendSystemMessage(ua.zentix.almighty.policy.Prompts.receipt(summary, facts, exact, undoable, ua.zentix.almighty.feed.GmMessages.language(p)));
             });
         });
     }
@@ -801,7 +803,11 @@ public final class GmServer {
             throws RpcException {
         JsonObject meta = journal.describe(id);
         if (meta == null) throw RpcException.notFound("No change " + id + " (old changes are dropped beyond 4 million positions)");
-        if (meta.has("undone_by")) throw RpcException.conflict("Change " + id + " was already undone by change " + meta.get("undone_by").getAsLong());
+        // Undone by an owner's /almighty undo, outside any call, the change id is 0 (lead's N8): no "by change 0".
+        if (meta.has("undone_by")) {
+            long by = meta.get("undone_by").getAsLong();
+            throw RpcException.conflict("Change " + id + " was already undone" + (by > 0 ? " by change " + by : ""));
+        }
         if (meta.has("open")) {
             throw RpcException.conflict(meta.get("method").getAsString().startsWith("rule ")
                     ? "Change " + id + " still collects its rule's writes (up to a minute after it opened); retry then"
@@ -947,6 +953,11 @@ public final class GmServer {
                 return (JsonElement) o;
             });
         });
+    }
+
+    /** Whether an undo of this change is running now (its pieces are queued or working). */
+    public boolean reverting(long id) {
+        return reverting.contains(id);
     }
 
     public Journal journal() {

@@ -46,13 +46,63 @@ public final class Decisions {
         return confirmations;
     }
 
-    /** From the gate (any thread): requester questions now, admin requests in the next digest. */
+    /**
+     * From the gate (any thread): requester questions now; an admin request goes straight to the admins online who
+     * may decide it, as a direct chat question, within limits (no approval spam): at most {@value #DIRECT_PER_ADMIN}
+     * direct questions per admin every 10 minutes, one per requester (or agent) as Confirmations already limits; merged
+     * identical requests are never asked again. What is over a limit, or finds nobody online, waits in the quiet
+     * digest and {@code /almighty inbox} as before. An admin who joins after a direct question finds it in the inbox.
+     */
     public void prompt(Confirmations.Pending p) {
         server.execute(() -> {
             if (p.kind == Confirmations.Kind.REQUESTER) Prompts.ask(server, p);
-            else news = true;
+            else if (!direct(p)) news = true;
             event(p);
         });
+    }
+
+    static final int DIRECT_PER_ADMIN = 3;
+    static final long DIRECT_WINDOW_MS = 10 * 60_000;
+    private final java.util.Map<UUID, java.util.Deque<Long>> directByAdmin = new java.util.HashMap<>();
+    private final java.util.Map<String, Set<UUID>> prompted = new java.util.LinkedHashMap<>();
+
+    /** The admins a request was put to directly (tests, and the owners' notice). */
+    public Set<UUID> promptedFor(String id) {
+        return prompted.getOrDefault(id, Set.of());
+    }
+
+    /** Whether waiting admin requests are due for the next digest line. */
+    public boolean digestDue() {
+        return news;
+    }
+
+    /** True when every admin online who may decide it got the question directly (server thread). */
+    private boolean direct(Confirmations.Pending p) {
+        long now = System.currentTimeMillis();
+        // One per requester (or agent) every 10 minutes holds already: Confirmations refuses a second admin ask (429).
+        Set<UUID> told = new HashSet<>();
+        boolean all = true;
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            UUID id = player.getUUID();
+            if (id.equals(p.requester) || !mayDecide(id, p)) continue;
+            java.util.Deque<Long> recent = directByAdmin.computeIfAbsent(id, k -> new java.util.ArrayDeque<>());
+            while (!recent.isEmpty() && now - recent.peekFirst() >= DIRECT_WINDOW_MS) recent.pollFirst();
+            if (recent.size() >= DIRECT_PER_ADMIN) {
+                all = false;
+                continue;
+            }
+            recent.addLast(now);
+            told.add(id);
+            player.sendSystemMessage(Prompts.adminQuestion(p, ua.zentix.almighty.feed.GmMessages.language(player)));
+        }
+        if (told.isEmpty()) return false;
+        if (prompted.size() >= Confirmations.MAX) prompted.remove(prompted.keySet().iterator().next());
+        prompted.put(p.id, Set.copyOf(told));
+        return all;
+    }
+
+    private static boolean mayDecide(UUID id, Confirmations.Pending p) {
+        return Identity.verified(id) && Nodes.holds(id, p.node) && (p.node == Node.ENGINE || Nodes.holds(id, Node.APPROVE));
     }
 
     /** {@code /almighty confirm|deny <nonce>}: {@code by} null is the console. Returns the answer for the decider. */
@@ -67,7 +117,8 @@ public final class Decisions {
         // Plan 4.8: an admin's decision is told to the owners online (the owner's own decisions need no notice).
         if (p.kind == Confirmations.Kind.ADMIN) {
             java.util.Set<UUID> owners = this.owners.get();
-            String line = name + (allow ? " allowed: " : " denied: ") + p.text + " (for " + p.requesterName + ")";
+            String line = name + (allow ? " allowed: " : " denied: ") + Prompts.what(p.summary, p.facts, p.text, "en_us", false).getString()
+                    + " (for " + p.requesterName + "; exact call: " + p.text + ")";
             for (UUID o : owners) if (!o.equals(id)) tell(o, line);
         }
         // Lead's F3: the requester who decided hears the translated outcome only; anyone else (an admin, the console)
@@ -75,8 +126,8 @@ public final class Decisions {
         boolean self = id != null && id.equals(p.requester);
         String lang = by == null ? "en_us" : ua.zentix.almighty.feed.GmMessages.language(by);
         if (!allow) {
-            tell(p.requester, "almighty.outcome.not_allowed", p.text);
-            return self ? "" : ua.zentix.almighty.feed.GmMessages.get("almighty.outcome.denied", lang, p.text).getString();
+            tell(p.requester, "almighty.outcome.not_allowed", p);
+            return self ? "" : ua.zentix.almighty.feed.GmMessages.get("almighty.outcome.denied", lang, plain(p, lang)).getString();
         }
         // The exact parameters that were shown. An admin's approval is carried by the running confirmation itself
         // (Pending.decider), never by a ticket in the parameters that could outlive this one call.
@@ -87,9 +138,14 @@ public final class Decisions {
             event(p);
             // Lead's F1 and F3: a command that ran but failed (ok: false) is a failure; a success already got its
             // receipt ("Done for you", with [Undo]), so no second "Done" line.
-            if (e != null || failed(v)) tell(p.requester, "almighty.outcome.failed", p.text);
+            if (e != null || failed(v)) tell(p.requester, "almighty.outcome.failed", p);
         }));
-        return self ? "" : ua.zentix.almighty.feed.GmMessages.get("almighty.outcome.allowed", lang, p.text).getString();
+        return self ? "" : ua.zentix.almighty.feed.GmMessages.get("almighty.outcome.allowed", lang, plain(p, lang)).getString();
+    }
+
+    /** The call as the decider's answer names it: summary and facts in words, the exact call after them. */
+    private static String plain(Confirmations.Pending p, String lang) {
+        return Prompts.what(p.summary, p.facts, p.text, lang, false).getString() + " (" + p.text + ")";
     }
 
     /** Whether a call's result reports a failed command ({@code ok: false} in a command list). */
@@ -121,11 +177,11 @@ public final class Decisions {
         if (p != null) p.sendSystemMessage(Prompts.line(text));
     }
 
-    /** A translated outcome to the requester (English or Russian by their client). */
-    private void tell(UUID player, String key, String arg) {
+    /** A translated outcome to the requester (English or Russian by their client), naming the call as the question did. */
+    private void tell(UUID player, String key, Confirmations.Pending pending) {
         if (player == null) return;
         ServerPlayer p = server.getPlayerList().getPlayer(player);
-        if (p != null) p.sendSystemMessage(Prompts.line(key, ua.zentix.almighty.feed.GmMessages.language(p), arg));
+        if (p != null) p.sendSystemMessage(Prompts.outcome(key, pending, ua.zentix.almighty.feed.GmMessages.language(p)));
     }
 
     private void event(Confirmations.Pending p) {
@@ -137,7 +193,7 @@ public final class Decisions {
         if (tickCount % 20 != 0) return;
         for (Confirmations.Pending p : confirmations.expire(System.currentTimeMillis())) {
             event(p);
-            tell(p.requester, "almighty.outcome.expired", p.text);
+            tell(p.requester, "almighty.outcome.expired", p);
         }
         if (!news || tickCount - lastDigest < DIGEST_TICKS) return;
         List<Confirmations.Pending> waiting = confirmations.waitingForAdmins();
@@ -147,8 +203,8 @@ public final class Decisions {
         Set<UUID> told = new HashSet<>();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             for (Confirmations.Pending p : waiting) {
-                if (Identity.verified(player.getUUID()) && Nodes.holds(player.getUUID(), p.node) && (p.node == Node.ENGINE || Nodes.holds(player.getUUID(), Node.APPROVE)) && told.add(player.getUUID())) {
-                    player.sendSystemMessage(Prompts.digest(waiting));
+                if (mayDecide(player.getUUID(), p) && told.add(player.getUUID())) {
+                    player.sendSystemMessage(Prompts.digest(waiting, ua.zentix.almighty.feed.GmMessages.language(player)));
                 }
             }
         }

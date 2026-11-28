@@ -100,9 +100,18 @@ public final class GmLadderGameTests {
                     "applied at once with its end: " + done);
             check(Nodes.role(bob.getUUID()) == Role.BUILDER, "Bob is a builder: " + Nodes.role(bob.getUUID()));
             // Unasked, the agent may lower it (the owner is told), but a raise waits for the owner.
-            RpcException wait = refused(gm, "role", params("{\"player\":\"role-bob\",\"role\":\"admin\"}"));
-            // 202 waiting for the owner, or 429 when this agent asked within the last 10 minutes (another test did).
-            check(wait.status() == 202 || wait.status() == 429, "an unasked grant waits: " + wait.status() + " " + wait.getMessage());
+            // Its own agent: an agent asks the owner at most once per 10 minutes, and other tests need gm's ask.
+            Caller helper = new Caller(Agents.of(Map.of("role-helper", "h".repeat(32))).get("role-helper"), "test");
+            RpcException wait;
+            try {
+                gm.dispatch().invoke(helper, "role", params("{\"player\":\"role-bob\",\"role\":\"admin\"}")).get(1, java.util.concurrent.TimeUnit.SECONDS);
+                throw new GameTestAssertException("an unasked grant applied at once");
+            } catch (java.util.concurrent.ExecutionException e) {
+                wait = (RpcException) e.getCause();
+            } catch (RpcException e) {
+                wait = e;
+            }
+            check(wait.status() == 202, "an unasked grant waits for the owner: " + wait.status() + " " + wait.getMessage());
             check(Nodes.role(bob.getUUID()) == Role.BUILDER, "nothing granted while waiting");
             gm.dispatch().invoke(GM, "role", params("{\"player\":\"role-bob\",\"role\":\"clear\"}")).get(1, java.util.concurrent.TimeUnit.SECONDS);
             check(Nodes.role(bob.getUUID()) == Role.MEMBER, "cleared: back to the friends role: " + Nodes.role(bob.getUUID()));

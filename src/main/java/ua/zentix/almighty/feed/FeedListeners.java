@@ -72,14 +72,20 @@ public final class FeedListeners {
         add(p, "dimension", d);
     }
 
+    /** A private message between players, /gm or /almighty: never in the feed, nor in a rule's output (plan 4.6). */
+    public static boolean privateCommand(String command) {
+        String root = command.strip().split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
+        if (root.startsWith("/")) root = root.substring(1);
+        return PRIVATE.contains(root);
+    }
+
     /** A command about to run (the loader's command event, before execution). */
     public static void onCommand(ParseResults<CommandSourceStack> parse) {
         // Only commands typed by the player: a GM command as the player (commandAs) is not their command.
         if (!(Mc.typedBy(parse.getContext().getSource()) instanceof ServerPlayer p)) return;
         String command = parse.getReader().getString();
-        String root = command.strip().split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
-        if (root.startsWith("/")) root = root.substring(1);
-        if (PRIVATE.contains(root)) return;
+        if (privateCommand(command)) return;
+        // Player-authored text: each agent reads it only if the player may reach it (Api.heardBy, by trust floor).
         JsonObject d = player(p);
         d.addProperty("command", command);
         d.add("untrusted", Inbox.untrusted("command"));

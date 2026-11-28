@@ -54,6 +54,12 @@ public final class GmConfirmGameTests {
         throw new GameTestAssertException("no /gm event");
     }
 
+    /** Whether the player may run the whole command line (parsed to its end, to a node that executes). */
+    private static boolean runs(com.mojang.brigadier.CommandDispatcher<net.minecraft.commands.CommandSourceStack> dispatcher, String cmd, ServerPlayer p) {
+        var parse = dispatcher.parse(cmd, p.createCommandSourceStack());
+        return parse.getExceptions().isEmpty() && !parse.getReader().canRead() && parse.getContext().getCommand() != null;
+    }
+
     private static void op(GameTestHelper h, ServerPlayer p, int level) {
         Gt.op(h.getLevel().getServer(), p.getGameProfile(), level);
         Nodes.refresh(h.getLevel().getServer());
@@ -112,8 +118,35 @@ public final class GmConfirmGameTests {
             }
             Confirmations.Pending p = gm.decisions().confirmations().get(id);
             check(!e2s(gm.decisions().decide(p.nonce(), null, true)).startsWith("Allowed"), "the console cannot answer for the requester");
-            String answer = gm.decisions().decide(p.nonce(), alex, true);
-            check(answer.startsWith("Allowed"), answer);
+            // Typed by the player as the prompt's [Allow] button does: /almighty is reachable below level 4 (the
+            // sign-in subcommands share the node and must not put their level on it).
+            var server = h.getLevel().getServer();
+            var dispatcher = server.getCommands().getDispatcher();
+            for (String cmd : new String[] {"almighty whoami", "almighty confirm " + p.nonce(), "almighty deny " + p.nonce()}) {
+                check(runs(dispatcher, cmd, alex), "a level-2 player cannot type /" + cmd);
+            }
+            for (String cmd : new String[] {"almighty approve", "almighty connect", "almighty pause"}) {
+                check(!runs(dispatcher, cmd, alex), "a level-2 player can run /" + cmd);
+            }
+            server.getCommands().performPrefixedCommand(alex.createCommandSourceStack(), "almighty confirm " + p.nonce());
+            // A level-4 operator who is not an owner approves sign-ins, but never an app with the owner's rights.
+            op(h, alex, 4);
+            check(runs(dispatcher, "almighty approve 1234 app", alex), "a level-4 operator cannot approve a sign-in");
+            check(!runs(dispatcher, "almighty approve 1234 app owner", alex), "a level-4 operator who is not an owner can approve an owner app");
+            // Not through an owner either: the requirement is about who typed the command, not who it runs as.
+            ServerPlayer realOwner = player(h, "confirm-real-owner", UUID.randomUUID());
+            try {
+                gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\nowners = [\"" + realOwner.getUUID() + "\"]"));
+                op(h, realOwner, 4);
+                check(runs(dispatcher, "almighty approve 1234 app owner", realOwner), "the owner cannot approve their own app");
+                check(!runs(dispatcher, "execute as confirm-real-owner run almighty approve 1234 app owner", alex),
+                        "an operator approves an owner app by running it as the owner");
+                check(!runs(dispatcher, "execute as confirm-real-owner run almighty owner add confirm-bea", alex),
+                        "an operator makes themself owner by running it as the owner");
+            } finally {
+                deop(h, realOwner);
+                server.getPlayerList().remove(realOwner);
+            }
             JsonObject state = gm.decisions().pending("gm", id, 0).join();
             check(state.get("state").getAsString().equals("done"), "ran after confirmation: " + state);
         } finally {
@@ -160,6 +193,7 @@ public final class GmConfirmGameTests {
         ServerPlayer guest = player(h, "confirm-guest", UUID.randomUUID());
         ServerPlayer admin = player(h, "confirm-admin", UUID.randomUUID());
         ServerPlayer second = player(h, "confirm-guest2", UUID.randomUUID());
+        ServerPlayer third = player(h, "confirm-guest3", UUID.randomUUID());
         try {
             gm.policies().set(Policy.parse("preset = \"public\"\nidentity = \"proxy\"\n[safety]\nask_admin = [\"area.prepare\", \"time\"]"));
             op(h, admin, 3);
@@ -195,6 +229,20 @@ public final class GmConfirmGameTests {
             }
             Confirmations.Pending p2 = gm.decisions().confirmations().get(id2);
             check(gm.decisions().decide(p2.nonce(), admin, true).startsWith("Allowed"), "the admin approves the command");
+            // The console denies a third one by typing /almighty deny <id> (the same node as sign-in codes' deny).
+            String t3 = ticket(h, gm, third, "load the other arena");
+            String id3;
+            try {
+                gm.dispatch().invoke(GM, "area.prepare", params("{\"from\":[64,64],\"to\":[65,65],\"for\":\"%s\"}", t3));
+                throw new GameTestAssertException("a guest prepared an area");
+            } catch (RpcException e) {
+                check(e.status() == 202, "third request waits for an admin: " + e.status() + " " + e.getMessage());
+                id3 = e.details().get("id").getAsString();
+            }
+            Confirmations.Pending p3 = gm.decisions().confirmations().get(id3);
+            var server = h.getLevel().getServer();
+            server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), "almighty deny " + p3.nonce());
+            check(p3.describe().get("state").getAsString().equals("denied"), "the console's typed deny: " + p3.describe());
             h.succeedWhen(() -> {
                 String state = p.describe().get("state").getAsString();
                 check(state.equals("done"), "ran with the admin's rights: " + p.describe());
@@ -208,6 +256,7 @@ public final class GmConfirmGameTests {
             h.getLevel().getServer().getPlayerList().remove(guest);
             h.getLevel().getServer().getPlayerList().remove(admin);
             h.getLevel().getServer().getPlayerList().remove(second);
+            h.getLevel().getServer().getPlayerList().remove(third);
         }
     }
 }

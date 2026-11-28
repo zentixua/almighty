@@ -65,6 +65,23 @@ class ToolsTest {
         }
     }
 
+    /** Plan 4.13: every tool takes the player's ticket, and it reaches the bridge call (so the gate acts as that player). */
+    @Test
+    void everyToolPassesThePlayersTicket() throws Tools.ToolError {
+        call("say", "{\"text\":\"hi\",\"to\":[\"Alex\"],\"for\":\"t1\"}", "say", "{\"text\":\"hi\",\"to\":[\"Alex\"],\"for\":\"t1\"}");
+        call("build", "{\"undo\":3,\"for\":\"t1\"}", "undo", "{\"job\":3,\"for\":\"t1\"}");
+        call("command", "{\"commands\":[\"time set day\"],\"for\":\"t1\"}", "command", "{\"commands\":[\"time set day\"],\"for\":\"t1\"}");
+        call("call", "{\"method\":\"give\",\"params\":{\"item\":\"bread\"},\"for\":\"t1\"}", "give", "{\"item\":\"bread\",\"for\":\"t1\"}");
+        call("call", "{\"method\":\"give\",\"params\":{\"for\":\"t2\"},\"for\":\"t1\"}", "give", "{\"for\":\"t2\"}");
+        assertThrows(Tools.ToolError.class, () -> route("say", "{\"text\":\"hi\",\"for\":5}"));
+        for (Profile profile : Profile.values()) {
+            for (var e : Tools.list(profile)) {
+                JsonObject t = e.getAsJsonObject();
+                assertTrue(t.getAsJsonObject("inputSchema").getAsJsonObject("properties").has("for"), profile + " " + t.get("name") + " lacks for");
+            }
+        }
+    }
+
     @Test
     void definitionsCoverTheFourteenToolsWithHints() {
         assertEquals(Set.of("status", "entities", "command", "say", "script", "rule", "events", "view", "build", "area", "job", "bot", "notes", "call"),

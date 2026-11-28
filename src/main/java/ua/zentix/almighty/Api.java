@@ -93,8 +93,17 @@ public final class Api {
                 return s;
             });
         });
-        // World notes are unconfirmed until the gate knows when an agent acts with the owner's authority.
-        m.put("notes", a -> Knowledge.notes(gm, a, new Notes.Author(a.caller().name(), null, false)));
+        // Provenance set by the server (plan 5.4): the requester of the call, and confirmed when the owner asked
+        // (an in-process call, or a request whose player is an owner), the same origin rule as policy edits.
+        m.put("notes", a -> {
+            java.util.UUID requester = a.caller().requester();
+            boolean confirmed = a.caller().agent() == null;
+            if (!confirmed && requester != null) {
+                ua.zentix.almighty.policy.Gate.Rights r = gm.gate().rights(a.caller(), a.raw());
+                confirmed = r.ticket() != null && r.effective() == ua.zentix.almighty.policy.Role.OWNER;
+            }
+            return Knowledge.notes(gm, a, new Notes.Author(a.caller().name(), requester == null ? null : requester.toString(), confirmed));
+        });
         m.put("players", a -> gm.onMain(() -> Observe.players(server)));
         m.put("player", a -> gm.onMain(() -> Observe.player(server, a)));
         m.put("entities", a -> gm.onMain(() -> Observe.entities(server, a)));
@@ -234,7 +243,8 @@ public final class Api {
         m.put("bot", a -> {
             String name = a.string("name");
             long after = a.longValue("after", 0, 0, Long.MAX_VALUE);
-            return gm.onMain(() -> gm.bots().get(name).describe(after));
+            java.util.function.Predicate<java.util.UUID> heard = heardBy(gm, a.caller());
+            return gm.onMain(() -> gm.bots().get(name).describe(after, heard));
         });
         m.put("bot.spawn", a -> {
             Bots.Spec spec = Bots.Spec.parse(a);
@@ -339,8 +349,11 @@ public final class Api {
             boolean mine = a.bool("mine", false);
             String me = a.caller().agent() == null ? null : a.caller().agent().name();
             try {
-                JsonObject page = gm.feed().read(after, limit, wait * 1000L, e -> !mine || me == null
-                        || !e.has("agent") || e.get("agent").getAsString().equals(me));
+                // Player-authored text only from players who may reach this agent (its trust floor, plan 4.2).
+                java.util.function.Predicate<java.util.UUID> heard = heardBy(gm, a.caller());
+                JsonObject page = gm.feed().read(after, limit, wait * 1000L, e -> (!mine || me == null
+                        || !e.has("agent") || e.get("agent").getAsString().equals(me))
+                        && (!e.has("untrusted") || !e.has("uuid") || heard.test(java.util.UUID.fromString(e.get("uuid").getAsString()))));
                 if (a.caller().agent() != null) a.caller().agent().read(page.get("next").getAsLong());
                 return CompletableFuture.completedFuture(page);
             } catch (InterruptedException e) {
@@ -349,6 +362,16 @@ public final class Api {
             }
         });
         return m;
+    }
+
+    /**
+     * Whose player-authored text an agent may read: players who hold every right it has unasked (its trust floor;
+     * {@link ua.zentix.almighty.policy.Nodes#covers}). In-process callers read everything.
+     */
+    static java.util.function.Predicate<java.util.UUID> heardBy(GmServer gm, ua.zentix.almighty.bridge.Caller caller) {
+        if (caller.agent() == null) return id -> true;
+        ua.zentix.almighty.policy.Role floor = gm.policies().current().floor(caller.agent().name());
+        return id -> ua.zentix.almighty.policy.Nodes.covers(id, floor);
     }
 
     /** The same rule creator: the same player, or the same agent unasked (the owner's rules are nobody's below admin). */

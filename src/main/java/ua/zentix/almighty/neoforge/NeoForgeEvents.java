@@ -18,6 +18,11 @@ import java.util.function.Consumer;
 
 /** {@link GameEvents} over {@link NeoForge#EVENT_BUS} and FML scan data ({@link EventTypes}). */
 final class NeoForgeEvents implements GameEvents {
+    @Override
+    public String command(Object event) {
+        return event instanceof net.neoforged.neoforge.event.CommandEvent c ? c.getParseResults().getReader().getString() : null;
+    }
+
     private final IEventBus bus = NeoForge.EVENT_BUS;
 
     @Override

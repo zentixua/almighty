@@ -56,6 +56,19 @@ they ask for still run at their vanilla operator level.
 A request from a player is different: the agent attaches the ticket of that player's message, and the call runs with
 that player's rights. A ticket only narrows: it never gives more than the agent's ceiling.
 
+### Who an agent hears
+
+An agent hears a player only if that player holds every right the agent has unasked: each capability of its floor
+and its command level. So acting on what it reads never gives anyone more than they may do themselves.
+
+- On `private` an agent's floor is its ceiling, so only owners reach an owner-ceiling agent.
+- On `friends` verified players (members and up) reach it; unverified players do not.
+- On `public` everyone reaches it.
+
+Below that, `/gm` is answered by the server: "The game master here takes requests only from players trusted with
+what it can do." Their chat lines, typed commands and whispers to its bots stay out of what that agent reads. A GM
+bot's own chat is always heard.
+
 ## Agents: ceiling and floor
 
 ```toml
@@ -76,8 +89,8 @@ floor = "builder"
 `/almighty approve <code> <name> owner` adds `ceiling = "owner"` for that app. On a friends' or public server the app
 still acts unasked as a member or a guest, because player text can reach it through the event feed. When you ask in
 game with `/gm`, your request carries your owner rights. To give the app your rights for everything, add
-`floor = "owner"` under its `[agents.<name>]` and run `/almighty reload`; do that only for an app you watch, since
-players' chat can then lead it to act with your rights.
+`floor = "owner"` under its `[agents.<name>]` and run `/almighty reload`; the app then hears only owners (see
+[Who an agent hears](#who-an-agent-hears)).
 
 ## Capabilities
 

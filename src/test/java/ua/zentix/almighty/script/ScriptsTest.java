@@ -81,6 +81,9 @@ class ScriptsTest {
                     Thread.currentThread().interrupt();
                 }
             };
+            // Linked once first: a script's first run links Groovy calls (5-80 ms), which under load alone could
+            // exceed the nested run's own 50 ms deadline; this checks the deadline, not linking speed.
+            assertTrue(Scripts.run(inner, Map.of()).ok());
             Supplier<Scripts.Result> nested = () -> Scripts.run(inner, Map.of());
             Scripts.Result result = Scripts.run(outer, Map.of("pause", pause, "nested", nested));
             assertTrue(result.ok(), result.message());

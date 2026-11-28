@@ -30,13 +30,17 @@ public final class SignInCommand {
     private SignInCommand() {}
 
     public static void register(com.mojang.brigadier.CommandDispatcher<CommandSourceStack> dispatcher) {
-        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("almighty").requires(s -> Mc.has(s, 4));
-        root.then(Commands.literal("approve").executes(c -> waiting(c.getSource()))
+        // No requirement on the root: Brigadier keeps the first registration's requirement when it merges the
+        // almighty node, and AlmightyCommand's subcommands (confirm, whoami …) are for every player. Each
+        // subcommand here carries its own. "deny <code>" is AlmightyCommand's deny node (codes are 4 digits).
+        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("almighty");
+        root.then(Commands.literal("approve").requires(s -> Mc.has(s, 4)).executes(c -> waiting(c.getSource()))
                 .then(Commands.argument("code", StringArgumentType.word()).executes(c -> approve(c, null, false))
                         .then(Commands.argument("name", StringArgumentType.word()).executes(c -> approve(c, StringArgumentType.getString(c, "name"), false))
-                                .then(Commands.literal("owner").executes(c -> approve(c, StringArgumentType.getString(c, "name"), true))))));
-        root.then(Commands.literal("deny").then(Commands.argument("code", StringArgumentType.word()).executes(SignInCommand::deny)));
-        root.then(Commands.literal("connect").executes(c -> connect(c.getSource())));
+                                // An app with the owner's rights: only an owner (or the console) grants it (plan 4.4).
+                                .then(Commands.literal("owner").requires(ua.zentix.almighty.command.AlmightyCommand::isTrueOwner)
+                                        .executes(c -> approve(c, StringArgumentType.getString(c, "name"), true))))));
+        root.then(Commands.literal("connect").requires(s -> Mc.has(s, 4)).executes(c -> connect(c.getSource())));
         dispatcher.register(root);
     }
 
@@ -95,11 +99,16 @@ public final class SignInCommand {
         }
     }
 
-    private static int deny(CommandContext<CommandSourceStack> c) {
-        CommandSourceStack source = c.getSource();
+    /** A sign-in code as the login page shows it (4 digits); a confirmation nonce never looks like one. */
+    public static boolean isCode(String s) {
+        return s.length() == 4 && s.chars().allMatch(ch -> ch >= '0' && ch <= '9');
+    }
+
+    /** {@code /almighty deny <code>} (level 4; routed here by AlmightyCommand's deny node). */
+    public static int deny(CommandSourceStack source, String code) {
         Mcp mcp = mcp(source);
         if (mcp == null) return 0;
-        if (!mcp.signIn().deny(StringArgumentType.getString(c, "code"))) {
+        if (!mcp.signIn().deny(code)) {
             source.sendFailure(Component.literal("No sign-in is waiting with that code"));
             return 0;
         }

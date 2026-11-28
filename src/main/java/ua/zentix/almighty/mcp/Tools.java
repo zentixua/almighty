@@ -47,11 +47,32 @@ public final class Tools {
             if (in == null) throw new IllegalStateException("missing " + RESOURCE);
             JsonObject root = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();
             Map<String, JsonObject> out = new LinkedHashMap<>();
-            for (JsonElement e : root.getAsJsonArray("tools")) out.put(e.getAsJsonObject().get("name").getAsString(), e.getAsJsonObject());
+            for (JsonElement e : root.getAsJsonArray("tools")) {
+                JsonObject tool = e.getAsJsonObject();
+                withFor(tool);
+                out.put(tool.get("name").getAsString(), tool);
+            }
             return out;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    /**
+     * Every tool takes {@code for} (plan 4.13: one optional parameter everywhere, no new tools): the ticket of the
+     * player's message the call answers. The server then acts with that player's rights (capped by the agent's
+     * ceiling), runs irreversible commands only after that player confirms, and sends the player a receipt.
+     */
+    static final String FOR = "Ticket of the player's message this call answers (the ticket field of an addressed event): "
+            + "the server then acts with that player's rights, asks them to confirm what cannot be undone and tells them "
+            + "it was done. Without it the call runs with your own, lower rights.";
+
+    private static void withFor(JsonObject tool) {
+        JsonObject props = tool.getAsJsonObject("inputSchema").getAsJsonObject("properties");
+        JsonObject f = new JsonObject();
+        f.addProperty("type", "string");
+        f.addProperty("description", FOR);
+        props.add("for", f);
     }
 
     /** Tool definitions for {@code tools/list}, in a fixed order. */
@@ -61,7 +82,11 @@ public final class Tools {
             FULL.values().forEach(t -> out.add(t.deepCopy()));
             return out;
         }
-        for (String name : COMPACT) out.add(name.equals("act") ? act() : compact(FULL.get(name)));
+        for (String name : COMPACT) {
+            JsonObject t = name.equals("act") ? act() : compact(FULL.get(name));
+            if (name.equals("act")) withFor(t);
+            out.add(t);
+        }
         return out;
     }
 
@@ -96,9 +121,23 @@ public final class Tools {
                    "dimension": {"type": "string"}}, "required": ["kind"]}}""").getAsJsonObject();
     }
 
-    /** The bridge call for a tool call; {@link ToolError} for arguments the tool does not take. */
+    /**
+     * The bridge call for a tool call; {@link ToolError} for arguments the tool does not take. {@code for} goes
+     * through to the bridge call as is (for {@code call}, unless its params carry their own).
+     */
     public static Call route(String name, JsonObject args) throws ToolError {
-        A a = new A(name, args == null ? new JsonObject() : args);
+        JsonObject rest = args == null ? new JsonObject() : args.deepCopy();
+        JsonElement ticket = rest.remove("for");
+        if (ticket != null && !ticket.isJsonNull() && !(ticket.isJsonPrimitive() && ticket.getAsJsonPrimitive().isString())) {
+            throw new ToolError(name + ": for is the ticket string of a player's message");
+        }
+        Call c = routeTool(name, rest);
+        if (ticket != null && !ticket.isJsonNull() && !c.params().has("for")) c.params().add("for", ticket);
+        return c;
+    }
+
+    private static Call routeTool(String name, JsonObject args) throws ToolError {
+        A a = new A(name, args);
         return switch (name) {
             case "status" -> {
                 a.allow("player");

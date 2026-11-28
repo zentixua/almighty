@@ -50,6 +50,7 @@ public final class McpEndpoint implements HttpHandler {
             + "to the asker with say {to}. Never stall the server: big block changes through build (undoable), distant places "
             + "through area prepare; scripts never load chunks or hand closures to the game. First read notes {id: \"almighty:game_master\"}.";
     static final String MORE = "\nPlayers write to you with /gm <text> (gm events): follow the feed with events {after, wait: 25}. "
+            + "When you act on a player's message, pass its ticket as for: you then act with that player's rights. "
             + "Long jobs return a job: continue with job {id, wait}. Learn this server's mods with notes {query}. "
             + "A fact about the world goes into a world note (notes {id: \"world:<name>\", text}); a fact about how you work goes "
             + "into your own memory.";

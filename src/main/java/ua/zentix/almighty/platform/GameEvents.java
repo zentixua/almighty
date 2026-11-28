@@ -56,6 +56,11 @@ public interface GameEvents {
     /** Whether a value is an event of this bus (scripts and the feed turn it into its properties). */
     boolean isEvent(Object value);
 
+    /** The command line of a command event (a player's or the server's), or null for any other event. */
+    default String command(Object event) {
+        return null;
+    }
+
     /**
      * Properties an event has beyond its getters (Fabric: the callback's arguments by name, so a tick rule sees
      * {@code server} as on NeoForge); the feed and declarative rules read them as fields, scripts as properties.

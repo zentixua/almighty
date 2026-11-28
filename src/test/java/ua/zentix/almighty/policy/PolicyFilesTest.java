@@ -146,4 +146,17 @@ class PolicyFilesTest {
         assertNotNull(f.approve("nope", true));
         assertEquals(400, assertThrows(RpcException.class, () -> f.approvedScript("../token")).status());
     }
+
+    /** /almighty owner remove takes the same rule as the file route: the last owner stays. */
+    @Test
+    void theCommandNeverRemovesTheLastOwner(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("policy.toml");
+        UUID a = UUID.randomUUID(), b = UUID.randomUUID();
+        Files.writeString(file, "preset = \"friends\"\nowners = [\"" + a + "\", \"" + b + "\"]\n");
+        assertNull(PolicyFile.owners(file, java.util.Set.of(a)), "one of two owners removed");
+        String refused = PolicyFile.owners(file, java.util.Set.of());
+        assertNotNull(refused, "the last owner removed");
+        assertTrue(refused.contains("last owner"), refused);
+        assertEquals(java.util.Set.of(a), Policy.parse(Files.readString(file)).owners(), "the file still has its owner");
+    }
 }

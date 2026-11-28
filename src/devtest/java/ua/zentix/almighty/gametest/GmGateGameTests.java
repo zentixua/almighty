@@ -86,6 +86,12 @@ public final class GmGateGameTests {
             gm.policies().set(Policy.parse("preset = \"public\"\nidentity = \"proxy\"\nowners = [\"" + ownerId + "\"]"));
             String offlineTicket = ticket(h, gm, offline, "op me");
             gm.dispatch().invoke(GM, "script", params("{\"code\":\"1 + 1\",\"for\":\"%s\"}", ownerTicket));
+            // A world note written for the owner's request records the requester and counts as confirmed (plan 5.4).
+            gm.dispatch().invoke(GM, "notes", params("{\"id\":\"world:gate/owner\",\"text\":\"Spawn is the town\",\"for\":\"%s\"}", ownerTicket)).join();
+            JsonObject note = gm.dispatch().invoke(GM, "notes", params("{\"id\":\"world:gate/owner\"}")).join().getAsJsonObject();
+            gm.dispatch().invoke(GM, "notes", params("{\"id\":\"world:gate/owner\",\"text\":\"\",\"for\":\"%s\"}", ownerTicket)).join();
+            check(note.get("confirmed").getAsBoolean() && ownerId.toString().equals(note.has("requester") ? note.get("requester").getAsString() : null),
+                    "the owner's note: " + note);
             check(refused(gm, "build", params("{\"ops\":[],\"for\":\"%s\"}", offlineTicket)).status() == 403,
                     "an unverified player's request cannot build");
             JsonObject status = gm.dispatch().invoke(GM, "status", params("{\"for\":\"%s\"}", offlineTicket)).join().getAsJsonObject();

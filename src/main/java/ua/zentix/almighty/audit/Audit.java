@@ -79,6 +79,7 @@ public final class Audit {
         e.addProperty("n", seq.incrementAndGet());
         e.addProperty("time", Instant.now().toString());
         e.addProperty("agent", caller.name());
+        if (caller.requester() != null) e.addProperty("requester", caller.requester().toString());
         e.addProperty("address", caller.address());
         e.addProperty("method", method);
         e.addProperty("params", paramsText);

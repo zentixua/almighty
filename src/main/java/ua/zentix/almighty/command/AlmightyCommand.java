@@ -14,6 +14,7 @@ import ua.zentix.almighty.bridge.Agent;
 import ua.zentix.almighty.bridge.Agents;
 import ua.zentix.almighty.bridge.Bridge;
 import ua.zentix.almighty.platform.Mc;
+import ua.zentix.almighty.mcp.signin.SignInCommand;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -22,7 +23,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Owner command {@code /almighty} (permission level 4: the console and level-4 operators): agents and their tokens.
+ * Command {@code /almighty}: each subcommand has its own requirement. Owner subcommands need permission level 4 (the
+ * console and level-4 operators; agents, tokens, scripts and owners only a true owner); confirm, deny, whoami and inbox are for every
+ * player, role for admins. Agents and their tokens.
  * Tokens are never printed: a command names the file that holds one. Also the red button ({@code pause},
  * {@code resume}) and the audit ({@code log}). Later steps add {@code role}, {@code confirm}, {@code undo}.
  */
@@ -102,10 +105,19 @@ public final class AlmightyCommand {
      * policy.toml. An operator who is not an owner is an admin on the ladder and cannot make themselves owner.
      */
     private static LiteralArgumentBuilder<CommandSourceStack> trueOwner(String name) {
-        return Commands.literal(name).requires(s -> Mc.has(s, 4) && (!(s.getEntity() instanceof net.minecraft.server.level.ServerPlayer p)
-                ? s.getEntity() == null && (s.source == s.getServer() || s.source instanceof net.minecraft.server.rcon.RconConsoleSource)
-                : ua.zentix.almighty.policy.Identity.verified(p.getUUID()) && ua.zentix.almighty.policy.Nodes.role(p.getUUID())
-                        == ua.zentix.almighty.policy.Role.OWNER));
+        return Commands.literal(name).requires(AlmightyCommand::isTrueOwner);
+    }
+
+    /** The console, or a verified owner from policy.toml (see {@link #trueOwner}). */
+    public static boolean isTrueOwner(CommandSourceStack s) {
+        if (!Mc.has(s, 4)) return false;
+        // Who typed it, not who it runs as: "/execute as <owner> run almighty …" by another operator is that operator's.
+        net.minecraft.server.level.ServerPlayer typist = Mc.typedBy(s);
+        if (typist != null) {
+            return ua.zentix.almighty.policy.Identity.verified(typist.getUUID())
+                    && ua.zentix.almighty.policy.Nodes.role(typist.getUUID()) == ua.zentix.almighty.policy.Role.OWNER;
+        }
+        return s.getEntity() == null && (s.source == s.getServer() || s.source instanceof net.minecraft.server.rcon.RconConsoleSource);
     }
 
     private static Bridge bridge(CommandSourceStack source) {
@@ -190,7 +202,21 @@ public final class AlmightyCommand {
     private static int log(CommandSourceStack source, String who, int count) {
         GmServer gm = GmServer.of(source.getServer());
         if (gm == null) return 0;
-        var entries = gm.audit().recent(count, e -> who == null || e.get("agent").getAsString().equals(who));
+        // An agent's name, or a player's (the calls made for their requests).
+        java.util.UUID player = null;
+        if (who != null) {
+            var online = source.getServer().getPlayerList().getPlayerByName(who);
+            if (online != null) {
+                player = online.getUUID();
+            } else if (gm.audit().recent(1, e -> e.get("agent").getAsString().equals(who)).isEmpty()) {
+                // Not an agent with entries: an offline player (the profile cache may ask Mojang on a miss).
+                var profile = Mc.cachedProfile(source.getServer(), who);
+                if (profile != null) player = Mc.id(profile);
+            }
+        }
+        String requester = player == null ? null : player.toString();
+        var entries = gm.audit().recent(count, e -> who == null || e.get("agent").getAsString().equals(who)
+                || (requester != null && e.has("requester") && e.get("requester").getAsString().equals(requester)));
         StringBuilder out = new StringBuilder("Almighty log (" + entries.size() + "):");
         for (var el : entries) {
             var e = el.getAsJsonObject();
@@ -238,6 +264,8 @@ public final class AlmightyCommand {
             source.sendFailure(Component.literal("Only a player or the console can answer"));
             return 0;
         }
+        // One deny node for both: a sign-in code is 4 digits, a confirmation nonce 24 hex characters.
+        if (!allow && SignInCommand.isCode(nonce) && Mc.has(source, 4)) return SignInCommand.deny(source, nonce);
         String answer = gm.decisions().decide(nonce, by, allow);
         gm.audit().owner(source.getTextName(), allow ? "confirm" : "deny", answer);
         source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line(answer), false);
@@ -356,6 +384,7 @@ public final class AlmightyCommand {
         java.util.Set<java.util.UUID> owners = new java.util.LinkedHashSet<>(gm.policies().current().owners());
         if (add) owners.add(Mc.id(profile));
         else owners.remove(Mc.id(profile));
+        // PolicyFile.owners refuses to remove the last owner, as the file route does.
         try {
             String why = ua.zentix.almighty.policy.PolicyFile.owners(gm.policies().file(), owners);
             if (why == null) why = gm.policies().reload();

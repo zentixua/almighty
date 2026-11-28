@@ -317,7 +317,7 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 # the game master to change it (when you, the owner, ask, it applies at once). A file with a mistake is
                 # refused with the exact error, and the previous policy stays.
 
-                # private: only owners talk to the agents; they may do everything their ceiling allows (as before 0.5).
+                # private: only owners talk to the agents; they may do everything their ceiling allows.
                 # friends: anyone's text may reach the agents; unasked, they act as a member would.
                 # public:  unasked, the agents act as a guest would; players' requests run with the player's rights.
                 preset = "%s"

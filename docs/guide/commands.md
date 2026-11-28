@@ -47,7 +47,7 @@ These need the console, or a verified owner from `policy.toml` who is also a lev
 
 | Command | What it does |
 |---|---|
-| `/almighty approve <code> [<name>]` | Approve the sign-in showing that code, optionally under a name of your choice, with admin as the most the app may do. |
+| `/almighty approve <code> [<name>]` | Approve the sign-in showing that code, optionally under a name of your choice. On a new server (no owner and no owner's app yet) the app gets your rights and players' `/gm`; after that, admin is the most the app may do. |
 | `/almighty owner add <player>`, `/almighty owner remove <player>` | Edit `owners` in `policy.toml`. The player must have joined once. The last owner cannot be removed. |
 | `/almighty approve <code> <name> owner` | Approve a sign-in as your own app: the app gets your rights as its ceiling ([permissions](permissions.md#your-own-app)). |
 | `/almighty approve <code> <name> owner <player>` | Console only: the same, and that player (who must have joined once) becomes an owner. |

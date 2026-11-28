@@ -48,44 +48,44 @@ panel, see [Hosting](hosting.md).
 
 ## 3. Approve the sign-in with its code
 
-The first time the agent calls the server, your app opens a sign-in page in the browser. It shows a four-digit code
-and the app's name. Join the server as a level-4 operator and type in chat:
+The first time the agent calls the server, your app opens a sign-in page in the browser. It shows a four-digit code,
+the app's name and the command to type. Join the server as a level-4 operator and type it in chat:
 
 ```
-/almighty approve 4821 claude-code owner
+/almighty approve 4821
 ```
 
-with the code from the page, a name for the app, and `owner` if it is your own app on your own computer. The page
-returns to your app, and the agent is connected. Nobody copies a token or edits a file, and only someone who sees the
-page and can type on the server can approve it.
+The page returns to your app, and the agent is connected. Nobody copies a token or edits a file, and only someone who
+sees the page and can type on the server can approve it.
 
-On a server whose `policy.toml` lists no owner yet, the first level-4 operator who approves a sign-in in game becomes
-its owner: their UUID is written to `owners`. That player must be verified ([verified
-players](permissions.md#verified-players)); on an offline-mode server with the default `identity` nobody is, so
-approve from the console instead, naming yourself as the owner:
+On a new server, one whose `policy.toml` lists no owner and no app of the owner's yet, this one command sets
+everything up: you become the server's owner (your UUID is written to `owners`), and the app becomes your own, with
+your rights as the most it may do (`[agents.<name>] ceiling = "owner"` in `policy.toml`). Players' `/gm` messages and
+chat lines addressed to the game master then go to it while it runs, unless the agent named in `feed.default_agent`
+(`gm` by default) is running too. The server's reply says so. If the app was not yours, end it with
+`/almighty agent remove <name>`.
 
-```
-/almighty approve 4821 claude-code owner <your player name>
-```
+To become the owner in game you must be verified ([verified players](permissions.md#verified-players)). On an
+offline-mode server with the default `identity` nobody is, so type the same command in the server console instead.
+The app still becomes the owner's own; then make yourself the owner with `/almighty owner add <your player name>`
+(you must have joined the server once), and behind Velocity set `identity = "proxy"` so your requests in game count
+as an owner's. Once the server has an owner, only the console and owners who are also level-4 operators approve
+sign-ins.
 
-You must have joined the server once for that. The app then gets your rights, but your own requests in game carry
-owner rights only while you count as verified: behind Velocity set `identity = "proxy"`. Once the server has an
-owner, only the console and owners who are also level-4 operators approve sign-ins.
+Later approvals give an app less unless you say otherwise:
 
 | You type | The app gets |
 |---|---|
-| `/almighty approve <code>` | A name made from the app's own name, with admin as the most it may do: no script code of its own (only scripts you approved), and commands only up to operator level 3 |
+| `/almighty approve <code>` | On a new server: your rights, as above. After that: a name made from the app's own name, with admin as the most it may do: no script code of its own (only scripts you approved), and commands only up to operator level 3 |
 | `/almighty approve <code> <name>` | The same, under the name you chose |
-| `/almighty approve <code> <name> owner` | Your rights as the most it may do: `[agents.<name>] ceiling = "owner"` is added to `policy.toml` |
+| `/almighty approve <code> <name> owner` | Your rights as the most it may do: `[agents.<name>] ceiling = "owner"` is added to `policy.toml`. Use it for a second app of your own |
+| `/almighty approve <code> <name> owner <player>` | Console only: the same, and that player (who must have joined once) becomes an owner |
 
 What an agent does unasked is limited further by the preset: on a friends' server it acts as a member, so it can
 look, talk, build and drive bots, but runs commands only as an ordinary player could. A request you send in game with
 `/gm <text>` carries your own rights, and as an owner you can change the policy by asking the game master. To give
 your own app your rights for everything it does, see [Your own app](permissions.md#your-own-app).
-
-Players' `/gm` messages and chat lines addressed to the game master go to your own app (one approved with `owner`)
-while it runs, unless the agent named in `feed.default_agent` (`gm` by default) is running too. `/almighty whoami`
-shows your UUID, whether it is verified, and your role.
+`/almighty whoami` shows your UUID, whether it is verified, and your role.
 
 Each app you approve becomes its own agent: `/almighty agents` lists them with their last call, and
 `/almighty agent remove <name>` ends one.

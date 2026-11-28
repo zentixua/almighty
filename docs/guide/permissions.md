@@ -98,7 +98,8 @@ floor = "builder"
 
 ### Your own app
 
-`/almighty approve <code> <name> owner` adds `ceiling = "owner"` for that app. On a friends' or public server the app
+`/almighty approve <code> <name> owner` adds `ceiling = "owner"` for that app; on a new server the first app gets it
+from the plain `/almighty approve <code>`. On a friends' or public server the app
 still acts unasked as a member or a guest, because player text can reach it through the event feed. When you ask in
 game with `/gm`, your request carries your owner rights. To give the app your rights for everything, add
 `floor = "owner"` under its `[agents.<name>]` and run `/almighty reload`; the app then hears only owners (see
@@ -278,5 +279,5 @@ notes in `config/almighty/notes/` (any agent reads the notes):
 Every write is checked first; the previous file goes to `config/almighty/policy.history/` (50 kept), and
 `/almighty policy undo` puts it back. Owner commands and hand edits keep no
 history, and an undo discards them too. Raising an agent to an owner ceiling is done only in the file or with
-`/almighty approve <code> <name> owner`, which only the console and owners from `policy.toml` who are also level-4
+`/almighty approve <code> <name> owner` (or the first plain approval on a new server), which only the console and owners from `policy.toml` who are also level-4
 operators can type (on a server without an owner, the verified level-4 operator who types it becomes the owner).

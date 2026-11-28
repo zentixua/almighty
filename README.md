@@ -66,9 +66,9 @@ plus notes that mods, datapacks and you leave for it.
    `Almighty ready - tell your AI agent: "connect to my Minecraft server at http://127.0.0.1:25650/mcp"`.
 2. Tell your agent exactly that, on the same machine as the server. It adds the server to its own settings.
 3. The agent opens a sign-in page with a four-digit code. Join the server as a verified level-4 operator and type
-   `/almighty approve <code> <name> owner` (`owner` because it is your own app). On a server without an owner, the
-   first level-4 operator who approves a sign-in becomes its owner. From the console instead:
-   `/almighty approve <code> <name> owner <your player name>` (you must have joined the server once).
+   the command the page shows, `/almighty approve <code>`. On a new server this one command makes you its owner and
+   the app your own: it gets your rights, and players' `/gm` reaches it. You can type the same command in the
+   console instead; then make yourself the owner with `/almighty owner add <your player name>`.
 
 Then ask it something: "show me a map of spawn", "who is online", "what mods does this server have". The full
 walkthrough, other machines and other apps: [Getting started](docs/guide/getting-started.md).

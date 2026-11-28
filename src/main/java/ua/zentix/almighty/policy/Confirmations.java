@@ -216,7 +216,10 @@ public final class Confirmations {
                 if (SELF_ONLY.contains(root)) selfOnly = true;
                 else if (!SAFE.contains(root)) return true;
             }
-            if (selfOnly && !onlySelf(c, requesterName, requester)) return true;
+            // execute as/at <targets> runs even a safe command once per target, where they stand (lava under each of
+            // @a): with execute, the targets must be the requester too (review of the rights fixes).
+            boolean executes = segments(c).stream().anyMatch(seg -> root(seg).equals("execute"));
+            if ((selfOnly || executes) && !onlySelf(c, requesterName, requester)) return true;
         }
         return false;
     }
@@ -233,11 +236,12 @@ public final class Confirmations {
         var m = WORD.matcher(text);
         String prev = "";
         while (m.find()) {
-            String w = m.group();
+            // Quotes taken off: the game reads a quoted name or UUID as the same target.
+            String w = m.group().replaceAll("^[\"']+|[\"',]+$", "");
             if (w.startsWith("@") && !w.equals("@s") && !w.startsWith("@s[")) return false;
             if (prev.equalsIgnoreCase("on")) return false;
             // UUIDs as the game reads them: groups may drop leading zeros (0-0-0-0-1).
-            if (w.matches("[0-9a-fA-F]{1,8}-[0-9a-fA-F]{1,4}-[0-9a-fA-F]{1,4}-[0-9a-fA-F]{1,4}-[0-9a-fA-F]{1,12}")) {
+            if (w.matches("[0-9a-fA-F]+(-[0-9a-fA-F]+){4}")) {
                 UUID id;
                 try {
                     id = UUID.fromString(w);
@@ -246,10 +250,10 @@ public final class Confirmations {
                 }
                 if (!id.equals(requester)) return false;
             }
-            // Names: offline and Floodgate names can be 1 or 2 characters, Floodgate ones start with a dot or star.
+            // Names: offline and Floodgate names can be 1 or 2 characters, Floodgate ones start with a dot or star
+            // (.Steve is another player than Steve: compared whole).
             String name = w.startsWith(".") || w.startsWith("*") ? w.substring(1) : w;
-            if (name.matches("[A-Za-z0-9_]{1,16}") && !w.equalsIgnoreCase(requesterName) && !name.equalsIgnoreCase(requesterName)
-                    && looksLikePlayer(w)) return false;
+            if (name.matches("[A-Za-z0-9_]{1,16}") && !w.equalsIgnoreCase(requesterName) && looksLikePlayer(w)) return false;
             prev = w;
         }
         return true;

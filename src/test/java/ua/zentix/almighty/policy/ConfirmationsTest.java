@@ -47,6 +47,8 @@ class ConfirmationsTest {
         for (String c : new String[]{
                 // Rights audit M2: a quoted name, a short name, a Floodgate name, a UUID without its leading zeros.
                 "kill \"Bob\"", "clear Jo", "kill .Steve", "kill 69a79f4-44e9-4726-a5be-fca90e38aaf5",
+                "kill \"069a79f4-44e9-4726-a5be-fca90e38aaf5\"", "kill 00069a79f4-44e9-4726-a5be-fca90e38aaf5",
+                "execute as @a at @s run setblock ~ ~ ~ lava",
                 "kill @e[type=zombie]", "give Bob diamond 64", "execute as @a run clear", "minecraft:ban Bob",
                 "ban Offline", "deop Somebody", "return run kill @a", "kill 069a79f4-44e9-4726-a5be-fca90e38aaf5",
                 "execute on passengers run kill @s", "summon zombie", "data merge block 0 0 0 {}", "mymod:explode", "function x:y",

@@ -224,7 +224,7 @@ public final class GmGateGameTests {
         gm.policies().set(Policy.parse("preset = \"private\"\n[agents.owner]\nceiling = \"owner\"\n[agents.helper]\nceiling = \"builder\""));
         try {
             gm.dispatch().invoke(owner, "bot.spawn", params("{\"name\":\"OwnedBot\",\"pos\":[%d,%d,%d]}", at.getX(), at.getY(), at.getZ()));
-            JsonObject area = gm.dispatch().invoke(owner, "area.prepare", params("{\"from\":[%d,%d],\"to\":[%d,%d]}",
+            JsonObject area = gm.dispatch().invoke(owner, "area.prepare", params("{\"from\":[%d,%d],\"to\":[%d,%d],\"wait\":0}",
                     at.getX(), at.getZ(), at.getX(), at.getZ())).join().getAsJsonObject();
             long id = area.get("id").getAsLong();
             RpcException release = failed(gm.dispatch().invoke(helper, "area.release", params("{\"id\":%d}", id)));

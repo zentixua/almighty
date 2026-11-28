@@ -208,7 +208,9 @@ public final class GmConfirmGameTests {
         Confirmations.Pending honest = c.ask(Confirmations.Kind.REQUESTER, GM, "command", p, alex, null, alex, "Alex");
         for (String lang : new String[]{"en_us", "ru_ru"}) {
             net.minecraft.network.chat.Component q = ua.zentix.almighty.policy.Prompts.question(honest, lang, false);
-            String shown = q.getString();
+            // The server's own language table has the mod's English keys (getString reads them): the player's client
+            // shows the server-chosen fallback, which is what is read here.
+            String shown = fallbacks(q);
             check(shown.contains("“give you a cake”"), lang + " summary in quotes: " + shown);
             check(shown.contains(lang.equals("en_us") ? "kill — target: every player" : "убить — цель: все игроки"), lang + " facts: " + shown);
             check(shown.contains(lang.equals("en_us") ? "(its own words)" : "(слова ведущего)"), lang + " marked as its words: " + shown);
@@ -239,6 +241,25 @@ public final class GmConfirmGameTests {
         check(r.getString().equals("[Almighty] Done for you: “snow over your base” — change blocks at 0 64 0 … 9 70 9 [Undo]"),
                 "receipt: " + r.getString());
         h.succeed();
+    }
+
+    /** The text a client without the mod sees: every translation's fallback, its arguments filled in, and siblings. */
+    private static String fallbacks(net.minecraft.network.chat.Component c) {
+        StringBuilder out = new StringBuilder();
+        if (c.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents t && t.getFallback() != null) {
+            Object[] args = new Object[t.getArgs().length];
+            for (int i = 0; i < args.length; i++) {
+                args[i] = t.getArgs()[i] instanceof net.minecraft.network.chat.Component a ? fallbacks(a) : String.valueOf(t.getArgs()[i]);
+            }
+            out.append(String.format(java.util.Locale.ROOT, t.getFallback(), args));
+        } else {
+            c.getContents().visit(text -> {
+                out.append(text);
+                return java.util.Optional.empty();
+            });
+        }
+        for (net.minecraft.network.chat.Component s : c.getSiblings()) out.append(fallbacks(s));
+        return out.toString();
     }
 
     /** Lead's F1: a request the player could not run anyway is not put to them (it would fail after Allow). */

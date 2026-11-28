@@ -8,11 +8,13 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
- * Answers of a permission handler about players who are offline, asked in the background and cached. A handler
- * may load an offline user from its storage before answering (LuckPerms does), which on the server thread would
- * stall the tick (stability audit M10): {@link #get} never waits. Until the first answer arrives it returns null
- * (the role ladder decides); an answer older than {@link #FRESH_MS} is still returned while a new one is asked.
- * A change of the policy or a role ({@code generation}) drops every answer: the ladder decides until asked again.
+ * Answers of a permission handler about players who are offline, for the server thread: asked in the background and
+ * cached. A handler may load an offline user from its storage before answering (LuckPerms does), which on the server
+ * thread would stall the tick (stability audit M10): {@link #get} never waits. An answer older than
+ * {@link #FRESH_MS} is still used while a new one is asked. A change of the policy or a role ({@code generation})
+ * makes every answer stale at once; until the new answer arrives, a last known "no" still holds (never wider than
+ * the handler said), and only a player never asked about, or last told "yes", gets null (the role ladder decides).
+ * Callers off the server thread ask the handler directly instead.
  */
 public final class OfflineAnswers {
     /** How long an answer counts as current before it is asked again. */
@@ -23,10 +25,13 @@ public final class OfflineAnswers {
     private record Key(UUID player, String node) {}
 
     private static final class Entry {
-        volatile Boolean value;
-        volatile long at;
-        volatile boolean asking;
-        volatile long generation;
+        /** The handler's latest answer, whatever generation asked it; null before any. */
+        Boolean last;
+        /** When {@link #last} was answered for {@link #answered}; 0 for never. */
+        long at;
+        long answered = -1;
+        /** The generation an ask is running for; -1 for none. */
+        long asking = -1;
     }
 
     private final Map<Key, Entry> answers = new ConcurrentHashMap<>();
@@ -48,39 +53,49 @@ public final class OfflineAnswers {
         return new OfflineAnswers(pool, System::currentTimeMillis);
     }
 
-    /** The last answer for this player and node, or null before one arrived; asks again in the background when stale. */
+    /** The answer to use now (see the class comment); asks again in the background when stale. Never waits. */
     public Boolean get(UUID player, String node, long generation, Supplier<Boolean> ask) {
         if (answers.size() > MAX) answers.clear();
         Entry e = answers.computeIfAbsent(new Key(player, node), k -> new Entry());
-        if (e.generation != generation) {
-            e.generation = generation;
-            e.value = null;
-            e.at = 0;
+        Boolean answer;
+        boolean start;
+        synchronized (e) {
+            boolean current = e.answered == generation && e.at != 0;
+            boolean fresh = current && clock.getAsLong() - e.at < FRESH_MS;
+            start = !fresh && e.asking != generation;
+            if (start) e.asking = generation;
+            answer = current ? e.last : Boolean.FALSE.equals(e.last) ? Boolean.FALSE : null;
         }
-        long now = clock.getAsLong();
-        boolean stale = e.at == 0 || now - e.at >= FRESH_MS;
-        if (stale && !e.asking) {
-            synchronized (e) {
-                if (!e.asking) {
-                    e.asking = true;
+        if (start) {
+            try {
+                background.execute(() -> {
+                    Boolean v = null;
+                    boolean ok = false;
                     try {
-                        background.execute(() -> {
-                            try {
-                                Boolean v = ask.get();
-                                if (e.generation == generation) e.value = v;
-                            } catch (RuntimeException ignored) {
-                                // No handler yet or nodes not gathered: keep what we had (null: the ladder decides).
-                            } finally {
-                                e.at = clock.getAsLong();
-                                e.asking = false;
-                            }
-                        });
-                    } catch (java.util.concurrent.RejectedExecutionException rejected) {
-                        e.asking = false;
+                        v = ask.get();
+                        ok = true;
+                    } catch (RuntimeException ignored) {
+                        // No handler yet or nodes not gathered: keep what we had.
                     }
+                    synchronized (e) {
+                        if (ok) e.last = v;
+                        // Only the generation that asked is answered by it; a newer one has its own ask running.
+                        if (e.asking == generation) {
+                            e.asking = -1;
+                            if (ok || e.answered != generation) {
+                                e.answered = generation;
+                                e.at = clock.getAsLong();
+                                if (!ok) e.last = Boolean.FALSE.equals(e.last) ? Boolean.FALSE : null;
+                            }
+                        }
+                    }
+                });
+            } catch (java.util.concurrent.RejectedExecutionException rejected) {
+                synchronized (e) {
+                    if (e.asking == generation) e.asking = -1;
                 }
             }
         }
-        return e.value;
+        return answer;
     }
 }

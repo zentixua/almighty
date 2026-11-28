@@ -63,4 +63,26 @@ class OfflineAnswersTest {
         queued.remove(0).run();
         assertEquals(Boolean.FALSE, answers.get(bob, "almighty.build", 1, () -> true));
     }
+
+    /** Review of #95: an ask still running for an old generation does not leave the new one unanswered. */
+    @Test
+    void aChangeWhileAskingStartsItsOwnAsk() {
+        answers.get(bob, "almighty.rules", 0, () -> true);
+        assertNull(answers.get(bob, "almighty.rules", 1, () -> false), "changed while the first ask runs");
+        assertEquals(2, queued.size(), "the new generation asks too");
+        queued.remove(0).run();
+        assertNull(answers.get(bob, "almighty.rules", 1, () -> false), "the old answer does not count for the new generation");
+        queued.remove(0).run();
+        assertEquals(Boolean.FALSE, answers.get(bob, "almighty.rules", 1, () -> false));
+    }
+
+    /** A known "no" holds across a change until the new answer: never wider than the handler said. */
+    @Test
+    void aKnownDenyHoldsAcrossAChange() {
+        answers.get(bob, "almighty.build", 0, () -> false);
+        queued.remove(0).run();
+        assertEquals(Boolean.FALSE, answers.get(bob, "almighty.build", 1, () -> true), "still no while asking again");
+        queued.remove(0).run();
+        assertEquals(Boolean.TRUE, answers.get(bob, "almighty.build", 1, () -> true));
+    }
 }

@@ -175,8 +175,9 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `/almighty reload`, a bad file keeps the last good policy with the exact error; at startup, with no last good one,
   `Policy.lockdown()`: public, no owners): `preset` (private | friends |
   public), `owners` (UUIDs), `identity`, `[agents.<name>]` `ceiling`/`floor`. `Node`: capabilities `almighty.<id>`
-  registered with the NeoForge permission API (`Nodes`; LuckPerms decides when installed; an offline player's answer from a non-default handler is asked in the
-  background and cached 30 s, dropped on policy or role changes, `policy/OfflineAnswers`, never waited for on the server thread; default resolver = role
+  registered with the NeoForge permission API (`Nodes`; LuckPerms decides when installed; on the server thread an offline player's answer from a non-default
+  handler is asked in the background and cached 30 s (`policy/OfflineAnswers`; a policy or role change makes it stale,
+  a known "no" holds until the new answer, unknown → ladder); bridge threads ask the handler directly; default resolver = role
   ladder `Role`: policy owners (verified) → owner, op level ≥ 3 → admin, 2 → builder, verified → member on friends
   and guest otherwise, unverified → guest whatever a plugin says). `Gate` (a `Dispatch` check after the deny list
   and pause): every method maps to a node (`Gate.node`, parameters refine it: `see` a player, `rule.add` with

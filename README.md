@@ -54,8 +54,8 @@ plus notes that mods, datapacks and you leave for it.
   players or cannot be undone waits for the requester's own confirmation in chat; above their rights, only the kinds
   of request you list go to an admin.
 - **Recorded and reversible.** Every block the agent writes is journaled on disk, so a change can be undone even
-  after a crash. Every call with an effect is in the audit log. `/almighty pause` stops an agent's builds, bots and
-  rules until you resume it.
+  after a crash. Every call with an effect is in the audit log. `/almighty pause <agent>` stops that agent's builds,
+  bots and rules until you resume it.
 - **Safe defaults.** The bridge listens only on the server machine, every app signs in with a code you type on the
   server, and commands that crash or freeze servers are refused for every agent.
 

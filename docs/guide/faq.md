@@ -36,8 +36,8 @@ list ([Permissions](permissions.md)).
 
 **What if it breaks something?**
 Every block it writes is journaled: the player who asked gets an `[Undo]` button, and you can undo any change with
-`/almighty undo <change>`. `/almighty pause` at once stops every agent's builds, bots and
-rules with scripts ([Safety](security.md#undo-audit-and-the-red-button)).
+`/almighty undo <change>`. `/almighty pause` at once stops every agent's builds, bots, rules
+with scripts and rules made below the owner ([Safety](security.md#undo-audit-and-the-red-button)).
 
 **Does it slow the server down?**
 Game master work gets a fixed slice of each tick (3 ms by default) and a quarter of it while the server lags. A bot

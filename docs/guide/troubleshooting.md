@@ -33,7 +33,7 @@ English · [Русский](troubleshooting.ru.md)
 
 | What you see | What to do |
 |---|---|
-| The server lags while the agent works | Lower `work.ms_per_tick`; ask the agent to stop its jobs (`job` with `cancel`) and rules (`rule` remove). `/almighty pause` stops builds, bots and script rules at once. |
+| The server lags while the agent works | Lower `work.ms_per_tick`; ask the agent to stop its jobs (`job` with `cancel`) and rules (`rule` remove). `/almighty pause` stops builds, bots, script rules and rules made below the owner at once. |
 | A rule stopped working | It turned itself off: `rules` lists it with the reason (time budget, 10 errors in a row, flooding the feed). |
 | A build waits and never starts | Its chunks are not loaded yet; it waits up to 2 minutes. A place on a Sable ship plot is refused. |
 | Players get "The game master is away right now; your message is kept." | The agent has not read their message within `feed.away_seconds`. Keep it running in [game master mode](game-master.md). |

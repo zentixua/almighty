@@ -86,9 +86,9 @@ Almighty — это управление вашим сервером со сто
 
 **Minecraft 1.21.1 · NeoForge 21.1.264+ · Java 21**
 
-**Minecraft 26.1.2 · NeoForge 26.1.2.130+ или Fabric Loader 0.20.1+ с Fabric API · Java 25**
+**Minecraft 26.1.2 · NeoForge 26.1.2.130+ или Fabric Loader 0.20.1+ с Fabric API 0.155.3+ · Java 25**
 
-**Minecraft 26.3 · NeoForge 26.3.0.118+ или Fabric Loader 0.20.1+ с Fabric API · Java 25**
+**Minecraft 26.3 · NeoForge 26.3.0.118+ или Fabric Loader 0.20.1+ с Fabric API 0.167.0+ · Java 25**
 
 Almighty работает только на сервере; игроки заходят обычным клиентом. Другие моды не нужны. Immersive Aircraft
 (1.21.1, 26.1.2), Sable (1.21.1), Open Parties and Claims, FTB Chunks (1.21.1, 26.1.2) и LuckPerms необязательны; их

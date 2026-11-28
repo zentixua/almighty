@@ -35,4 +35,25 @@ class CommandVolumeTest {
         assertThrows(RpcException.class, () -> CommandVolume.check(List.of("execute as @a run fill 0 0 0 31 31 31 stone",
                 "fill ^ ^ ^ ^1 ^1 ^1 air", "clone 0 0 0 31 31 31 100 0 0", "fill 0 0 0 31 31 31 air", "fill 0 0 0 1 1 1 air")));
     }
+
+    /** Below owner, a write repeated per matched entity cannot be bounded from the text (stability: execute as @e). */
+    @Test
+    void repeatedWritesBelowOwner() {
+        for (String many : List.of("execute as @e run fill ~ ~ ~ ~1 ~1 ~1 stone", "execute at @a run setblock ~ ~ ~ air",
+                "execute as @e[type=zombie, limit=5] at @s run clone 0 0 0 1 1 1 5 5 5", "execute on passengers run fill 0 0 0 1 1 1 air",
+                "execute positioned as @e run fillbiome ~ ~ ~ ~ ~ ~ plains", "execute as @r[limit=3] run fill 0 0 0 1 1 1 air",
+                "/execute AS @E run execute run fill 0 0 0 1 1 1 air")) {
+            if (many.contains("setblock")) {
+                assertDoesNotThrow(() -> CommandVolume.check(List.of(many), false), "setblock writes one block: " + many);
+                continue;
+            }
+            assertThrows(RpcException.class, () -> CommandVolume.check(List.of(many), false), many);
+            assertDoesNotThrow(() -> CommandVolume.check(List.of(many), true), "the owner's counts once: " + many);
+        }
+        for (String one : List.of("execute as @p run fill ~ ~ ~ ~1 ~1 ~1 stone", "execute as @e[limit=1,sort=nearest] at @s run fill 0 0 0 1 1 1 air",
+                "execute as Steve at @s run fill ~ ~ ~ ~1 ~1 ~1 air", "execute as @a run say hi", "execute if entity @e run fill 0 0 0 1 1 1 air",
+                "execute at @s run fill 0 0 0 1 1 1 air")) {
+            assertDoesNotThrow(() -> CommandVolume.check(List.of(one), false), one);
+        }
+    }
 }

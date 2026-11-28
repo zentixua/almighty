@@ -310,6 +310,7 @@ public final class GmServer {
         // Jobs count too: calls answered between ticks get only what this tick left.
         usedThisTick += System.nanoTime() - jobsStart;
         areas.tick(server.getTickCount());
+        closeRuleChanges(false);
         journal.flush();
         inbox.tick(server.getTickCount());
         decisions.tick(server.getTickCount());
@@ -363,6 +364,7 @@ public final class GmServer {
         bots.stop();
         rules.stop();
         jobs.cancelAll();
+        closeRuleChanges(true);
         journal.stop();
         audit.stop();
         areas.releaseAll();
@@ -467,7 +469,7 @@ public final class GmServer {
                 ua.zentix.almighty.act.Chat.say(server, new ua.zentix.almighty.bridge.Args(p));
             }
 
-            public void command(ua.zentix.almighty.rules.Declarative.Creator c, Object e, String command) throws RpcException {
+            public void command(ua.zentix.almighty.rules.Declarative.Creator c, Object e, String command, String rule) throws RpcException {
                 Object[] at = place(e);
                 net.minecraft.server.level.ServerLevel level = at == null ? server.overworld() : (net.minecraft.server.level.ServerLevel) at[0];
                 net.minecraft.world.phys.Vec3 pos = net.minecraft.world.phys.Vec3.atBottomCenterOf(at == null ? Mc.spawnPos(level) : (net.minecraft.core.BlockPos) at[1]);
@@ -487,6 +489,8 @@ public final class GmServer {
                     as = new ua.zentix.almighty.act.CommandRunner.As(role.commandLevel(), null);
                 }
                 if (role != ua.zentix.almighty.policy.Role.OWNER) {
+                    // A rule's fill runs in one go each fire, as a command call's: the same volume bound.
+                    ua.zentix.almighty.act.CommandVolume.check(java.util.List.of(command), false);
                     // The filled command, not only the template: plain-name fills could still complete a forged prefix.
                     String forged = ua.zentix.almighty.policy.Forgery.refusal(command);
                     if (forged != null) throw new RpcException(403, "policy", forged);
@@ -512,9 +516,52 @@ public final class GmServer {
                         }
                     });
                 }
-                ua.zentix.almighty.act.CommandRunner.runAs(server, level, pos, java.util.List.of(command), as);
+                // Stability M9: the rule's block writes are journaled like a call's, so `changes` lists them and
+                // `undo {change}` reverts them. A change collects one rule's writes for up to a minute (a rule may
+                // fire every tick; one change per fire would push agents' own changes out of the index).
+                final ua.zentix.almighty.act.CommandRunner.As runAs = as;
+                Journal.with(ruleChange(c, rule), () -> {
+                    ua.zentix.almighty.act.CommandRunner.runAs(server, level, pos, java.util.List.of(command), runAs);
+                    return null;
+                });
             }
         };
+    }
+
+    /** How long one journal change collects a rule's writes before the next fire opens a new one. */
+    static final long RULE_CHANGE_TICKS = 1200;
+    /** Open journal changes of declarative rules, by creator and rule; closed after {@link #RULE_CHANGE_TICKS}. */
+    private final java.util.Map<String, Journal.Change> ruleChanges = new java.util.HashMap<>();
+    private final java.util.Map<String, Long> ruleChangeOpened = new java.util.HashMap<>();
+
+    /** The open change for this rule's writes (server thread), opening one if none is open. */
+    private Journal.Change ruleChange(ua.zentix.almighty.rules.Declarative.Creator c, String rule) {
+        String key = (c.agent() == null ? "" : c.agent()) + "/" + (c.player() == null ? "" : c.player()) + "/" + rule;
+        Journal.Change open = ruleChanges.get(key);
+        if (open != null) return open;
+        Journal.Change change = journal.begin(c.agent() == null ? ua.zentix.almighty.bridge.Caller.INTERNAL.name() : c.agent(),
+                "rule " + rule, c.player());
+        ruleChanges.put(key, change);
+        ruleChangeOpened.put(key, (long) server.getTickCount());
+        return change;
+    }
+
+    /** Close rule changes older than {@link #RULE_CHANGE_TICKS} (every change when {@code all}), server thread. */
+    private void closeRuleChanges(boolean all) {
+        if (ruleChanges.isEmpty()) return;
+        long now = server.getTickCount();
+        for (var it = ruleChanges.entrySet().iterator(); it.hasNext(); ) {
+            var entry = it.next();
+            if (!all && now - ruleChangeOpened.get(entry.getKey()) < RULE_CHANGE_TICKS) continue;
+            entry.getValue().release();
+            ruleChangeOpened.remove(entry.getKey());
+            it.remove();
+        }
+    }
+
+    /** Close every open rule change now, so it can be reverted at once (GameTest, server stop). */
+    public void closeRuleChanges() {
+        closeRuleChanges(true);
     }
 
     /**
@@ -641,7 +688,11 @@ public final class GmServer {
         JsonObject meta = journal.describe(id);
         if (meta == null) throw RpcException.notFound("No change " + id + " (old changes are dropped beyond 4 million positions)");
         if (meta.has("undone_by")) throw RpcException.conflict("Change " + id + " was already undone by change " + meta.get("undone_by").getAsLong());
-        if (meta.has("open")) throw RpcException.conflict("Change " + id + " is still running (a job of it has not finished): cancel it first");
+        if (meta.has("open")) {
+            throw RpcException.conflict(meta.get("method").getAsString().startsWith("rule ")
+                    ? "Change " + id + " still collects its rule's writes (up to a minute after it opened); retry then"
+                    : "Change " + id + " is still running (a job of it has not finished): cancel it first");
+        }
         if (caller != null && caller.agent() != null) {
             String agent = meta.get("agent").getAsString();
             String requester = meta.has("requester") ? meta.get("requester").getAsString() : null;

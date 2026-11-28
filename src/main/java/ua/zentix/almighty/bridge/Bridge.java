@@ -47,6 +47,7 @@ import java.util.function.LongSupplier;
  */
 public final class Bridge {
     private static final Logger LOG = LogUtils.getLogger();
+    private final java.util.concurrent.atomic.AtomicBoolean stopped = new java.util.concurrent.atomic.AtomicBoolean();
     /** Maximum request body: a layered build plan for hundreds of thousands of positions takes a few MB. */
     private static final int MAX_BODY = 16 << 20;
     /**
@@ -123,13 +124,42 @@ public final class Bridge {
         http.start();
     }
 
-    /** Stop: reject new requests and disconnect clients waiting for a response. */
+    /** Stop: answer queued requests "stopping", reject new requests and disconnect clients waiting for a response. */
     public void stop() {
+        if (stopped.getAndSet(true)) return;
+        // Queued requests never started: answer them "stopping" without running them. stop() runs on the server
+        // thread at shutdown, and running a queued long poll there (an events wait of 25 s, a job wait of 50 s)
+        // would hold the world save behind it. Answered before the server stops, so the clients read the answer.
+        drop(calls.shutdownNow());
+        drop(polls.shutdownNow());
         http.stop(0);
         accept.shutdownNow();
-        // Queued requests never started: run them (they fail fast, the bridge is stopping) so their exchanges close.
-        for (Runnable r : calls.shutdownNow()) r.run();
-        for (Runnable r : polls.shutdownNow()) r.run();
+    }
+
+    /** Requests waiting in the long-poll or the call queue (tests). */
+    int queued(boolean longPoll) {
+        return (longPoll ? polls : calls).getQueue().size();
+    }
+
+    /** Answer queued work that never started; package-private for tests. */
+    static void drop(java.util.List<Runnable> queued) {
+        for (Runnable r : queued) {
+            if (r instanceof Queued q) {
+                try {
+                    q.drop.run();
+                } catch (RuntimeException e) {
+                    LOG.debug("Almighty bridge: dropping a queued request failed", e);
+                }
+            }
+        }
+    }
+
+    /** Work handed to a pool with what answers its client if the pool stops before it starts. */
+    record Queued(Runnable work, Runnable drop) implements Runnable {
+        @Override
+        public void run() {
+            work.run();
+        }
     }
 
     public InetSocketAddress address() {
@@ -186,10 +216,13 @@ public final class Bridge {
         return new Caller(agent, address);
     }
 
-    /** Run work on the long-poll or the call pool; false if that pool is full. */
-    public boolean submit(boolean longPoll, Runnable work) {
+    /**
+     * Run work on the long-poll or the call pool; false if that pool is full. {@code drop} answers the client
+     * instead (and closes its exchange) if the bridge stops before the work starts; it never runs the work.
+     */
+    public boolean submit(boolean longPoll, Runnable work, Runnable drop) {
         try {
-            (longPoll ? polls : calls).execute(work);
+            (longPoll ? polls : calls).execute(new Queued(work, drop));
             return true;
         } catch (RejectedExecutionException e) {
             return false;
@@ -206,6 +239,9 @@ public final class Bridge {
                 } finally {
                     exchange.close();
                 }
+            }, () -> {
+                trySend(exchange, new RpcException(503, "stopping", "The server is stopping"));
+                exchange.close();
             });
             if (!handedOff) send(exchange, 503, error("busy", "The bridge is busy (" + (longMethods.contains(request.method)
                     ? "too many long polls" : "too many calls") + " waiting); retry shortly"));

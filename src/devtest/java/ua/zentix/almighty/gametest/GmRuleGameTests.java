@@ -90,6 +90,42 @@ public final class GmRuleGameTests {
     }
 
     /**
+     * Stability M9: a declarative rule's command writes are journaled (one change per rule, collecting up to a
+     * minute), listed in `changes` and reverted by `undo {change}` like a call's.
+     */
+    @GameTest(template = "floor", batch = "gm_rules_journal", timeoutTicks = 200)
+    public static void ruleCommandWritesAreJournaled(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        ServerPlayer p = player(h, "rule-journal", UUID.randomUUID());
+        BlockPos at = h.absolutePos(new BlockPos(3, 2, 3)), mark = h.absolutePos(new BlockPos(6, 2, 6));
+        long[] change = new long[1];
+        try {
+            call(gm, "rule.add", String.format(Locale.ROOT, "{\"event\":\"%s\",\"name\":\"journal-rule\",\"then\":[{\"command\":"
+                    + "\"setblock %d %d %d minecraft:gold_block\"}]}", Gt.BREAK_EVENT, mark.getX(), mark.getY(), mark.getZ()));
+            breaks(h, at, p);
+            check(h.getLevel().getBlockState(mark).is(Blocks.GOLD_BLOCK), "the rule's command ran");
+            gm.closeRuleChanges();
+            JsonObject newest = gm.journal().list(1).get(0).getAsJsonObject();
+            check(newest.get("method").getAsString().equals("rule journal-rule") && newest.get("agent").getAsString().equals("gm")
+                    && newest.get("positions").getAsLong() == 1, "the rule's write is a change of its creator: " + newest);
+            change[0] = newest.get("id").getAsLong();
+            check(call(gm, "changes", "{\"limit\":5}").toString().contains("rule journal-rule"), "listed by changes");
+            call(gm, "undo", String.format(Locale.ROOT, "{\"change\":%d,\"wait\":0}", change[0]));
+        } finally {
+            try {
+                call(gm, "rule.remove", "{\"name\":\"journal-rule\"}");
+            } catch (Exception ignored) {
+                // Not added.
+            }
+            h.getLevel().getServer().getPlayerList().remove(p);
+        }
+        h.succeedWhen(() -> {
+            check(h.getLevel().getBlockState(mark).isAir(), "reverted: " + h.getLevel().getBlockState(mark));
+            check(gm.journal().describe(change[0]).has("undone_by"), "marked undone");
+        });
+    }
+
+    /**
      * Pausing one agent stops its rules, not only its builds (AGENTS.md "Pause"); and a rule without a script on
      * command events never puts a player's private message into the feed (the feed's own filter, FeedListeners).
      */

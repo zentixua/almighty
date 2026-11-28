@@ -113,8 +113,8 @@ public final class Api {
         m.put("player", a -> gm.onMain(() -> Observe.player(server, a)));
         m.put("entities", a -> gm.onMain(() -> Observe.entities(server, a)));
         m.put("command", a -> {
-            if (a.caller().agent() != null) CommandVolume.check(ua.zentix.almighty.policy.Confirmations.commands("command", a.raw()));
             ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
+            if (r != null) CommandVolume.check(ua.zentix.almighty.policy.Confirmations.commands("command", a.raw()), r.effective() == ua.zentix.almighty.policy.Role.OWNER);
             return gm.onMain(() -> {
                 CommandRunner.As as = gm.commandAs(r);
                 gm.commandZone(a, as, false);
@@ -126,8 +126,8 @@ public final class Api {
             if (a.caller().agent() != null && a.has("args") && !a.raw().get("args").isJsonObject()) {
                 throw RpcException.badRequest("args: an object of macro values");
             }
-            if (a.caller().agent() != null) CommandVolume.check(ua.zentix.almighty.policy.Confirmations.commands("function", a.raw()));
             ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
+            if (r != null) CommandVolume.check(ua.zentix.almighty.policy.Confirmations.commands("function", a.raw()), r.effective() == ua.zentix.almighty.policy.Role.OWNER);
             return gm.onMain(() -> {
                 CommandRunner.As as = gm.commandAs(r);
                 gm.commandZone(a, as, true);

@@ -88,4 +88,18 @@ class TlsTest {
         Files.writeString(empty, "nothing");
         assertThrows(java.security.GeneralSecurityException.class, () -> Tls.context(empty, copy("key.pem")));
     }
+
+    /** Plan 7.2: a non-loopback bind without TLS is refused, unless the owner opts in by name. */
+    @Test
+    void plainHttpOffLoopbackIsRefused() {
+        for (String host : new String[] {"127.0.0.1", "127.3.4.5", "::1", "[::1]", "localhost"}) {
+            assertEquals(null, Tls.plainRefusal(host, false, false), host);
+        }
+        for (String host : new String[] {"0.0.0.0", "192.168.1.5", "10.0.0.2", "::", "example.org"}) {
+            String refusal = Tls.plainRefusal(host, false, false);
+            assertTrue(refusal != null && refusal.contains("bridge.allow_plain_http_off_loopback"), host);
+            assertEquals(null, Tls.plainRefusal(host, true, false), host + " with TLS");
+            assertEquals(null, Tls.plainRefusal(host, false, true), host + " opted in");
+        }
+    }
 }

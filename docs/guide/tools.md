@@ -47,7 +47,7 @@ Entities around center [x, y, z] within radius, or in the box start..end; type f
 
 ## command
 
-Runs as the game master (permission level 4), one of two: commands - commands in order, each with ok, result, output, errors; lines - a function from .mcfunction lines, without a file or /reload: lines starting with $ are macros with $(name) taken from args; a parse error names the line. The source is the world spawn point or pos [x, y, z]. Heavy work (a large /fill) goes through build.
+Runs with the rights of the call: with for, as that player at their own level, capped by the agent's ceiling (a command irreversible for others waits for their confirmation); unasked, at the level of the agent's trust floor (owner 4, admin 3, builder 2, else 0; status shows rights). A command refused only for its level says needs_level. One of two: commands - commands in order, each with ok, result, output, errors; lines - a function from .mcfunction lines, without a file or /reload: lines starting with $ are macros with $(name) taken from args; a parse error names the line. The source is the world spawn point or pos [x, y, z]. Heavy work (a large /fill) goes through build.
 
 | Parameter | Type | Notes |
 |---|---|---|

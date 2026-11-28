@@ -30,8 +30,8 @@ public final class ConnectionCheck {
         JsonArray claims = new JsonArray();
         f.claimMods().forEach(claims::add);
         out.add("claims", claims);
-        boolean bedrock = f.modLoaded().test("floodgate") || f.modLoaded().test("geyser") || f.modLoaded().test("geyser_fabric");
-        out.addProperty("bedrock", bedrock ? "floodgate" : "none");
+        // Bedrock players join with their own identity only through Floodgate (Geyser alone needs Java accounts).
+        out.addProperty("bedrock", f.modLoaded().test("floodgate") ? "floodgate" : "none");
         out.addProperty("tls", f.tls());
         if (!f.publicUrl().isBlank()) out.addProperty("public_url", f.publicUrl());
         out.addProperty("scripts", f.scriptsEnabled());
@@ -39,7 +39,7 @@ public final class ConnectionCheck {
         JsonArray problems = new JsonArray();
         if (policy.owners().isEmpty()) {
             problems.add("No owners in policy.toml: nobody is trusted as the owner" + (policy.preset() == Policy.Preset.PRIVATE
-                    ? ", and on preset private only owners reach the game master" : "")
+                    ? ", and on preset private only players at an agent's ceiling (owners, for the owner's agent) reach it" : "")
                     + ". Fix: the owner types /almighty whoami in game, then /almighty owner add <their name> at the console.");
         }
         Identity.Mode id = policy.identity();

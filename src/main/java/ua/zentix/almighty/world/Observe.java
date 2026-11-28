@@ -90,7 +90,7 @@ public final class Observe {
         out.add("connection", ua.zentix.almighty.policy.ConnectionCheck.of(gm.policies().current(),
                 new ua.zentix.almighty.policy.ConnectionCheck.Facts(server.usesAuthentication(),
                         id -> ua.zentix.almighty.platform.Platform.present() && ua.zentix.almighty.platform.Platform.get().isModLoaded(id),
-                        gm.claims().names(), host, !ua.zentix.almighty.GmConfig.BRIDGE_TLS_CERT.get().isBlank(),
+                        gm.claims().names(), host, !ua.zentix.almighty.GmConfig.BRIDGE_TLS_CERT.get().isBlank() && !ua.zentix.almighty.GmConfig.BRIDGE_TLS_KEY.get().isBlank(),
                         ua.zentix.almighty.GmConfig.BRIDGE_PLAIN_OFF_LOOPBACK.get(), ua.zentix.almighty.GmConfig.BRIDGE_PUBLIC_URL.get(),
                         ua.zentix.almighty.GmConfig.SCRIPTS_ENABLED.get())));
         return out;

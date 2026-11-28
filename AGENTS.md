@@ -212,7 +212,9 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `/almighty inbox`; it runs as the requester with the admin's rights for that one call (`Pending.decider`; no
   ticket is minted). Owners' requests apply at once. Below owner, commands may not carry
   clicks that act as whoever clicks, dialogs, or `[Almighty]` (forged prompts via tellraw, signs, books), checked by
-  `policy/Forgery` after undoing `\u` escapes, joining split text parts and function continuation lines
+  `policy/Forgery` on the command's folded letters after undoing every escape (`\u`, `\U`, `\x`, `\N{}`), so split parts,
+  selectors, translation keys and look-alike letters do not hide them; function continuation lines are joined and lines
+  trimmed as the game trims them
   (`DenyList.logicalLines`, which the deny list reads too); an agent's function `args` must be a JSON object. `/gm` and
   `/almighty confirm|deny` accept only the player's own typing (`source.source == player`); `/gm` is on the deny
   list for GM commands (a GM bot's own `/gm` chat is allowed); `/almighty …` stays out of the feed. The agent

@@ -191,6 +191,21 @@ public final class Gate implements Dispatch.Check {
                 if (why != null) throw new RpcException(403, "policy", why);
             }
         }
+        // A bot's chat and sign lines are text others read: the same rule below owner.
+        if (method.equals("bot.act") && r.effective() != Role.OWNER && params.get("actions") instanceof JsonArray actions) {
+            for (JsonElement a : actions) {
+                if (!(a instanceof JsonObject o)) continue;
+                java.util.List<String> texts = new java.util.ArrayList<>();
+                if (o.get("chat") instanceof com.google.gson.JsonPrimitive chat) texts.add(chat.getAsString());
+                for (String k : new String[] {"lines", "text"}) {
+                    if (o.has("sign") && o.get(k) instanceof JsonArray lines) for (JsonElement l : lines) if (l.isJsonPrimitive()) texts.add(l.getAsString());
+                }
+                for (String t : texts) {
+                    String why = Forgery.refusal(t);
+                    if (why != null) throw new RpcException(403, "policy", why);
+                }
+            }
+        }
         if (r.holds(node, holder)) {
             // Allowed, but irreversible for others (or listed in confirm_first): the requester confirms the exact call.
             if (!decided && confirmations != null && r.ticket != null && Nodes.role(r.ticket.player()) != Role.OWNER

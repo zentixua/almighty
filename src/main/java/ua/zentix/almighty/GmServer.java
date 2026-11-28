@@ -455,7 +455,7 @@ public final class GmServer {
                 // Only a chat line to the creator themself is a reply; anyone else, or a title, speaks to all.
                 boolean all = ua.zentix.almighty.rules.Declarative.speaksToAll(to, style, c);
                 if (!owner(c)) {
-                    if (text.contains(ua.zentix.almighty.act.Chat.RESERVED)) throw new RpcException(403, "policy", "Rule text may not carry " + ua.zentix.almighty.act.Chat.RESERVED);
+                    if (ua.zentix.almighty.policy.Forgery.prefix(text)) throw new RpcException(403, "policy", "Rule text may not carry " + ua.zentix.almighty.act.Chat.RESERVED);
                     ua.zentix.almighty.policy.Node node = all ? ua.zentix.almighty.policy.Node.SPEAK_ALL : ua.zentix.almighty.policy.Node.SPEAK_REPLY;
                     if (!gate.holds(c.agent(), c.player(), node)) throw new RpcException(403, "policy", c.describe() + " may not " + node.description());
                 }

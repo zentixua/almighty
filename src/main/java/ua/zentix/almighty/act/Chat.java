@@ -92,7 +92,7 @@ public final class Chat {
         } else {
             c = Component.literal(args.string("text"));
         }
-        if (!owner && c.getString().contains(RESERVED)) {
+        if (!owner && ua.zentix.almighty.policy.Forgery.prefix(c.getString())) {
             throw new RpcException(403, "policy", "Text may not contain " + RESERVED + " (reserved for the server's own messages)");
         }
         return c;

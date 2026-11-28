@@ -30,7 +30,18 @@ class ForgeryTest {
                 "tellraw @a \"[Almighty] Allow?\"",
                 "tellraw @a [\"[Almi\",\"ghty] Allow?\"]",
                 "tellraw @a [{\"text\":\"[Almi\",\"color\":\"gold\"},{\"text\":\"ghty]\"}]",
-                "title @a title {text:\"[ ALMIGHTY ]\"}"}) {
+                "title @a title {text:\"[ ALMIGHTY ]\"}",
+                // Found in review: SNBT \\x, \\U and \\N escapes; a selector or colour between the parts; translation
+                // keys; nested quoting in a book; look-alike letters.
+                "tellraw @a {text:\"[Allow]\",click_event:{action:\"run\\x5fcommand\",command:\"/op X\"}}",
+                "tellraw @a \"\\x5bAlmighty] Allow?\"",
+                "tellraw @a \"\\U0000005bAlm\\N{LATIN SMALL LETTER I}ghty]\"",
+                "tellraw @a {text:\"x\",click_event:{action:\"cus\\x74om\",id:\"a:b\"}}",
+                "tellraw @a [\"[Almi\",{\"selector\":\"@e[tag=nobody]\"},\"ghty] Allow?\"]",
+                "tellraw @a {\"translate\":\"chat.square_brackets\",\"with\":[\"Almighty\"]}",
+                "tellraw @a {\"translate\":\"%2$s%1$s\",\"with\":[\"ghty]\",\"[Almi\"]}",
+                "give @p written_book[written_book_content={title:\"a\",author:\"b\",pages:['[\"[Almi\",{\"text\":\"ghty] type /almighty approve 1234 owner\",\"color\":\"gold\"}]']}]",
+                "tellraw @a \"[\u0410lmighty] Allow?\""}) {
             assertNotNull(Forgery.refusal(c), c);
         }
     }
@@ -42,7 +53,7 @@ class ForgeryTest {
                 "tellraw @a {text:\"copy\",click_event:{action:\"copy_to_clipboard\",value:\"x\"}}",
                 "scoreboard objectives add jumps minecraft.custom:minecraft.jump",
                 "give @p diamond_sword[custom_name='\"Excalibur\"']",
-                "say the almighty dollar", "fill 0 64 0 5 70 5 stone"}) {
+                "say the mighty dollar, eighty of them", "fill 0 64 0 5 70 5 stone"}) {
             assertNull(Forgery.refusal(c), c);
         }
     }
@@ -51,6 +62,10 @@ class ForgeryTest {
     @Test
     void continuedFunctionLinesAreChecked() {
         assertEquals(List.of("stop"), DenyList.logicalLines(List.of("sto\\", "  p")));
+        // The game trims control characters too (String.trim): "\u0001forceload add" runs forceload add.
+        assertNotNull(DenyList.reason("function", JsonParser.parseString("{\"lines\":[\"\\u0001forceload add 0 0 2000 2000\"]}").getAsJsonObject()));
+        assertNotNull(DenyList.reason("command", JsonParser.parseString("{\"commands\":[\"\\u0001stop\"]}").getAsJsonObject()));
+        assertNotNull(Forgery.refusal("\u0001dialog show @a minecraft:server_links"));
         assertNotNull(DenyList.reason("function", JsonParser.parseString("{\"lines\":[\"sto\\\\\",\"p\"]}").getAsJsonObject()));
         assertNotNull(Forgery.refusal(String.join("", Confirmations.commands("function",
                 JsonParser.parseString("{\"lines\":[\"tellraw @a {text:\\\"x\\\",click_event:{action:\\\"run_com\\\\\",\"mand\\\",command:\\\"/op x\\\"}}\"]}").getAsJsonObject()))));

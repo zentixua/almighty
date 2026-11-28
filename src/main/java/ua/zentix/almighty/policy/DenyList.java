@@ -153,8 +153,9 @@ public final class DenyList {
     }
 
     private static String strip(String s) {
-        s = s.strip();
-        while (s.startsWith("/") || s.startsWith("$")) s = s.substring(1).strip();
+        // As the game trims (control characters too: "\u0001stop" runs stop).
+        s = Forgery.trim(s);
+        while (s.startsWith("/") || s.startsWith("$")) s = Forgery.trim(s.substring(1));
         return s;
     }
 
@@ -199,7 +200,7 @@ public final class DenyList {
         List<String> out = new ArrayList<>();
         StringBuilder pending = null;
         for (String raw : lines) {
-            String line = raw.strip();
+            String line = Forgery.trim(raw);
             if (pending != null) line = pending + line;
             if (line.endsWith("\\")) {
                 pending = new StringBuilder(line.substring(0, line.length() - 1));

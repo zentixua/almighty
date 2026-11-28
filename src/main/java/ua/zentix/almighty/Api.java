@@ -310,7 +310,7 @@ public final class Api {
                 if (spec.decl().cancels()) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.BUILD, "a rule that cancels acts where its creator may build");
                 if (spec.decl().saysToAll(creator)) gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.SPEAK_ALL, "a rule that speaks to anyone but its creator");
                 for (ua.zentix.almighty.rules.Declarative.Action s : spec.decl().actions("say")) {
-                    if (s.text().toLowerCase(java.util.Locale.ROOT).contains(ua.zentix.almighty.policy.Forgery.PREFIX)) {
+                    if (ua.zentix.almighty.policy.Forgery.prefix(s.text())) {
                         throw new RpcException(403, "policy", "Rule text may not carry " + ua.zentix.almighty.act.Chat.RESERVED);
                     }
                 }

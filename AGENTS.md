@@ -187,7 +187,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   null-safe (null = absent, as `Args`) and a malformed one is 400. The gate never reads server lists off the server
   thread: bot names (`Bots.isBotName`), ops and online players (`Nodes.refresh`, once a second) are snapshots.
   `Identity`: in `auto`/`mojang` nothing is verified when `online-mode=false` (use `proxy` behind Velocity).
-  Refusal 403 `policy` with `node` and `allowed`; `status` gives `rights` (with `for`: that request's). `command`/`function` need owner until step 6 runs them as the requester.
+  Refusal 403 `policy` with `node` and `allowed`; `status` gives `rights` (with `for`: that request's) and `connection` (plan 9.1, `policy/ConnectionCheck`: preset,
+  owners, identity, online mode, permission handler, claim mods, Bedrock, TLS, and `problems`, each with its plain fix). `command`/`function` need owner until step 6 runs them as the requester.
   In-process calls (`Caller.INTERNAL`: GameTest, the server) are not gated. Preset `private` with `gm` at ceiling
   owner is today's behaviour; unlisted agents default to ceiling admin. `/almighty whoami` (anyone) shows UUID,
   verification and role.

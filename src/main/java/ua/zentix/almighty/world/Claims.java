@@ -27,6 +27,13 @@ public final class Claims {
         this.sources = sources;
     }
 
+    /** The claim mods this server checks builds against (status, the connection check). */
+    public List<String> names() {
+        List<String> out = new ArrayList<>();
+        for (Source s : sources) out.add(s.name());
+        return out;
+    }
+
     /** GameTest: a source standing in for a claim mod. */
     public static void testSource(Source s) {
         extra.clear();

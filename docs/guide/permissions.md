@@ -168,10 +168,11 @@ It cannot be undone. [Allow] [Deny] [Details]
 ```
 
 The summary is optional, at most 80 characters, and can never hide or change the server's part. The question ends
-with "It cannot be undone." when the call is irreversible for others, with "You can undo it." when it only writes
-blocks (the journal can revert those), and with neither for a teleport or a kind listed in `confirm_first`. The
-exact call is on hover and behind `[Details]` or `/almighty show <id>`. Players who cannot click (Bedrock, through
-Geyser) also get the typed commands and the exact call written out. On 26.x a confirmation dialog with the same
+with "It cannot be undone." for a command that is irreversible for others, and with "You can undo it." for a `build`
+or a command made only of `setblock`, `fill` and `clone` (not in `destroy` mode), which the journal can revert. Any
+other question, such as a teleport, says neither. The exact call is on hover and behind `[Details]` or
+`/almighty show <id>`. Where nobody can click (Bedrock players through Geyser, the console), the typed commands and
+the exact call are written out too. On 26.x a confirmation dialog with the same
 buttons opens too. Only that player can answer, within 2 minutes. At most
 3 requests wait per player and 20 per agent.
 

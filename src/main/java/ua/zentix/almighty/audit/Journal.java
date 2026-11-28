@@ -356,7 +356,11 @@ public final class Journal {
 
     private void load() {
         Path f = dir.resolve("index.json");
-        if (!Files.isRegularFile(f)) return;
+        // No index yet (a crash before any change ended and the index was first saved): change files still count.
+        if (!Files.isRegularFile(f)) {
+            recover();
+            return;
+        }
         try {
             JsonArray a = JsonParser.parseString(Files.readString(f, StandardCharsets.UTF_8)).getAsJsonArray();
             for (var el : a) {

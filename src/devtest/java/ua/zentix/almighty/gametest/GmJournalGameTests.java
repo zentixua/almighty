@@ -151,10 +151,10 @@ public final class GmJournalGameTests {
             commands.add(String.format(java.util.Locale.ROOT, "setblock %d %d %d minecraft:stone", a.getX() + (i % 10), a.getY(), a.getZ() + i / 10));
             commands.add(String.format(java.util.Locale.ROOT, "setblock %d %d %d minecraft:stone", b.getX() + (i % 10), b.getY(), b.getZ() + i / 10));
         }
-        java.util.Set<Long> regions = new java.util.HashSet<>();
+        java.util.Set<String> regions = new java.util.HashSet<>();
         for (int i = 0; i < 50; i++) {
             for (BlockPos at : new BlockPos[] {a.offset(i % 10, 0, i / 10), b.offset(i % 10, 0, i / 10)}) {
-                regions.add(((long) (at.getX() >> 7) << 32) ^ (at.getZ() >> 7));
+                regions.add((at.getX() >> 7) + "/" + (at.getZ() >> 7));
             }
         }
         JsonObject call = new JsonObject();

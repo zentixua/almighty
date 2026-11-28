@@ -102,7 +102,8 @@ public final class Nodes {
      * Whether a player holds every right an agent at this trust floor has unasked: each node the floor's role holds,
      * and its command permission level (as {@code GmServer.commandAs}: max of op level and role level). Only such a
      * player may reach the agent (plan 4.2: the floor is the rights of the least-trusted player whose text can reach
-     * it), so acting on a message unasked never gives its author more than they may do themselves. Server thread.
+     * it), so acting on a message unasked never gives its author more than they may do themselves. Any thread: the
+     * snapshots and the permission handler, as the gate reads them.
      */
     public static boolean covers(UUID id, Role floor) {
         for (Node n : Node.values()) if (floor.atLeast(n.defaultRole()) && !holds(id, n)) return false;

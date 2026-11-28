@@ -102,25 +102,12 @@ public final class Inbox {
         return ua.zentix.almighty.policy.Nodes.covers(player.getUUID(), ua.zentix.almighty.policy.Nodes.policy().floor(agent));
     }
 
-    /** Whether every agent may hear this player (text in the shared feed: chat lines, commands, whispers to bots). */
-    public boolean heardByAll(ServerPlayer player) {
-        if (bot(player)) return true;
-        ua.zentix.almighty.policy.Policy policy = ua.zentix.almighty.policy.Nodes.policy();
-        ua.zentix.almighty.policy.Role floor = policy.floor(GmConfig.FEED_DEFAULT_AGENT.get());
-        Agents known = agents.get();
-        if (known != null) for (String name : known.names()) {
-            ua.zentix.almighty.policy.Role f = policy.floor(name);
-            if (f.compareTo(floor) > 0) floor = f;
-        }
-        return ua.zentix.almighty.policy.Nodes.covers(player.getUUID(), floor);
-    }
-
     /**
-     * A public chat line: addressed to the GM or not, in the feed, unless its author is below an agent's trust floor
-     * (private: anyone but an owner): then no agent reads it (plan 4.2: other players' text is not fed to it).
+     * A public chat line: addressed to the GM or not, always in the feed. An agent reads it only if its author may
+     * reach that agent (the feed read filters by trust floor, {@code Api.heardBy}); below the default agent's floor
+     * the line is never addressed (no ticket).
      */
     public void chat(ServerPlayer player, JsonObject d, String text) {
-        if (!heardByAll(player)) return;
         // A GM bot's chat is the GM's own voice, never a message to it.
         Addressing.Via via = bot(player) ? null
                 : addressing.chat(player.getUUID(), text, humans().stream().allMatch(p -> p == player));
@@ -133,6 +120,7 @@ public final class Inbox {
             // reaching the GM; the player is never told off for chatting.
             via = null;
         }
+        if (via != null && !heard(player, GmConfig.FEED_DEFAULT_AGENT.get())) via = null;
         if (via == null) {
             d.addProperty("addressed", false);
             feed.add("chat", d);
@@ -250,7 +238,7 @@ public final class Inbox {
     }
 
     /** Untrusted fields of a player event: player-authored text is data, never instructions (plan 4.11). */
-    static JsonArray untrusted(String... fields) {
+    public static JsonArray untrusted(String... fields) {
         JsonArray a = new JsonArray();
         for (String f : fields) a.add(f);
         return a;

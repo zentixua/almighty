@@ -80,9 +80,7 @@ public final class FeedListeners {
         String root = command.strip().split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
         if (root.startsWith("/")) root = root.substring(1);
         if (PRIVATE.contains(root)) return;
-        // A command is player-authored text: not for agents above its author's rights (Inbox.heardByAll).
-        GmServer gm = GmServer.of(Mc.server(p));
-        if (gm != null && !gm.inbox().heardByAll(p)) return;
+        // Player-authored text: each agent reads it only if the player may reach it (Api.heardBy, by trust floor).
         JsonObject d = player(p);
         d.addProperty("command", command);
         d.add("untrusted", Inbox.untrusted("command"));

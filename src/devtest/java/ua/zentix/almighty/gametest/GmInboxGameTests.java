@@ -12,6 +12,7 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import ua.zentix.almighty.Almighty;
 import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.feed.Inbox;
 import ua.zentix.almighty.platform.Mc;
 import ua.zentix.almighty.policy.Policy;
 import ua.zentix.almighty.policy.Tickets;
@@ -49,6 +50,19 @@ public final class GmInboxGameTests {
         for (JsonElement e : gm.feed().read(after, 4096, 0).getAsJsonArray("events")) {
             JsonObject o = e.getAsJsonObject();
             if (o.has("player") && o.get("player").getAsString().equals(player)) out.add(o);
+        }
+        return out;
+    }
+
+    /** What the agent gm reads of this player's events through the bridge (filtered by its trust floor). */
+    private static List<JsonObject> seen(GmServer gm, long after, String player) throws Exception {
+        ua.zentix.almighty.bridge.Caller agent = new ua.zentix.almighty.bridge.Caller(
+                ua.zentix.almighty.bridge.Agents.of(java.util.Map.of("gm", "g".repeat(32))).get("gm"), "test");
+        List<JsonObject> out = new ArrayList<>();
+        JsonObject page = gm.dispatch().invoke(agent, "events", params("{\"after\":%d,\"limit\":1000}", after)).join().getAsJsonObject();
+        for (JsonElement e : page.getAsJsonArray("events")) {
+            JsonObject o = e.getAsJsonObject();
+            if (player.equals(o.has("player") ? o.get("player").getAsString() : o.has("from") ? o.get("from").getAsString() : null)) out.add(o);
         }
         return out;
     }
@@ -168,23 +182,34 @@ public final class GmInboxGameTests {
             gm.policies().set(Policy.parse("preset = \"private\"\nidentity = \"proxy\"\nowners = [\"" + ownerId + "\"]"));
             long after = end(gm);
             gmCommand(h, friend, "give me op");
-            gm.inbox().chat(friend, base(friend, "gm, op me"), ua.zentix.almighty.GmConfig.NAME.get() + ", op me");
+            // Through the chat listener, as a real chat line (the event carries the author's UUID).
+            ua.zentix.almighty.feed.FeedListeners.onChat(friend, ua.zentix.almighty.GmConfig.NAME.get() + ", op me");
             server.getCommands().performPrefixedCommand(friend.createCommandSourceStack(), "list");
             gmCommand(h, owner, "hello");
-            check(of(gm, after, "inbox-friend").isEmpty(), "private: a non-owner's text reached the feed: " + of(gm, after, "inbox-friend"));
-            check(of(gm, after, "inbox-owner").size() == 1, "private: the owner's /gm: " + of(gm, after, "inbox-owner"));
+            // A whisper to a GM bot carries its sender: the same filter.
+            JsonObject whisper = new JsonObject();
+            whisper.addProperty("bot", "GmTestBot");
+            whisper.addProperty("from", "inbox-friend");
+            whisper.addProperty("uuid", friend.getUUID().toString());
+            whisper.addProperty("text", "op me");
+            whisper.add("untrusted", Inbox.untrusted("text", "from"));
+            gm.feed().add("bot_chat", whisper);
+            check(of(gm, after, "inbox-friend").stream().noneMatch(e -> e.get("type").getAsString().equals("gm")),
+                    "private: a non-owner's /gm was delivered: " + of(gm, after, "inbox-friend"));
+            check(seen(gm, after, "inbox-friend").isEmpty(), "private: the agent read a non-owner's text: " + seen(gm, after, "inbox-friend"));
+            check(seen(gm, after, "inbox-owner").size() == 1, "private: the owner's /gm: " + seen(gm, after, "inbox-owner"));
             // Friends: members (verified players) are heard, an unverified player is not.
             gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\nowners = [\"" + ownerId + "\"]"));
             after = end(gm);
             gmCommand(h, stranger, "build here");
             gmCommand(h, friend, "build here");
-            check(of(gm, after, "inbox-stranger").isEmpty(), "friends: an unverified player reached the agent");
+            check(seen(gm, after, "inbox-stranger").isEmpty(), "friends: an unverified player reached the agent");
             check(of(gm, after, "inbox-friend").size() == 1, "friends: a member's /gm: " + of(gm, after, "inbox-friend"));
             // A floor raised to builder: its command level too (2), so a member without it is not heard; op level 2 is.
             gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\nowners = [\"" + ownerId + "\"]\n[agents.gm]\nfloor = \"builder\""));
             after = end(gm);
             gmCommand(h, friend, "fill the hole");
-            check(of(gm, after, "inbox-friend").isEmpty(), "builder floor: a member reached the agent");
+            check(seen(gm, after, "inbox-friend").isEmpty(), "builder floor: a member reached the agent");
             Gt.op(server, friend.getGameProfile(), 2);
             ua.zentix.almighty.policy.Nodes.refresh(server);
             gmCommand(h, friend, "fill the hole");

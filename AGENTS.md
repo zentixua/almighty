@@ -129,7 +129,10 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `config/almighty/oauth/` (clients, hashed refresh tokens). `/almighty connect`: address, per-product lines and
   secret-free links (`mcp/Connect`). The issuer is `bridge.public_url` or the request's loopback/bridge host.
   `/almighty approve <code> <name> owner` (`OwnerApp`): the owner's own app, `[agents.<name>] ceiling = "owner"` added
-  to `policy.toml` (validated, then `Policies.reload`); without it the gate's default ceiling applies (`admin`).
+  to `policy.toml` (validated, then `Policies.reload`); without it the gate's default ceiling applies (`admin`), except
+  at first setup: while `policy.toml` lists no owner, the plain `/almighty approve <code>` (the console, or the first
+  owner typing it) grants the owner ceiling and says so (`SignInCommand.rights`; an agent the file lists keeps its
+  ceiling), so the page's own command makes the app hear players (lead's N1).
 - TLS (`bridge/Tls`): with `bridge.tls_cert` + `bridge.tls_key` (owner's PEM chain and PKCS#8 key, JDK only) the bridge
   is HTTPS only; sign-in and `/almighty connect` then use https. A non-loopback bind without TLS is refused (plan 7.2,
   `Tls.plainRefusal`: the bridge does not start, the log names the fix) unless the owner sets
@@ -296,7 +299,10 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `ticket`; other chat has `addressed: false`. `events {mine: true}` leaves out messages routed to other agents; a
   read records the agent's cursor. Away: the target agent made no call for 60 s, or has not read the message after
   `feed.away_seconds` (30) → the server tells the player (translated; only for `/gm` and named lines, at most once
-  per player in 5 minutes); no bridge (GameTest) → no away replies. `identity` in `policy.toml` (auto, mojang,
+  per player in 5 minutes, "paused" counted apart, `feed/Notices`); no bridge (GameTest) → no away replies. A
+  message routed by default (not `/gm @<agent>`, event field `named`) whose agent is away belongs to the agent
+  players are routed to now, if the player may reach it (`Inbox.handsOver`): its ticket moves on use
+  (`Tickets.Handover`) and `events` shows it with that `agent` and `kept_for` (lead's N6). `identity` in `policy.toml` (auto, mojang,
   proxy, offline) sets which UUIDs count as verified. `timezone` (unset: the machine's) dates audit files and the
   times `/almighty role` shows; `[safety] privacy_notice` (true) tells each joining player, not bots, that an AI reads
   the public chat and acts on messages addressed to it (`almighty.gm.privacy_notice`); turning it off is a grant (`PolicyEdits`).

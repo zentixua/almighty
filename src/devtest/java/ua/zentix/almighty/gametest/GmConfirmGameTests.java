@@ -100,6 +100,41 @@ public final class GmConfirmGameTests {
     }
 
     /**
+     * Lead's N1: at first setup the app approved with the plain command the sign-in page shows is the owner's own app
+     * (ceiling owner), so players' /gm reaches it (the route takes only an owner-ceiling app); an agent policy.toml
+     * already lists keeps its own ceiling; once an owner exists, the plain form keeps the default (admin).
+     */
+    @GameTest(template = "floor", batch = "gm_first_app")
+    public static void theFirstAppIsTheOwners(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        java.nio.file.Path file = gm.policies().file();
+        String saved = file != null && java.nio.file.Files.exists(file) ? java.nio.file.Files.readString(file) : null;
+        try {
+            if (file == null) throw new GameTestAssertException("no policy file in GameTest");
+            java.nio.file.Files.writeString(file, "preset = \"friends\"\nidentity = \"proxy\"\n");
+            check(gm.policies().reload() == null, "policy loads");
+            check(gm.policies().current().owners().isEmpty(), "no owner yet");
+            String said = ua.zentix.almighty.mcp.signin.SignInCommand.rights(gm, "claude-code", true, true);
+            check(gm.policies().current().ceiling("claude-code") == ua.zentix.almighty.policy.Role.OWNER, "owner ceiling: " + said);
+            check(said.contains("your rights") && said.contains("/almighty agent remove claude-code"), "the decision is shown: " + said);
+            // Signed in again: the file lists it now, so nothing is rewritten and the approval command sees it as listed.
+            check(ua.zentix.almighty.mcp.signin.OwnerApp.listed(file, "claude-code") != null, "listed after the grant");
+            // With an owner, the plain form keeps the policy's default ceiling.
+            java.nio.file.Files.writeString(file, "preset = \"friends\"\nidentity = \"proxy\"\nowners = [\"" + UUID.randomUUID() + "\"]\n");
+            check(gm.policies().reload() == null, "policy with an owner loads");
+            said = ua.zentix.almighty.mcp.signin.SignInCommand.rights(gm, "codex", false, false);
+            check(gm.policies().current().ceiling("codex") == ua.zentix.almighty.policy.Role.ADMIN, "default ceiling: " + said);
+            check(said.contains("codex owner"), "names the owner form: " + said);
+        } finally {
+            if (saved != null) java.nio.file.Files.writeString(file, saved);
+            gm.policies().reload();
+            gm.policies().set(before);
+        }
+        h.succeed();
+    }
+
+    /**
      * Owner setup in one step (lead, "setup must be simple"): while policy.toml lists no owner, the verified level-4
      * operator who approves a sign-in becomes the first owner; nobody below level 4, nobody unverified, and nobody once
      * an owner exists.

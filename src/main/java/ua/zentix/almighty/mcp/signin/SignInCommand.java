@@ -22,7 +22,8 @@ import java.util.List;
 /**
  * Owner sign-in commands, added to {@code /almighty} (permission level 4: the console and level-4 operators):
  * {@code approve <code> [name] [owner]} lets the waiting login with that code in as agent {@code name}, with the
- * owner's own rights when {@code owner} is given ({@link OwnerApp}); {@code approve}
+ * owner's own rights when {@code owner} is given ({@link OwnerApp}) or while policy.toml lists no owner yet (the first
+ * setup: the approver is the owner, so the app is theirs); {@code approve}
  * alone lists waiting logins (without codes); {@code deny <code>}; {@code connect} shows the address and the ways to
  * connect each product. Brigadier merges these into the same {@code almighty} node.
  */
@@ -152,6 +153,10 @@ public final class SignInCommand {
                     return 0;
                 }
             }
+            // First setup (lead's N1): while policy.toml lists no owner, whoever may approve is the owner (the console,
+            // or the level-4 operator who becomes the first owner now), and the app they sign in is their own app: it
+            // gets their ceiling, so players' /gm reaches it (Agents.route) with exactly the command the page shows.
+            boolean firstSetup = gm.policies().current().owners().isEmpty();
             String became = null;
             if (!ua.zentix.almighty.command.AlmightyCommand.isTrueOwner(source)) {
                 String why = claimFirstOwner(source);
@@ -176,24 +181,36 @@ public final class SignInCommand {
                 gm.audit().owner(source.getTextName(), "owner add", became + " " + Mc.id(profile) + ", approving a sign-in");
             }
             String agent = mcp.signIn().approve(StringArgumentType.getString(c, "code"), name);
-            String rights;
-            if (owner) {
-                String refused = OwnerApp.grant(gm.policies().file(), agent);
-                String error = refused == null ? gm.policies().reload() : null;
-                rights = refused != null ? " " + refused + "." : error != null ? " The policy did not reload: " + error + "."
-                        : " It has your rights (ceiling owner in policy.toml).";
-            } else {
-                rights = " It has " + gm.policies().current().ceiling(agent).id() + " rights. If it is your own app, sign it in again "
-                        + "and approve with /almighty approve <code> " + agent + " owner.";
-            }
+            boolean ownApp = !owner && firstSetup && OwnerApp.listed(gm.policies().file(), agent) == null;
+            String rights = rights(gm, agent, owner || ownApp, ownApp);
             String text = (became == null ? "" : became + " is now an owner of this server (policy.toml). ")
-                    + "Approved: it connects as agent " + agent + "." + rights + " End it any time with /almighty agent remove " + agent;
+                    + "Approved: it connects as agent " + agent + "." + rights
+                    + (ownApp ? "" : " End it any time with /almighty agent remove " + agent);
             source.sendSuccess(() -> Component.literal(text).withStyle(ChatFormatting.GREEN), true);
             return 1;
         } catch (SignIn.OAuthError | IOException e) {
             source.sendFailure(Component.literal(e.getMessage()));
             return 0;
         }
+    }
+
+    /**
+     * The approved agent's rights, and the words that say so: with {@code owner} the owner's ceiling in policy.toml
+     * ({@link OwnerApp}; {@code firstApp}: granted by default at first setup, lead's N1), else the ceiling the policy
+     * gives it (admin by default) and how to make it the owner's app.
+     */
+    public static String rights(GmServer gm, String agent, boolean owner, boolean firstApp) throws IOException {
+        if (!owner) {
+            return " It has " + gm.policies().current().ceiling(agent).id() + " rights. If it is your own app, sign it in again "
+                    + "and approve with /almighty approve <code> " + agent + " owner.";
+        }
+        String refused = OwnerApp.grant(gm.policies().file(), agent);
+        String error = refused == null ? gm.policies().reload() : null;
+        if (refused != null) return " " + refused + ".";
+        if (error != null) return " The policy did not reload: " + error + ".";
+        return firstApp ? " As this server's first app it has your rights (ceiling owner in policy.toml) and hears players' /gm."
+                + " Not your own app? End it with /almighty agent remove " + agent + "."
+                : " It has your rights (ceiling owner in policy.toml).";
     }
 
     /** A sign-in code as the login page shows it (4 digits); a confirmation nonce never looks like one. */

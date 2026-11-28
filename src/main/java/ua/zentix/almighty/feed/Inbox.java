@@ -43,9 +43,9 @@ public final class Inbox {
 
     private record Awaiting(long seq, String agent, UUID player, long deadline) {}
 
-    /** At most one "away" line per player in this many ms. */
+    /** At most one "away" line, and one "paused" line, per player in this many ms. */
     static final long AWAY_EVERY_MS = 300_000;
-    private final java.util.Map<UUID, Long> toldAway = new java.util.HashMap<>();
+    private final Notices told = new Notices(AWAY_EVERY_MS);
 
     public Inbox(MinecraftServer server, Feed feed, Tickets tickets, Supplier<Agents> agents) {
         this.server = server;
@@ -64,6 +64,7 @@ public final class Inbox {
     /** {@code /gm [@agent] text}; false if the server refused it (and told the player why). */
     public boolean gm(ServerPlayer player, String text) {
         String agent = defaultAgent();
+        boolean byName = false;
         String body = text.strip();
         if (body.startsWith("@")) {
             // "@<agent> …" routes to that agent; "@everyone …" or any other word is just text for the default agent.
@@ -73,6 +74,8 @@ public final class Inbox {
             if (known == null || known.get(named) != null) {
                 agent = named;
                 body = parts.length > 1 ? parts[1] : "";
+                // A message the player addressed to an agent by name stays with that agent (no handover).
+                byName = true;
             }
         }
         // Below the agent's trust floor (private: anyone but an owner): the agent would act on it with more than the
@@ -89,7 +92,8 @@ public final class Inbox {
         JsonObject d = FeedListeners.where(player);
         d.addProperty("text", body);
         d.add("untrusted", untrusted("text"));
-        deliver(player, "gm", d, Addressing.Via.GM, agent);
+        if (byName) d.addProperty("named", true);
+        deliver(player, "gm", d, Addressing.Via.GM, agent, byName);
         return true;
     }
 
@@ -127,7 +131,7 @@ public final class Inbox {
             feed.add("chat", d);
             return;
         }
-        deliver(player, "chat", d, via, to);
+        deliver(player, "chat", d, via, to, false);
     }
 
     /** The agent that gets messages not addressed to one by name ({@link Agents#route}). */
@@ -138,7 +142,18 @@ public final class Inbox {
                 name -> ua.zentix.almighty.policy.Nodes.policy().ceiling(name) == ua.zentix.almighty.policy.Role.OWNER);
     }
 
-    private void deliver(ServerPlayer player, String type, JsonObject d, Addressing.Via via, String agentName) {
+    /**
+     * Whether a message routed by default to agent {@code from} now belongs to {@code to} (lead's N6): {@code to} is
+     * where players are routed now, {@code from} is away, and the player may reach {@code to} (its trust floor).
+     * Any thread (the feed filter and ticket checks run on bridge threads; never waits on a permission plugin).
+     */
+    public boolean handsOver(String from, String to, UUID player) {
+        Agents known = agents.get();
+        if (known == null || !known.handsOver(from, to, defaultAgent(), PRESENT_MS)) return false;
+        return ua.zentix.almighty.policy.Nodes.covers(player, ua.zentix.almighty.policy.Nodes.policy().floor(to), true);
+    }
+
+    private void deliver(ServerPlayer player, String type, JsonObject d, Addressing.Via via, String agentName, boolean named) {
         if (via != Addressing.Via.CONVERSATION) addressing.opened(player.getUUID());
         waiting.add(player.getUUID());
         String id = Tickets.newId();
@@ -151,7 +166,7 @@ public final class Inbox {
         boolean bot = bot(player);
         if (!bot) d.addProperty("ticket", id);
         long seq = feed.add(type, d);
-        if (!bot) tickets.mint(id, player.getUUID(), Mc.name(player.getGameProfile()), agentName, seq, verified);
+        if (!bot) tickets.mint(id, player.getUUID(), Mc.name(player.getGameProfile()), agentName, seq, verified, named);
         Agents known = agents.get();
         // Away replies only for messages the player clearly meant for the GM (/gm or its name).
         if (via != Addressing.Via.GM && via != Addressing.Via.NAME) return;
@@ -172,16 +187,17 @@ public final class Inbox {
 
     /** When the player was last told the GM is away or paused (epoch ms), 0 if never (GameTest: mock connections keep no packets). */
     public long toldAt(java.util.UUID player) {
-        Long t = toldAway.get(player);
-        return t == null ? 0 : t;
+        return told.at(player, null);
     }
 
-    /** A gray server line to the player, at most once per {@link #AWAY_EVERY_MS} (away and paused share it). */
+    /** When the player was last told this notice ({@code almighty.gm.away} or {@code almighty.gm.paused}), 0 if never. */
+    public long toldAt(java.util.UUID player, String key) {
+        return told.at(player, key);
+    }
+
+    /** A gray server line to the player, each notice at most once per {@link #AWAY_EVERY_MS}. */
     private void tell(ServerPlayer player, String key) {
-        long now = System.currentTimeMillis();
-        Long last = toldAway.get(player.getUUID());
-        if (last != null && now - last < AWAY_EVERY_MS) return;
-        toldAway.put(player.getUUID(), now);
+        if (!told.due(player.getUUID(), key, System.currentTimeMillis())) return;
         player.sendSystemMessage(GmMessages.get(key, lang(player)).copy().withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
     }
 
@@ -193,7 +209,7 @@ public final class Inbox {
             cooled.values().removeIf(until -> until < nowMs);
             refusals.values().removeIf(d -> d.isEmpty() || nowMs - d.peekLast() >= COOL_MS);
             long now = System.currentTimeMillis();
-            toldAway.values().removeIf(t -> now - t >= AWAY_EVERY_MS);
+            told.prune(now);
         }
         if (tickCount % 20 != 0 || awaiting.isEmpty()) return;
         long now = System.currentTimeMillis();

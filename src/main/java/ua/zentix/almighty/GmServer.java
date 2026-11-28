@@ -113,6 +113,8 @@ public final class GmServer {
         // One agent paused: all its rules stop; pause of all keeps the owner's (rules.paused above).
         rules.agentPaused(pause::pausedAlone);
         this.inbox = new Inbox(server, feed, tickets, () -> bridge == null ? null : bridge.agents());
+        // A kept message follows the agent players are routed to now (lead's N6).
+        tickets.handover((t, agent) -> inbox.handsOver(t.agent(), agent, t.player()));
         this.roles = new ua.zentix.almighty.policy.Roles(GmServer.configDir == null ? null : GmServer.configDir.resolve("roles.json"),
                 System::currentTimeMillis);
         Nodes.granted(roles::of);

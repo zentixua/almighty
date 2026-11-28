@@ -33,6 +33,30 @@ class TicketsTest {
         assertThrows(RpcException.class, () -> tickets.check(id, "gm"), "expired: checking never extends it");
     }
 
+    /** Lead's N6: a kept message routed by default follows the agent players are routed to; a named one never moves. */
+    @Test
+    void aKeptMessageFollowsTheRoutedAgent() throws Exception {
+        java.util.concurrent.atomic.AtomicBoolean away = new java.util.concurrent.atomic.AtomicBoolean(false);
+        tickets.handover((t, agent) -> away.get() && agent.equals("claude-code"));
+        String routed = Tickets.newId(), named = Tickets.newId();
+        tickets.mint(routed, alex, "Alex", "gm", 7, true, false);
+        tickets.mint(named, alex, "Alex", "gm", 8, true, true);
+        assertThrows(RpcException.class, () -> tickets.check(routed, "claude-code"), "while gm may still answer");
+        away.set(true);
+        assertThrows(RpcException.class, () -> tickets.check(named, "claude-code"), "a message named for gm stays with gm");
+        assertThrows(RpcException.class, () -> tickets.check(routed, "builder"), "only to the agent players are routed to");
+        Tickets.Ticket moved = tickets.check(routed, "claude-code");
+        assertEquals("claude-code", moved.agent());
+        assertEquals(alex, moved.player());
+        assertEquals("claude-code", tickets.peek(routed).agent(), "it is that agent's now");
+        away.set(false);
+        tickets.check(routed, "claude-code");
+        assertThrows(RpcException.class, () -> tickets.check(routed, "gm"), "and no longer gm's");
+        now.addAndGet(Tickets.TTL_MS + 1);
+        assertThrows(RpcException.class, () -> tickets.check(routed, "claude-code"), "moving never extends it");
+        assertTrue(tickets.peek(routed) == null);
+    }
+
     @Test
     void unguessableAndBounded() {
         Set<String> ids = new HashSet<>();

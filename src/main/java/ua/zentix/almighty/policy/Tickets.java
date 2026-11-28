@@ -20,10 +20,33 @@ public final class Tickets {
     static final int MAX = 4096;
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    public record Ticket(String id, UUID player, String name, String agent, long seq, long created, boolean verified) {
+    /**
+     * {@code named}: the player named the agent ({@code /gm @agent …}); such a ticket never moves to another agent.
+     * A message routed by default may ({@link Handover}).
+     */
+    public record Ticket(String id, UUID player, String name, String agent, long seq, long created, boolean verified, boolean named) {
+        public Ticket(String id, UUID player, String name, String agent, long seq, long created, boolean verified) {
+            this(id, player, name, agent, seq, created, verified, true);
+        }
+
         public long expires() {
             return created + TTL_MS;
         }
+    }
+
+    /**
+     * Whether a ticket of a message routed by default may move to {@code agent} (lead's N6: the player was told the
+     * message is kept; it belongs to whoever players are routed to now, if the agent it went to is away).
+     */
+    @FunctionalInterface
+    public interface Handover {
+        boolean test(Ticket ticket, String agent);
+    }
+
+    private volatile Handover handover;
+
+    public void handover(Handover h) {
+        this.handover = h;
     }
 
     private final LongSupplier clockMillis;
@@ -41,6 +64,10 @@ public final class Tickets {
     }
 
     public Ticket mint(String id, UUID player, String name, String agent, long seq, boolean verified) {
+        return mint(id, player, name, agent, seq, verified, true);
+    }
+
+    public Ticket mint(String id, UUID player, String name, String agent, long seq, boolean verified, boolean named) {
         long now = clockMillis.getAsLong();
         if (byId.size() >= MAX) {
             byId.values().removeIf(t -> t.expires() < now);
@@ -50,12 +77,15 @@ public final class Tickets {
                         .ifPresent(t -> byId.remove(t.id()));
             }
         }
-        Ticket t = new Ticket(id, player, name, agent, seq, now, verified);
+        Ticket t = new Ticket(id, player, name, agent, seq, now, verified, named);
         byId.put(id, t);
         return t;
     }
 
-    /** The ticket if it exists, has not expired and was minted for this agent; otherwise 403 with the reason. */
+    /**
+     * The ticket if it exists, has not expired and was minted for this agent (or, routed by default, is handed over to
+     * it now: {@link Handover}, after which it is that agent's alone); otherwise 403 with the reason.
+     */
     public Ticket check(String id, String agent) throws RpcException {
         Ticket t = byId.get(id);
         if (t == null) throw new RpcException(403, "ticket", "Unknown ticket (tickets end with a server restart): ask the player to repeat");
@@ -63,8 +93,22 @@ public final class Tickets {
             byId.remove(id);
             throw new RpcException(403, "ticket", "The ticket expired (10 minutes): ask the player to repeat");
         }
-        if (!t.agent().equals(agent)) throw new RpcException(403, "ticket", "The ticket was minted for agent " + t.agent());
+        if (!t.agent().equals(agent)) {
+            Handover h = handover;
+            if (t.named() || h == null || !h.test(t, agent)) {
+                throw new RpcException(403, "ticket", "The ticket was minted for agent " + t.agent());
+            }
+            Ticket moved = new Ticket(t.id(), t.player(), t.name(), agent, t.seq(), t.created(), t.verified(), false);
+            // Another agent's check moved it in between: decide again on the ticket as it is now.
+            return byId.replace(id, t, moved) ? moved : check(id, agent);
+        }
         return t;
+    }
+
+    /** The ticket while it lives (no agent check, nothing changes); null once unknown or expired. */
+    public Ticket peek(String id) {
+        Ticket t = byId.get(id);
+        return t == null || t.expires() < clockMillis.getAsLong() ? null : t;
     }
 
     public int size() {

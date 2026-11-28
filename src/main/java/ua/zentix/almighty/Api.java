@@ -394,8 +394,23 @@ public final class Api {
                 // Player-authored text only from players who may reach this agent (its trust floor, plan 4.2).
                 java.util.function.Predicate<java.util.UUID> heard = heardBy(gm, a.caller());
                 JsonObject page = gm.feed().read(after, limit, wait * 1000L, e -> (!mine || me == null
-                        || !e.has("agent") || e.get("agent").getAsString().equals(me))
+                        || !e.has("agent") || holder(gm, e, me).equals(me))
                         && (!e.has("untrusted") || !e.has("uuid") || heard.test(java.util.UUID.fromString(e.get("uuid").getAsString()))));
+                // A kept message shows the agent it belongs to now: the reader's own once its agent is away (its
+                // ticket moves on use), or the agent it moved to (lead's N6); kept_for names the agent it first went to.
+                if (me != null) {
+                    com.google.gson.JsonArray events = page.getAsJsonArray("events");
+                    for (int i = 0; i < events.size(); i++) {
+                        JsonObject e = events.get(i).getAsJsonObject();
+                        if (!e.has("agent")) continue;
+                        String holder = holder(gm, e, me), first = e.get("agent").getAsString();
+                        if (holder.equals(first)) continue;
+                        JsonObject copy = e.deepCopy();
+                        copy.addProperty("kept_for", first);
+                        copy.addProperty("agent", holder);
+                        events.set(i, copy);
+                    }
+                }
                 if (a.caller().agent() != null) a.caller().agent().read(page.get("next").getAsLong());
                 return CompletableFuture.completedFuture(page);
             } catch (InterruptedException e) {
@@ -404,6 +419,18 @@ public final class Api {
             }
         });
         return m;
+    }
+
+    /**
+     * The agent an addressed event belongs to as {@code me} reads it: the agent its live ticket is bound to now, or
+     * {@code me} if a message routed by default would move to it ({@link ua.zentix.almighty.feed.Inbox#handsOver}).
+     */
+    private static String holder(GmServer gm, JsonObject e, String me) {
+        String first = e.get("agent").getAsString();
+        ua.zentix.almighty.policy.Tickets.Ticket t = e.has("ticket") ? gm.tickets().peek(e.get("ticket").getAsString()) : null;
+        if (t == null) return first;
+        if (t.agent().equals(me) || !t.named() && gm.inbox().handsOver(t.agent(), me, t.player())) return me;
+        return t.agent();
     }
 
     /**

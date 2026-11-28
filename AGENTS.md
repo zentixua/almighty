@@ -130,9 +130,10 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   secret-free links (`mcp/Connect`). The issuer is `bridge.public_url` or the request's loopback/bridge host.
   `/almighty approve <code> <name> owner` (`OwnerApp`): the owner's own app, `[agents.<name>] ceiling = "owner"` added
   to `policy.toml` (validated, then `Policies.reload`); without it the gate's default ceiling applies (`admin`), except
-  at first setup: while `policy.toml` lists no owner, the plain `/almighty approve <code>` (the console, or the first
-  owner typing it) grants the owner ceiling and says so (`SignInCommand.rights`; an agent the file lists keeps its
-  ceiling), so the page's own command makes the app hear players (lead's N1).
+  at first setup: while `policy.toml` lists no owner and no owner app but `gm` (`SignInCommand.firstApp`), the plain
+  `/almighty approve <code>` (the console, or the first owner typing it) grants the owner ceiling and says so
+  (`SignInCommand.rights`; an agent the file lists keeps its ceiling), so the page's own command makes the app hear
+  players (lead's N1); later plain approvals keep the default.
 - TLS (`bridge/Tls`): with `bridge.tls_cert` + `bridge.tls_key` (owner's PEM chain and PKCS#8 key, JDK only) the bridge
   is HTTPS only; sign-in and `/almighty connect` then use https. A non-loopback bind without TLS is refused (plan 7.2,
   `Tls.plainRefusal`: the bridge does not start, the log names the fix) unless the owner sets

@@ -58,6 +58,11 @@ class ForgeryTest {
                 "title @a title {nbt:\"CustomName\",entity:\"@e[limit=1]\"}",
                 "tellraw @a {\"nbt\":\"front_text.messages[0]\",\"block\":\"0 64 0\"}",
                 "tellraw @a {\"nbt\":\"msg\",\"storage\":\"x:y\"}",
+                // Found in review: padding around the colon, an entity picked by UUID, padded interpret.
+                "tellraw @a {\"selector\"      :\"@e[type=zombie]\"}", "tellraw @a {\"selector\":      \"@e\"}",
+                "tellraw @a {\"nbt\"       :\"CustomName\",\"entity\":\"@e\"}", "tellraw @a {selector:\n\n'@e'}",
+                "tellraw @a {\"selector\":\"1f2e3d4c-0000-4000-8000-000000000001\"}",
+                "tellraw @a {\"text\":\"x\",\"clickEvent\":{\"action\"     :     \"custom\"}}",
                 "tellraw @p {text:\"x\",click_event:{action:\"run\u00adcommand\"}}".replace("run\u00adcommand", "run_\u200bcommand")}) {
             assertNotNull(Forgery.refusal(c), c);
         }
@@ -76,7 +81,7 @@ class ForgeryTest {
                 "summon zombie ~ ~ ~ {CustomName:'\"Bob\"',ArmorItems:[{id:\"minecraft:iron_boots\",count:1},{},{},{}]}",
                 "say 100% done", "tellraw @a {\"translate\":\"block.minecraft.stone\"}",
                 "tellraw @a [{\"selector\":\"@a\"},\" won\"]", "tellraw @a {\"selector\":\"@r\"}",
-                "tellraw @a {\"selector\":\"@s[type=player]\"}", "tellraw @a {\"score\":{\"name\":\"@p\",\"objective\":\"jumps\"}}"}) {
+                "tellraw @a {\"selector\":\"@s[type=player]\"}", "tellraw @a {\"selector\":\"Steve\"}", "tellraw @a {\"selector\" : \"@a\"}", "tellraw @a {\"score\":{\"name\":\"@p\",\"objective\":\"jumps\"}}"}) {
             assertNull(Forgery.refusal(c), c);
         }
     }

@@ -34,13 +34,13 @@ import java.util.regex.Pattern;
 public final class Forgery {
     public static final String PREFIX = "[almighty]";
     private static final Pattern ESCAPE = Pattern.compile("\\\\+(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8})|x([0-9a-fA-F]{2})|N\\{([^}]{1,64})})");
-    private static final Pattern TRANSLATE_FORMAT = Pattern.compile("(translate|fallback)\\W{0,4}:\\W{0,4}[^,}\\]]*%");
-    private static final Pattern CUSTOM = Pattern.compile("(action|type)\\W{0,4}:\\W{0,4}(minecraft:)?custom\\b");
-    private static final Pattern INTERPRET = Pattern.compile("interpret\\W{0,4}:\\W{0,4}(true|1b?\\b)");
+    private static final Pattern TRANSLATE_FORMAT = Pattern.compile("(translate|fallback)\\W*:\\W*[^,}\\]]*%");
+    private static final Pattern CUSTOM = Pattern.compile("(action|type)\\W*:\\W*(minecraft:)?custom\\b");
+    private static final Pattern INTERPRET = Pattern.compile("interpret\\W*:\\W*(true|1b?\\b)");
     private static final Pattern ROOT = Pattern.compile("^(minecraft:)?dialog\\b");
     /** A selector text part and its pattern (JSON or SNBT, any quoting). */
-    private static final Pattern SELECTOR_PART = Pattern.compile("selector\\W{0,4}:\\W{0,4}(@[a-z](?:\\[[^\\]]*])?)");
-    private static final Pattern NBT_PART = Pattern.compile("(?<![a-z0-9_])\\W?nbt\\W{0,4}:");
+    private static final Pattern SELECTOR_PART = Pattern.compile("selector[\\s\"']*:[\\s\"']*(@[a-z](?:\\[[^\\]]*])?|[^\\s\"',}\\]]+)");
+    private static final Pattern NBT_PART = Pattern.compile("(?<![a-z0-9_])\\W?nbt\\W*:");
     private static final Pattern PLAYER_TYPE = Pattern.compile("type\\s*=\\s*(minecraft:)?player\\b");
     /** Component fields whose values are never shown as the text itself: removed, key and value, before reading letters. */
     private static final Pattern HIDDEN_PAIR = Pattern.compile("(?<![a-z0-9_])[\"']?(color|font|shadow_color|insertion|selector|separator|keybind|objective|"
@@ -84,6 +84,12 @@ public final class Forgery {
         Matcher m = SELECTOR_PART.matcher(flat);
         while (m.find()) {
             String sel = m.group(1);
+            // Not a selector variable: a player's account name passes; anything else (an entity's UUID) is refused.
+            if (!sel.startsWith("@")) {
+                if (sel.matches("[a-z0-9_]{1,16}")) continue;
+                return "Below owner, text may show selected players only (an entity picked by UUID can carry a name like [Almighty]):"
+                        + " use @a, @p or @r, or a player's name";
+            }
             char kind = sel.charAt(1);
             boolean typed = sel.contains("type"), player = PLAYER_TYPE.matcher(sel).find();
             // @a, @p, @r select players; @s whoever runs the command (a mob under execute as @e) unless typed player.

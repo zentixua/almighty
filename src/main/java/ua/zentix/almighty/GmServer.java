@@ -196,7 +196,7 @@ public final class GmServer {
                 net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(caller.requester());
                 // [Undo] only for a change that recorded something (a change with no writes is gone by now).
                 Long undoable = recorded > 0 && journal.describe(recorded) != null ? recorded : null;
-                if (p != null) p.sendSystemMessage(ua.zentix.almighty.policy.Prompts.receipt(what, undoable));
+                if (p != null) p.sendSystemMessage(ua.zentix.almighty.policy.Prompts.receipt(what, undoable, ua.zentix.almighty.feed.GmMessages.language(p)));
             });
         });
     }

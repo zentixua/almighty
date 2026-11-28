@@ -3,5 +3,20 @@
   "almighty.gm.away": "The game master is away right now; your message is kept.",
   "almighty.gm.not_heard": "The game master here takes requests only from players trusted with what it can do.",
   "almighty.gm.slow_down": "Too many messages to the game master; try again later.",
-  "almighty.gm.privacy_notice": "An AI game master (%s) runs on this server: it reads messages addressed to it (/gm, or its name in chat) and may act on them. Server owners can see what it did."
+  "almighty.gm.privacy_notice": "An AI game master (%s) runs on this server: it reads messages addressed to it (/gm, or its name in chat) and may act on them. Server owners can see what it did.",
+  "almighty.prompt.asks": "%s wants to run as you: ",
+  "almighty.prompt.irreversible": " — cannot be undone. ",
+  "almighty.prompt.allow": "Allow",
+  "almighty.prompt.deny": "Deny",
+  "almighty.prompt.later": "Later",
+  "almighty.prompt.typed": " or type %s",
+  "almighty.prompt.dialog_title": "%s asks",
+  "almighty.prompt.dialog_body": "%s wants to run as you:",
+  "almighty.prompt.dialog_irreversible": "This cannot be undone.",
+  "almighty.receipt.done": "Done for you: %s ",
+  "almighty.receipt.undo": "[Undo]",
+  "almighty.outcome.not_allowed": "Not allowed: %s",
+  "almighty.outcome.done": "Done: %s",
+  "almighty.outcome.failed": "Failed: %s",
+  "almighty.outcome.expired": "Request expired: %s"
 }

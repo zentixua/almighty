@@ -27,35 +27,50 @@ public final class Prompts {
         return Component.literal(PREFIX + " ").withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.BOLD);
     }
 
-    private static Component button(String label, String command, ChatFormatting color) {
-        return Component.literal("[" + label + "]").withStyle(s -> s.withColor(color).withBold(true)
+    private static Component button(Component label, String command, ChatFormatting color) {
+        return Component.literal("[").append(label).append("]").withStyle(s -> s.withColor(color).withBold(true)
                 .withClickEvent(Mc.runCommand(command))
                 .withHoverEvent(Mc.showText(Component.literal(command))));
     }
 
-    /** The question to the player who must decide a requester confirmation. */
+    private static Component button(String label, String command, ChatFormatting color) {
+        return button(Component.literal(label), command, color);
+    }
+
+    private static Component t(String key, String lang, Object... args) {
+        return ua.zentix.almighty.feed.GmMessages.get(key, lang, args);
+    }
+
+    /** The question to the player who must decide a requester confirmation, in their language (English or Russian). */
     public static void ask(MinecraftServer server, Confirmations.Pending p) {
         ServerPlayer player = server.getPlayerList().getPlayer(p.confirmer);
         if (player == null) return;
-        player.sendSystemMessage(question(p));
+        String lang = ua.zentix.almighty.feed.GmMessages.language(player);
+        player.sendSystemMessage(question(p, lang));
         // 26.x: the same question as a dialog in front of the player (the chat line stays: Bedrock, a dialog closed with
         // Later or Escape leaves the request waiting). Not asserted in GameTest: a mock connection keeps no packets.
         if (!Identity.bedrock(player.getUUID())) {
-            Mc.confirmDialog(player, prefix().append(Component.literal(GmConfig.NAME.get() + " asks").withStyle(ChatFormatting.WHITE)),
-                    Component.literal(GmConfig.NAME.get() + " wants to run as you:\n").withStyle(ChatFormatting.WHITE)
-                            .append(Component.literal(p.text).withStyle(ChatFormatting.YELLOW))
-                            .append(Component.literal("\nThis cannot be undone.").withStyle(ChatFormatting.GRAY)),
-                    "/almighty confirm " + p.nonce(), "/almighty deny " + p.nonce());
+            String name = GmConfig.NAME.get();
+            Mc.confirmDialog(player, prefix().append(t("almighty.prompt.dialog_title", lang, name).copy().withStyle(ChatFormatting.WHITE)),
+                    t("almighty.prompt.dialog_body", lang, name).copy().withStyle(ChatFormatting.WHITE).append("\n")
+                            .append(Component.literal(p.text).withStyle(ChatFormatting.YELLOW)).append("\n")
+                            .append(t("almighty.prompt.dialog_irreversible", lang).copy().withStyle(ChatFormatting.GRAY)),
+                    "/almighty confirm " + p.nonce(), "/almighty deny " + p.nonce(),
+                    t("almighty.prompt.allow", lang), t("almighty.prompt.deny", lang), t("almighty.prompt.later", lang));
         }
     }
 
     static Component question(Confirmations.Pending p) {
-        return prefix().append(Component.literal(GmConfig.NAME.get() + " wants to run as you: ").withStyle(ChatFormatting.WHITE))
+        return question(p, "en_us");
+    }
+
+    static Component question(Confirmations.Pending p, String lang) {
+        return prefix().append(t("almighty.prompt.asks", lang, GmConfig.NAME.get()).copy().withStyle(ChatFormatting.WHITE))
                 .append(Component.literal(p.text).withStyle(ChatFormatting.YELLOW))
-                .append(Component.literal(" — cannot be undone. ").withStyle(ChatFormatting.GRAY))
-                .append(button("Allow", "/almighty confirm " + p.nonce(), ChatFormatting.GREEN)).append(" ")
-                .append(button("Deny", "/almighty deny " + p.nonce(), ChatFormatting.RED))
-                .append(typed(p));
+                .append(t("almighty.prompt.irreversible", lang).copy().withStyle(ChatFormatting.GRAY))
+                .append(button(t("almighty.prompt.allow", lang), "/almighty confirm " + p.nonce(), ChatFormatting.GREEN)).append(" ")
+                .append(button(t("almighty.prompt.deny", lang), "/almighty deny " + p.nonce(), ChatFormatting.RED))
+                .append(t("almighty.prompt.typed", lang, "/almighty confirm " + p.nonce()).copy().withStyle(ChatFormatting.DARK_GRAY));
     }
 
     /** The typed form, for clients that cannot click chat (Bedrock through Geyser) and the console. */
@@ -87,10 +102,15 @@ public final class Prompts {
         return prefix().append(Component.literal(text).withStyle(ChatFormatting.GRAY));
     }
 
-    /** A receipt with a suggested undo: "Done for you: … [Undo]". */
-    public static Component receipt(String text, Long job) {
-        MutableComponent c = prefix().append(Component.literal("Done for you: " + text + " ").withStyle(ChatFormatting.GRAY));
-        if (job != null) c.append(Component.literal("[Undo]").withStyle(s -> s.withColor(ChatFormatting.GOLD)
+    /** A translated server line to a player ({@code key} from the lang files, {@code arg} shown as is). */
+    public static Component line(String key, String lang, String arg) {
+        return prefix().append(t(key, lang, arg).copy().withStyle(ChatFormatting.GRAY));
+    }
+
+    /** A receipt with a suggested undo: "Done for you: … [Undo]", in the player's language. */
+    public static Component receipt(String text, Long job, String lang) {
+        MutableComponent c = prefix().append(t("almighty.receipt.done", lang, text).copy().withStyle(ChatFormatting.GRAY));
+        if (job != null) c.append(t("almighty.receipt.undo", lang).copy().withStyle(s -> s.withColor(ChatFormatting.GOLD)
                 .withClickEvent(Mc.suggestCommand("/almighty undo " + job))));
         return c;
     }

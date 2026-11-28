@@ -73,15 +73,15 @@ about 7,800 added lines in `src`. They read it against AGENTS.md and the plan, w
 
 | Finding | Fix | Test |
 |---|---|---|
-| F7 `/gm` went to the unused `gm` agent | messages go to the configured agent while it runs, else the agent that runs | `AgentsTest.playersReachTheAgentThatRuns` |
+| F7 `/gm` went to the unused `gm` agent | messages go to the configured agent while it runs, else to the owner's own running app (an agent with an owner ceiling, as `approve … owner` and the first-owner flow make it), never to someone else's agent | `AgentsTest.playersReachTheAgentThatRuns` |
 | F6 one sentence did not connect Claude Code | the 401 body and console line say no key is needed and give the commands | `SignInHttpTest`; **real run**: headless Claude Code 2.1.332, the lead's exact sentence, in a clean folder, on a dedicated 1.21.1 server. It ran `claude mcp add` itself (`almighty … Needs authentication`) and told the owner to sign in with `/mcp` and approve in game |
 | F1 "Done" for a failed command | outcome follows `ok`; a command above the requester's level is not put to them | confirm GameTests |
-| F4 undo of a door dropped a door | no shape update on door/bed/tall-plant halves; drops suppressed | GameTest `undoOfADoorDropsNothing` (reproduced the item before the fix) |
+| F4 undo of a door dropped a door | an undo or revert that writes both halves of a door, bed or tall plant skips their shape update; builds keep vanilla's | GameTest `undoOfADoorDropsNothing` (reproduced the item before the fix) |
 | F8 silence during pause | "paused" notice (en/ru) | GameTest `aPausedAgentsPlayerIsTold` |
 | F3 English and duplicate lines | translated, one line each | confirm GameTests |
 | F2 receipt under a reply | none for `say` | — |
 | F5 mined block reported one off | `broken_at` in the release result | `GmBotGameTests.botMinesAndPlaces` |
-| F9 refusing restarted the sign-in | 10-minute wait for the same app and address | `SignInTest.aRefusedAppWaitsBeforeAskingAgain` |
+| F9 refusing restarted the sign-in | 10-minute wait for the same app instance (client id, redirect, address); an approval clears it | `SignInTest.aRefusedAppWaitsBeforeAskingAgain` |
 | F10 [Undo] only typed into chat | runs on click | GameTest `undoOnAReceiptRunsOnClick` |
 | F11 log in UTC | the policy's zone (the JVM's by default) | `AuditClockTest` |
 
@@ -102,13 +102,15 @@ about 7,800 added lines in `src`. They read it against AGENTS.md and the plan, w
 
 ## 5. Checks with numbers
 
+- **PRs merged:** #95, #96, #97, #98, #99, #100, #101, each after its own review round (blocking findings fixed
+  first: #95 1, #96 1, #97 1, #98 1, #99 0, #100 0, #101 3).
 - **CI** on every merged PR: green on all five nodes, including build with `-Xlint:all`, unit tests and GameTest.
 - **Local, last runs:**
-  - 1.21.1 NeoForge: GameTest 80/80, all unit tests pass;
+  - 1.21.1 NeoForge: GameTest 81/81, all unit tests pass;
   - 26.3 NeoForge: GameTest 74/74;
   - 26.3 Fabric: GameTest passing;
   - all five nodes compile.
-- **GameTests added this mission:** 1.21.1 went from 72 to 80.
+- **GameTests added this mission:** 1.21.1 went from 72 to 81.
 - **Real client:** the F6 run above (Claude Code 2.1.332, dedicated NeoForge 21.1.264 server, loopback).
 
 ## 6. Needs Artem's word
@@ -137,7 +139,8 @@ about 7,800 added lines in `src`. They read it against AGENTS.md and the plan, w
   - `status` names this fix when no owner is set.
 - **One sentence connects Claude Code.** A probe without a token is told that no key is needed and the exact
   commands.
-- **Players' `/gm`** reaches the agent that is running. `feed.default_agent` only picks a preference.
+- **Players' `/gm`** reaches the owner's own signed-in app when the configured `gm` agent is not running; there is
+  no `default_agent` step.
 - **New `policy.toml` keys:**
   - `version`;
   - `[agents.<name>] allow_from = ["203.0.113.7", "10.0.0.0/8"]`;

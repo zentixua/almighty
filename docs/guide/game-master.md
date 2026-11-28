@@ -25,7 +25,7 @@ with its name within 30 seconds (`feed.away_seconds`), or made no call for a min
 game master is away; the message is kept. These lines follow the player's game language: Russian for `ru_ru`,
 English otherwise.
 
-Each addressed message carries a ticket. When the agent acts on it, the call runs with that player's rights
+Each addressed message carries a ticket. When the agent acts on it (every tool takes it as `for`), the call runs with that player's rights
 ([Permissions](permissions.md)), and anything that affects others waits for the player's confirmation.
 
 ## Keep the agent running

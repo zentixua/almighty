@@ -35,7 +35,8 @@ serves:
 - **`/rpc`**: plain JSON for scripts. `POST /rpc` with `Authorization: Bearer <token>` and
   `{"method": "status", "params": {}}`; the answer is `{"ok": true, "result": …}` or
   `{"ok": false, "error": {"code": …, "message": …}}`. A top-level `"key"` (up to 128 characters) makes a call with
-  effects idempotent for 10 minutes. The methods are listed in [AGENTS.md](../AGENTS.md#methods).
+  effects idempotent for 10 minutes. A call made for a player carries `for` in its params, the ticket from that
+  player's addressed event; it then runs with that player's rights. The methods are listed in [AGENTS.md](../AGENTS.md#methods).
 
 Every call, from any transport, passes the same checks: the deny list, pause, the permission gate, and the audit log.
 A token for your own code: `/almighty agent add <name>` in the console writes it to

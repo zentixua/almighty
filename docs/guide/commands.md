@@ -31,13 +31,13 @@ Players can also address the game master in public chat by its name (`feed.names
 |---|---|
 | `/almighty connect` | The server's MCP address, the line to add it in each app, and links for apps that have install links. |
 | `/almighty approve` | List waiting sign-ins (app and address, never the code). |
-| `/almighty approve <code> [<name> [owner]]` | Approve the sign-in showing that code, optionally under a name of your choice; `owner` gives the app your rights as its ceiling ([permissions](permissions.md#your-own-app)). |
-| `/almighty deny <code>` | Refuse a waiting sign-in. |
+| `/almighty approve <code> [<name>]` | Approve the sign-in showing that code, optionally under a name of your choice. |
+| `/almighty deny <code>` | Refuse a waiting sign-in (codes are four digits; anything else is answered as a confirmation). |
 | `/almighty agents` | Every agent with its last call and address. |
 | `/almighty reload` | Reread `policy.toml` and the agent token files. A file with a mistake is refused and the previous policy stays. |
-| `/almighty pause [agent]` | The red button: that agent, or every agent, may only look and clean up (cancel jobs, release areas, remove rules and bots). Its builds wait and its bots stop. Without a name it also stops every rule with a script and every rule made below the owner. |
+| `/almighty pause [agent]` | The red button: that agent, or every agent, may only look and clean up (cancel jobs, release areas, remove rules and bots). Its builds wait and its bots stop. With a name every rule that agent made stops too; without a name every rule with a script and every rule made below the owner. |
 | `/almighty resume [agent]` | Undo the pause. |
-| `/almighty log [agent] [count]` | The latest audit entries (10 by default, up to 100). |
+| `/almighty log [agent \| player] [count]` | The latest audit entries (10 by default, up to 100): all, one agent's calls, or the calls made for one player's requests. |
 | `/almighty undo <change>` | Undo any change by its number, shown in receipts and the audit log. Positions changed since are left as they are. |
 
 ## For owners
@@ -46,7 +46,8 @@ These need the console, or a verified owner from `policy.toml` who is also a lev
 
 | Command | What it does |
 |---|---|
-| `/almighty owner add <player>`, `/almighty owner remove <player>` | Edit `owners` in `policy.toml`. The player must have joined once. This command can remove the last owner; the console stays owner. |
+| `/almighty owner add <player>`, `/almighty owner remove <player>` | Edit `owners` in `policy.toml`. The player must have joined once. The last owner cannot be removed. |
+| `/almighty approve <code> <name> owner` | Approve a sign-in as your own app: the app gets your rights as its ceiling ([permissions](permissions.md#your-own-app)). |
 | `/almighty agent add <name>` | A new agent with a token in `config/almighty/agents/<name>.token`, for scripts and CI ([headless](connect/headless.md)). The token is never printed. |
 | `/almighty agent remove <name>` | End an agent: its token stops working at once. |
 | `/almighty revoke <name>` | Replace an agent's token; the old one stops working at once. |

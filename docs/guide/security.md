@@ -33,7 +33,8 @@ level. Scripts and rules with scripts need the owner.
 - **The bridge listens on loopback** (`127.0.0.1`) by default. Nothing outside the machine reaches it. When it must
   listen elsewhere, give it your certificate (`bridge.tls_cert`, `bridge.tls_key`) so it speaks only HTTPS.
 - **Every app signs in with a code.** The owner types, in the console or in game as a level-4 operator, the
-  four-digit code shown on the sign-in page. The notice in game never shows the code, so approving something you did
+  four-digit code shown on the sign-in page. Approving an app with owner rights (`owner`) takes the console or an
+  owner from `policy.toml`. The notice in game never shows the code, so approving something you did
   not start would mean typing a code you never saw. Waiting sign-ins expire after 10 minutes; at most 5 wait at once.
 - **One identity per app.** Each approved app is its own agent with its own token: `/almighty agents` shows who
   called last and from where; `/almighty agent remove <name>` ends one at once; `/almighty revoke <name>` replaces its
@@ -63,10 +64,11 @@ level. Scripts and rules with scripts need the owner.
   entities and inventories are not recorded.
 - **Receipts.** After a request with an effect, the player who asked gets a line in chat with `[Undo]`.
 - **Audit log.** Every call with an effect and every refusal is a line in `logs/almighty/audit-<date>.jsonl` (kept
-  30 days, `audit.days`); `/almighty log [agent] [count]` shows the latest.
+  30 days, `audit.days`); `/almighty log [agent | player] [count]` shows the latest, of one
+  agent or made for one player.
 - **Pause.** `/almighty pause [agent]`: that agent, or every agent, may only look and clean up until
-  `/almighty resume`. Its builds wait and its bots stop. Without a name it also stops every rule with a script and
-  every rule made below the owner.
+  `/almighty resume`. Its builds wait and its bots stop. With a name every rule that agent made stops too; without a
+  name every rule with a script and every rule made below the owner.
 - **Off switches.** `scripts.enabled = false` refuses scripts and rules with a script; `bridge.enabled = false` turns
   the bridge off. Both in `config/almighty-common.toml`.
 

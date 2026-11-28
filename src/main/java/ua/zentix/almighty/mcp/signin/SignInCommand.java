@@ -112,7 +112,21 @@ public final class SignInCommand {
     private static String addOwner(GmServer gm, java.util.UUID id, boolean onlyIfNone) throws IOException {
         synchronized (ua.zentix.almighty.policy.PolicyFile.LOCK) {
             java.util.Set<java.util.UUID> owners = new java.util.LinkedHashSet<>(gm.policies().current().owners());
-            if (onlyIfNone && !owners.isEmpty()) return "this server has an owner now";
+            if (onlyIfNone) {
+                if (!owners.isEmpty()) return "this server has an owner now";
+                // The file itself, not only the loaded policy: an owner's edit not yet reloaded, or a mistake in the
+                // file (which keeps the last good policy), must not be overwritten by a first owner.
+                java.nio.file.Path file = gm.policies().file();
+                if (file != null && java.nio.file.Files.exists(file)) {
+                    try {
+                        if (!ua.zentix.almighty.policy.Policy.parse(java.nio.file.Files.readString(file)).owners().isEmpty()) {
+                            return "policy.toml lists an owner (run /almighty reload)";
+                        }
+                    } catch (ua.zentix.almighty.policy.Policy.Invalid e) {
+                        return "policy.toml has a mistake; the owner fixes it first: " + e.getMessage();
+                    }
+                }
+            }
             if (!owners.add(id)) return null;
             String why = ua.zentix.almighty.policy.PolicyFile.owners(gm.policies().file(), owners);
             return why != null ? why : gm.policies().reload();
@@ -125,7 +139,19 @@ public final class SignInCommand {
         if (mcp == null) return 0;
         GmServer gm = GmServer.of(source.getServer());
         try {
-            // Owners first: the first owner (in game), or the console naming the app's player; then the app.
+            // Owners first: the first owner (in game), or the console naming the app's player; then the app. The code
+            // is checked before anyone becomes owner, so a mistyped or expired code changes nothing.
+            if (!mcp.signIn().waitingFor(StringArgumentType.getString(c, "code"))) {
+                source.sendFailure(Component.literal("No sign-in is waiting with that code"));
+                return 0;
+            }
+            if (owner) {
+                String listed = OwnerApp.listed(gm.policies().file(), name);
+                if (listed != null) {
+                    source.sendFailure(Component.literal(listed));
+                    return 0;
+                }
+            }
             String became = null;
             if (!ua.zentix.almighty.command.AlmightyCommand.isTrueOwner(source)) {
                 String why = claimFirstOwner(source);
@@ -148,14 +174,6 @@ public final class SignInCommand {
                 }
                 became = Mc.name(profile);
                 gm.audit().owner(source.getTextName(), "owner add", became + " " + Mc.id(profile) + ", approving a sign-in");
-            }
-            if (owner) {
-                // Checked before the approval, so a refused grant never leaves an app connected with fewer rights than asked.
-                String listed = OwnerApp.listed(gm.policies().file(), name);
-                if (listed != null) {
-                    source.sendFailure(Component.literal(listed));
-                    return 0;
-                }
             }
             String agent = mcp.signIn().approve(StringArgumentType.getString(c, "code"), name);
             String rights;

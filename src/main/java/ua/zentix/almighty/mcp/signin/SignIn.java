@@ -348,6 +348,12 @@ public final class SignIn {
         return p;
     }
 
+    /** Whether a sign-in waits with this code (checked before anything else an approval changes). */
+    public synchronized boolean waitingFor(String code) {
+        expire();
+        return codeTaken(code);
+    }
+
     private boolean codeTaken(String code) {
         return pending.values().stream().anyMatch(p -> p.code.equals(code));
     }

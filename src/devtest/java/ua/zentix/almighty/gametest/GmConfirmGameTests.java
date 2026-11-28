@@ -119,6 +119,12 @@ public final class GmConfirmGameTests {
             check(!ua.zentix.almighty.mcp.signin.SignInCommand.ownerOrFirst(op.createCommandSourceStack()), "a level-3 operator becomes owner");
             op(h, op, 4);
             op(h, other, 4);
+            // The file, not only the loaded policy: an owner written by hand but not reloaded, or a broken file, stays.
+            java.nio.file.Files.writeString(file, "preset = \"friends\"\nidentity = \"proxy\"\nowners = [\"" + UUID.randomUUID() + "\"]\n");
+            check(ua.zentix.almighty.mcp.signin.SignInCommand.claimFirstOwner(op.createCommandSourceStack()) != null, "an unreloaded owner was overwritten");
+            java.nio.file.Files.writeString(file, "owners = [\"Artem\"]\n");
+            check(ua.zentix.almighty.mcp.signin.SignInCommand.claimFirstOwner(op.createCommandSourceStack()) != null, "a broken file was overwritten");
+            java.nio.file.Files.writeString(file, "preset = \"friends\"\nidentity = \"proxy\"\n");
             check(ua.zentix.almighty.mcp.signin.SignInCommand.ownerOrFirst(op.createCommandSourceStack()), "the first level-4 operator may approve");
             check(ua.zentix.almighty.mcp.signin.SignInCommand.claimFirstOwner(op.createCommandSourceStack()) == null, "became the first owner");
             check(gm.policies().current().owners().contains(op.getUUID()), "listed in policy.toml: " + gm.policies().current().owners());

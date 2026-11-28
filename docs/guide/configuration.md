@@ -5,7 +5,8 @@ English · [Русский](configuration.ru.md)
 ## `config/almighty-common.toml`
 
 Written with comments on first start. Edit it while the server is stopped, or restart afterwards: some settings apply
-at once, but the bridge settings and the chat names are read only when the server starts.
+at once, but the bridge settings and the chat names are read only when the server starts. On Fabric a file with a
+mistake keeps the current settings, and the log names the key.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -16,6 +17,7 @@ at once, but the bridge settings and the chat names are read only when the serve
 | `bridge.public_url` | `""` | The public HTTPS address when a reverse proxy or tunnel puts the bridge on the internet, for example `"https://mc.example.org"`. Sign-in pages and `/almighty connect` use it. |
 | `bridge.tls_cert` | `""` | Your certificate chain (PEM, for example `fullchain.pem`), relative to the server folder. With `tls_key`, the bridge speaks only HTTPS. |
 | `bridge.tls_key` | `""` | The matching unencrypted PKCS#8 private key (PEM, `BEGIN PRIVATE KEY`). |
+| `bridge.allow_plain_http_off_loopback` | `false` | Without TLS the bridge starts only on loopback. `true` starts it on another `bridge.host` without TLS, for a network only the server machine reaches (a container's private address whose port is not published). Never on a public address. |
 | `bridge.integrated` | `false` | Also start the bridge in single-player and LAN worlds, on loopback only. |
 | `work.ms_per_tick` | `3.0` | Time per server tick for builds, undos, pictures and other world calls, in ms (0.5 to 20). When the server lags, the game master gets a quarter of it until the server recovers. |
 | `work.build_max_blocks` | `2000000` | Most block positions in one build. |
@@ -24,7 +26,7 @@ at once, but the bridge settings and the chat names are read only when the serve
 | `feed.names` | `[]` | Words that address the game master in public chat (any case; stretched letters are ignored). Empty: its `name`. |
 | `feed.typo_names` | `[]` | Longer names also recognised with one typo (first letter exact). Use only names that are not one letter away from a real word. Empty: none. |
 | `feed.gm_messages` | `20` | Messages one player may address to the game master per hour; more get a "try again later" reply from the server and never reach the agent. |
-| `feed.default_agent` | `"gm"` | The agent that receives messages addressed to the game master. |
+| `feed.default_agent` | `"gm"` | The agent that receives messages addressed to the game master while it runs (made a call in the last minute). Otherwise they go to the owner's own app (an agent with ceiling `owner`) that runs; `/gm @<agent> <text>` picks another. |
 | `feed.away_seconds` | `30` | If the agent has not read a message after this many seconds, the server tells the player the game master is away (the message is kept). |
 | `audit.days` | `30` | Days of audit log kept in `logs/almighty/`. |
 | `scripts.enabled` | `true` | Groovy scripts and rules with a script. Off: both are refused, and saved rules with a script stay in the file but do not load. |
@@ -43,7 +45,7 @@ at once, but the bridge settings and the chat names are read only when the serve
 | `config/almighty/agents/<name>.token` | One token per other agent. Tokens are 32 random bytes in hex; on Linux and macOS only the file's owner can read them. They are never printed or logged. |
 | `config/almighty/oauth/` | Signed-in apps and their hashed refresh tokens. |
 | `config/almighty/roles.json` | Roles given with `/almighty role`. |
-| `config/almighty/notes/` | Your notes for every agent (`server:<name>`), Markdown. |
+| `config/almighty/notes/` | Your notes for every agent (`server:<name>`), Markdown. The game master writes them only when you ask. |
 | `config/almighty/scripts/` | Scripts you approve to run by name; `approved.json` holds their hashes. |
 | `<world>/almighty/rules.json` | Rules saved with the world. |
 | `<world>/almighty/notes/` | World notes the agents write (`world:<name>`). |

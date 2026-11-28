@@ -31,14 +31,19 @@ serves:
 - **`/mcp`**: MCP over Streamable HTTP, both the current and the earlier protocol versions, without sessions. 14 tools
   ([list](guide/tools.md)); `?profile=compact` gives 6 short ones, `?images=false` leaves pictures out. Apps sign in
   with OAuth 2.1 (PKCE, dynamic client registration and client ID metadata documents), approved by the owner with a
-  code typed on the server.
+  code typed on the server. A request without a valid token gets 401 with a `WWW-Authenticate` challenge and a
+  JSON-RPC error whose message says no key is needed and gives the `claude mcp add` and `codex mcp add` commands for
+  this address.
 - **`/rpc`**: plain JSON for scripts. `POST /rpc` with `Authorization: Bearer <token>` and
   `{"method": "status", "params": {}}`; the answer is `{"ok": true, "result": …}` or
   `{"ok": false, "error": {"code": …, "message": …}}`. A top-level `"key"` (up to 128 characters) makes a call with
   effects idempotent for 10 minutes. A call made for a player carries `for` in its params, the ticket from that
-  player's addressed event; it then runs with that player's rights. The methods are listed in [AGENTS.md](../AGENTS.md#methods).
+  player's addressed event; it then runs with that player's rights. The methods are listed in
+  [AGENTS.md](../AGENTS.md#methods).
 
 Every call, from any transport, passes the same checks: the deny list, pause, the permission gate, and the audit log.
+Per agent, `policy.toml` can limit where its token is accepted (`[agents.<name>] allow_from`: 403 `not_allowed_from`)
+and how often it calls (`[quotas] calls_per_minute`, 1200 by default: 429).
 A token for your own code: `/almighty agent add <name>` in the console writes it to
 `config/almighty/agents/<name>.token` ([headless](guide/connect/headless.md)).
 

@@ -2,7 +2,7 @@
 
 English · [Русский](getting-started.ru.md)
 
-From a jar to an AI agent acting as game master on your server, in four steps. You need a Minecraft server you can
+From a jar to an AI agent acting as game master on your server, in three steps. You need a Minecraft server you can
 restart and an AI agent app on a computer you control.
 
 ## 1. Install the mod
@@ -49,7 +49,7 @@ panel, see [Hosting](hosting.md).
 ## 3. Approve the sign-in with its code
 
 The first time the agent calls the server, your app opens a sign-in page in the browser. It shows a four-digit code
-and the app's name. In the server console, type:
+and the app's name. Join the server as a level-4 operator and type in chat:
 
 ```
 /almighty approve 4821 claude-code owner
@@ -57,8 +57,19 @@ and the app's name. In the server console, type:
 
 with the code from the page, a name for the app, and `owner` if it is your own app on your own computer. The page
 returns to your app, and the agent is connected. Nobody copies a token or edits a file, and only someone who sees the
-page and can type on the server can approve it. In the game, a level-4 operator can approve a sign-in without
-`owner`; with `owner`, only an owner from `policy.toml` who is also a level-4 operator ([step 4](#4-make-yourself-an-owner)).
+page and can type on the server can approve it.
+
+On a server whose `policy.toml` lists no owner yet, the first level-4 operator who approves a sign-in in game becomes
+its owner: their UUID is written to `owners`. That player must be verified ([verified
+players](permissions.md#verified-players)); on an offline-mode server with the default `identity` nobody is, so
+approve from the console instead, naming yourself as the owner:
+
+```
+/almighty approve 4821 claude-code owner <your player name>
+```
+
+You must have joined the server once for that. Once the server has an owner, only the console and owners who are
+also level-4 operators approve sign-ins.
 
 | You type | The app gets |
 |---|---|
@@ -68,23 +79,19 @@ page and can type on the server can approve it. In the game, a level-4 operator 
 
 What an agent does unasked is limited further by the preset: on a friends' server it acts as a member, so it can
 look, talk, build and drive bots, but runs commands only as an ordinary player could. A request you send in game with
-`/gm <text>` carries your own rights. To give your own app your rights for everything it does, see
-[Your own app](permissions.md#your-own-app).
+`/gm <text>` carries your own rights, and as an owner you can change the policy by asking the game master. To give
+your own app your rights for everything it does, see [Your own app](permissions.md#your-own-app).
+
+Players' `/gm` messages and chat lines addressed to the game master go to your own app (one approved with `owner`)
+while it runs, unless the agent named in `feed.default_agent` (`gm` by default) is running too. `/almighty whoami`
+shows your UUID, whether it is verified, and your role.
 
 Each app you approve becomes its own agent: `/almighty agents` lists them with their last call, and
 `/almighty agent remove <name>` ends one.
 
-## 4. Make yourself an owner
-
 Operators are admins to Almighty, not owners: owners are listed by UUID in `policy.toml`, because a name alone can be
-taken by anyone on an offline-mode server. Join the server once, then type in the console:
-
-```
-/almighty owner add <your player name>
-```
-
-Your requests in game (`/gm <text>`) then carry owner rights, and you can change the policy by asking the game
-master. `/almighty whoami` shows your UUID, whether it is verified, and your role.
+taken by anyone on an offline-mode server. To add another owner later, type `/almighty owner add <player>` in the
+console or in game as an owner.
 
 ## What next
 

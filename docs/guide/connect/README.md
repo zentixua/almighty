@@ -4,8 +4,11 @@ English · [Русский](README.ru.md)
 
 The server speaks MCP at `http://<address>:25650/mcp` (from the same machine: `http://127.0.0.1:25650/mcp`). Every app
 below can add it when you ask in plain words ("connect to my Minecraft server (Almighty) at ..."); each page also
-gives the one line to run yourself. Sign-in is the same everywhere: the app opens a page with a four-digit code,
-you type `/almighty approve <code>` in the game or the server console.
+gives the one line to run yourself. No key or token is needed: an app that reaches the address without signing in is
+told so, with the commands that connect Claude Code and Codex. Sign-in is the same everywhere: the app opens a page
+with a four-digit code, and you type `/almighty approve <code>` in the server console or, as an owner, in game. On a
+server without an owner yet, the first level-4 operator who approves in game becomes its owner
+([Getting started](../getting-started.md#3-approve-the-sign-in-with-its-code)).
 
 `/almighty connect` in the console (or in the game, as an operator) prints the address, these lines and clickable
 links for the apps that have install links.

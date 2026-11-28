@@ -18,6 +18,10 @@ Whichever you connect. Almighty is a bridge: any app that speaks MCP can be the 
 model running on your own computer ([Connect your agent](connect/README.md)). You need your own account or plan with
 that app's maker.
 
+**Do I need an API key or a token?**
+No. An agent app signs in through the browser with a four-digit code that you approve on the server; a request without
+a sign-in is told so, with the command to run. Tokens are only for scripts and CI ([headless](connect/headless.md)).
+
 **Does it cost anything?**
 Almighty is free and open source. The AI app is billed by its maker as usual; a local model costs nothing but your
 hardware.
@@ -27,7 +31,8 @@ Yes, under the GPL-3.0 license. It needs no other mod and is server-side only.
 
 **Can several agents work at once?**
 Yes. Each app you approve is its own agent with its own rights, audit trail and token. Players pick one with
-`/gm @<agent> <text>`; `feed.default_agent` receives the rest.
+`/gm @<agent> <text>`; the rest go to the agent in `feed.default_agent` while it runs, otherwise to your own app
+(approved with `owner`).
 
 **Can players tell the game master to do anything?**
 No. A player's request runs with that player's rights, never above the agent's ceiling; what could affect others waits

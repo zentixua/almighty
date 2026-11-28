@@ -15,8 +15,10 @@ codex mcp add almighty --url http://127.0.0.1:25650/mcp
 codex mcp login almighty
 ```
 
-**Вход:** `codex mcp login almighty` открывает в браузере страницу с кодом; наберите `/almighty approve <код>` на
-сервере. После этого `codex mcp list` показывает `Auth: OAuth`. Codex подключается как агент `codex`.
+**Вход:** `codex mcp login almighty` открывает в браузере страницу с кодом; наберите на сервере
+`/almighty approve <код> codex owner`, если это ваше собственное приложение ([кто может
+подтвердить](../getting-started.ru.md#3-подтвердите-вход-кодом)). После этого `codex mcp list` показывает
+`Auth: OAuth`. Codex подключается как агент `codex` (или под именем, которое вы дали).
 
 **Плагин (по желанию):**
 

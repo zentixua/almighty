@@ -16,8 +16,10 @@ codex mcp add almighty --url http://127.0.0.1:25650/mcp
 codex mcp login almighty
 ```
 
-**Sign in:** `codex mcp login almighty` opens the browser page with a code; type `/almighty approve <code>` on the
-server. `codex mcp list` then shows `Auth: OAuth`. It connects as agent `codex`.
+**Sign in:** `codex mcp login almighty` opens the browser page with a code; type
+`/almighty approve <code> codex owner` on the server if it is your own app
+([who may approve](../getting-started.md#3-approve-the-sign-in-with-its-code)). `codex mcp list` then shows
+`Auth: OAuth`. It connects as agent `codex` (or the name you gave).
 
 **Plugin (optional):**
 

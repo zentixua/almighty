@@ -16,14 +16,20 @@ server's event feed. Each app has its own way to keep a session running; the ser
   reach it without the name.
 - **A player alone on the server** reaches it with any chat line.
 
+Messages go to the agent named in `feed.default_agent` (`gm` by default) while it runs; otherwise to your own app
+(approved with `owner`) while that runs. No setting is needed for a freshly signed-in app of yours to hear players.
+Each joining player is told that an AI game master reads the public chat and acts on messages addressed to it
+(`[safety] privacy_notice`).
+
 An agent hears only players trusted with what it can do unasked: on a private server only owners, on a friends'
 server verified players, on a public server everyone ([Who an agent hears](permissions.md#who-an-agent-hears)).
 
 The server, not the agent, decides what is addressed. Each player may address the game master 20 times an hour
-(`feed.gm_messages`); more get "Too many messages to the game master; try again later." from the server. If the agent has not read a `/gm` message or a line
-with its name within 30 seconds (`feed.away_seconds`), or made no call for a minute, the server tells the player the
-game master is away; the message is kept. These lines follow the player's game language: Russian for `ru_ru`,
-English otherwise.
+(`feed.gm_messages`); more get "Too many messages to the game master; try again later." from the server. If the agent
+has not read a `/gm` message or a line with its name within 30 seconds (`feed.away_seconds`), or made no call for a
+minute, the server tells the player the game master is away; the message is kept. While you pause it
+(`/almighty pause`), the server answers "The game master is paused by the server owner; your message is kept." These
+lines follow the player's game language: Russian for `ru_ru`, English otherwise.
 
 Each addressed message carries a ticket. When the agent acts on it (every tool takes it as `for`), the call runs with that player's rights
 ([Permissions](permissions.md)), and anything that affects others waits for the player's confirmation.
@@ -49,4 +55,5 @@ that names you) with say {to}; keep next as the next after. Keep going until I s
 Things the game master keeps between sessions belong in world notes (`notes {id: "world:<name>", text}`): they stay
 with the world, and any later session or another app reads them. The server records who wrote each note and for
 whom. Its own style and your preferences belong in the app's memory (Claude Code: `CLAUDE.md`; Codex: `AGENTS.md`).
-Your own notes for every agent go in `config/almighty/notes/<name>.md`.
+Your own notes for every agent go in `config/almighty/notes/<name>.md`; the game master writes them there when you, the
+owner, ask.

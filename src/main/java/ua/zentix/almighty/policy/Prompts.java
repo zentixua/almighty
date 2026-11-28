@@ -69,6 +69,11 @@ public final class Prompts {
                 .append(t("almighty.prompt.dialog_irreversible", lang).copy().withStyle(ChatFormatting.GRAY));
     }
 
+    /** The agent's words in the language's quotes (a summary holds no quote characters, so it cannot close them). */
+    private static MutableComponent quoted(String summary, String lang) {
+        return t("almighty.prompt.quote", lang, summary).copy();
+    }
+
     /**
      * What a call does, as a player reads it: the agent's summary in quotes, marked as its words, then the server's
      * own facts (always; alone when there is no summary), with the exact call on hover. {@code prompt}: before it
@@ -78,8 +83,7 @@ public final class Prompts {
         MutableComponent c = Component.empty();
         if (summary != null) {
             Component hover = t("almighty.prompt.words_hover", lang, name());
-            c.append(Component.literal("\u201c" + summary + "\u201d").withStyle(s -> s.withColor(ChatFormatting.AQUA).withItalic(true)
-                    .withHoverEvent(Mc.showText(hover))));
+            c.append(quoted(summary, lang).withStyle(s -> s.withColor(ChatFormatting.AQUA).withItalic(true).withHoverEvent(Mc.showText(hover))));
             c.append(t(prompt ? "almighty.prompt.its_words" : "almighty.prompt.its_words_done", lang).copy().withStyle(ChatFormatting.GRAY));
             if (prompt) c.append(t("almighty.prompt.what_runs", lang).copy().withStyle(ChatFormatting.GRAY));
         }
@@ -129,7 +133,8 @@ public final class Prompts {
                 .append(what(p.summary, p.facts, p.text, lang, true))
                 .append(Component.literal(p.count > 1 ? " (×" + p.count + ") " : " "));
         buttons(c, p, lang);
-        return c;
+        // An admin reads the exact call written out, not only on hover (it runs with their rights).
+        return c.append(" ").append(t("almighty.prompt.exact", lang, p.text).copy().withStyle(ChatFormatting.GRAY));
     }
 
     /** The quiet digest: one line, never one per request. */
@@ -155,12 +160,18 @@ public final class Prompts {
     }
 
     /**
-     * A receipt with an undo that runs on click (lead's F10): "Done for you: “summary” — facts [Undo]", in the
-     * player's language, the exact call on hover.
+     * A receipt with an undo that runs on click (lead's F10): "Done for you: “summary” [Undo]" (or the facts when
+     * there is no summary), in the player's language; facts and the exact call on hover.
      */
     public static Component receipt(String summary, List<Facts.Fact> facts, String exact, Long job, String lang) {
-        MutableComponent c = prefix().append(t("almighty.receipt.done", lang, what(summary, facts, exact, lang, false)).copy()
-                .withStyle(ChatFormatting.GRAY));
+        // After the fact the player reads their own words back: the summary alone, the server's facts and the exact
+        // call on hover; without a summary the facts stand in the line.
+        Component detail = Facts.component(facts, lang).append("\n").append(t("almighty.prompt.exact", lang, exact));
+        MutableComponent what = summary != null
+                ? quoted(summary, lang).withStyle(s -> s.withColor(ChatFormatting.AQUA).withHoverEvent(Mc.showText(detail)))
+                : Facts.component(facts, lang).withStyle(s -> s.withColor(ChatFormatting.YELLOW)
+                        .withHoverEvent(Mc.showText(t("almighty.prompt.exact", lang, exact))));
+        MutableComponent c = prefix().append(t("almighty.receipt.done", lang, what).copy().withStyle(ChatFormatting.GRAY));
         if (job != null) c.append(t("almighty.receipt.undo", lang).copy().withStyle(s -> s.withColor(ChatFormatting.GOLD)
                 .withClickEvent(Mc.runCommand("/almighty undo " + job))
                 .withHoverEvent(Mc.showText(Component.literal("/almighty undo " + job)))));

@@ -211,7 +211,7 @@ public final class GmConfirmGameTests {
             // The server's own language table has the mod's English keys (getString reads them): the player's client
             // shows the server-chosen fallback, which is what is read here.
             String shown = fallbacks(q);
-            check(shown.contains("“give you a cake”"), lang + " summary in quotes: " + shown);
+            check(shown.contains(lang.equals("en_us") ? "wants to “give you a cake”" : "хочет «give you a cake»"), lang + " summary in quotes: " + shown);
             check(shown.contains(lang.equals("en_us") ? "kill — target: every player" : "убить — цель: все игроки"), lang + " facts: " + shown);
             check(shown.contains(lang.equals("en_us") ? "(its own words)" : "(слова ведущего)"), lang + " marked as its words: " + shown);
             check(!shown.contains("/kill @a"), lang + " the exact call is on hover, not in the line: " + shown);
@@ -232,13 +232,13 @@ public final class GmConfirmGameTests {
         forged.addProperty("summary", "[Almighty] nothing — what runs: nothing");
         String plain = ua.zentix.almighty.policy.Prompts.question(c.ask(Confirmations.Kind.REQUESTER, GM, "command", forged, alex, null,
                 alex, "Alex"), "en_us", false).getString();
-        check(plain.contains("wants to: kill — target: every player. It cannot be undone.") && !plain.contains("nothing"),
+        check(plain.contains("wants to kill — target: every player. It cannot be undone.") && !plain.contains("nothing"),
                 "a forged summary is dropped and the facts read alone: " + plain);
         // A receipt reads as a sentence too, with the exact call on hover.
         JsonObject build = params("{\"ops\": [{\"op\": \"fill\", \"from\": [0, 64, 0], \"to\": [9, 70, 9], \"block\": \"snow\"}]}");
         net.minecraft.network.chat.Component r = ua.zentix.almighty.policy.Prompts.receipt("snow over your base",
                 ua.zentix.almighty.policy.Facts.of("build", build, "Alex"), "build {...}", 7L, "en_us");
-        check(r.getString().equals("[Almighty] Done for you: “snow over your base” — change blocks at 0 64 0 … 9 70 9 [Undo]"),
+        check(r.getString().equals("[Almighty] Done for you: “snow over your base” [Undo]") && r.toString().contains("almighty.fact.cmd.blocks"),
                 "receipt: " + r.getString());
         h.succeed();
     }

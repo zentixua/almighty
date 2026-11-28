@@ -608,18 +608,35 @@ public final class GmServer {
         if (r.size() == 0) throw RpcException.conflict("Change " + id + " changed no blocks");
         Journal.Records rec = r;
         return onMain(() -> {
-            // Grouped by region (dimension and 128×128 blocks): a change spread over the map is reverted piece by piece,
-            // each piece leasing only its own chunks.
-            Map<String, List<Integer>> groups = new LinkedHashMap<>();
+            // Pieces of consecutive writes, each within one dimension and 128×128 blocks: a change spread over the map is
+            // reverted piece by piece, each leasing only its own chunks; the pieces run one after another from the
+            // last writes back, so the whole change is undone in exact reverse write order (a block beside a piece edge,
+            // such as redstone wire, may rewrite itself when its neighbour changes).
+            List<List<Integer>> groups = new ArrayList<>();
+            List<Integer> piece = null;
+            int minX = 0, maxX = 0, minZ = 0, maxZ = 0, pieceDim = -1;
             for (int i = 0; i < rec.size(); i++) {
                 long pp = rec.pos()[i];
-                String k = rec.dim()[i] + "/" + (net.minecraft.core.BlockPos.getX(pp) >> 7) + "/" + (net.minecraft.core.BlockPos.getZ(pp) >> 7);
-                groups.computeIfAbsent(k, x -> new ArrayList<>()).add(i);
+                int x = net.minecraft.core.BlockPos.getX(pp), z = net.minecraft.core.BlockPos.getZ(pp);
+                boolean fits = piece != null && rec.dim()[i] == pieceDim && Math.max(maxX, x) - Math.min(minX, x) < 128
+                        && Math.max(maxZ, z) - Math.min(minZ, z) < 128;
+                if (!fits) {
+                    piece = new ArrayList<>();
+                    groups.add(piece);
+                    pieceDim = rec.dim()[i];
+                    minX = maxX = x;
+                    minZ = maxZ = z;
+                }
+                piece.add(i);
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
+                minZ = Math.min(minZ, z);
+                maxZ = Math.max(maxZ, z);
             }
+            java.util.Collections.reverse(groups);
             List<Job> started = new ArrayList<>();
             try {
-                for (Map.Entry<String, List<Integer>> g : groups.entrySet()) {
-                    List<Integer> idx = g.getValue();
+                for (List<Integer> idx : groups) {
                     int n = idx.size();
                     long[] pos = new long[n];
                     net.minecraft.world.level.block.state.BlockState[] before = new net.minecraft.world.level.block.state.BlockState[n], after =
@@ -637,7 +654,9 @@ public final class GmServer {
                             net.minecraft.resources.ResourceLocation.parse(dim));
                     net.minecraft.server.level.ServerLevel level = server.getLevel(key);
                     if (level == null) throw RpcException.notFound("Change " + id + " touched dimension " + dim + ", which is not loaded");
-                    started.add(jobs().submit(ua.zentix.almighty.building.BuildJob.revert(level, areas, id, pos, before, after, tags, n, 2400)));
+                    ua.zentix.almighty.building.BuildJob job = ua.zentix.almighty.building.BuildJob.revert(level, areas, id, pos, before, after, tags, n, 2400);
+                    if (!started.isEmpty()) job.after(started.get(started.size() - 1));
+                    started.add(jobs().submit(job));
                 }
             } catch (RpcException | RuntimeException e) {
                 // All or nothing: a piece that cannot start (no chunk budget) cancels the pieces already queued.

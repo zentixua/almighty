@@ -89,12 +89,49 @@ public final class GmJournalGameTests {
         gm.dispatch().invoke(GM, "undo", params("{\"change\":%d,\"wait\":0}", id))
                 .thenAccept(o -> job[0] = o.getAsJsonObject().getAsJsonArray("jobs").get(0).getAsLong());
         h.succeedWhen(() -> {
-            check(job[0] > 0 && gm.jobs().get(job[0]).state().finished(), "revert finished");
+            check(job[0] > 0 && gm.jobs().get(job[0]).state() == ua.zentix.almighty.work.Job.State.DONE, "revert done");
             JsonObject d = gm.jobs().get(job[0]).describe();
             check(!d.has("conflicts"), "no false conflict: " + d);
             check(h.getLevel().getBlockState(wire).isAir() && h.getLevel().getBlockState(block).isAir(), "both reverted: job " + d
                     + " (" + gm.jobs().get(job[0]).state() + "), wire " + h.getLevel().getBlockState(wire) + ", block " + h.getLevel().getBlockState(block)
                     + ", change " + gm.journal().describe(id) + ", areas " + gm.areas().describe());
+        });
+    }
+
+    /**
+     * The same pair on a region edge (x = 128k + 127 and 128k + 128) with a far write between the block and the
+     * wire, so the change splits into pieces (block | far | wire): the pieces run one after another from the last
+     * writes back, so the wire is undone before the block, and nothing conflicts.
+     */
+    @GameTest(template = "floor", batch = "gm_journal_edge", timeoutTicks = 200)
+    public static void selfRewritingBlocksRevertAcrossPieces(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        BlockPos origin = h.absolutePos(new BlockPos(6, 20, 1));
+        int x = ((origin.getX() >> 7) << 7) + 127;
+        BlockPos block = new BlockPos(x, origin.getY(), origin.getZ()), wire = block.east(), far = block.offset(300, 0, 0);
+        for (BlockPos at : new BlockPos[] {block, wire, far}) {
+            for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) h.getLevel().getChunk((at.getX() >> 4) + i, (at.getZ() >> 4) + j);
+        }
+        gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"fill %d %d %d %d %d %d minecraft:stone\",\"setblock %d %d %d minecraft:redstone_block\","
+                        + "\"setblock %d %d %d minecraft:stone\",\"setblock %d %d %d minecraft:redstone_wire\"]}",
+                block.getX(), block.getY() - 1, block.getZ(), wire.getX(), wire.getY() - 1, wire.getZ(),
+                block.getX(), block.getY(), block.getZ(), far.getX(), far.getY(), far.getZ(), wire.getX(), wire.getY(), wire.getZ())).join();
+        long id = newest(gm);
+        JsonObject[] out = new JsonObject[1];
+        gm.dispatch().invoke(GM, "undo", params("{\"change\":%d,\"wait\":0}", id)).thenAccept(o -> out[0] = o.getAsJsonObject());
+        h.succeedWhen(() -> {
+            check(out[0] != null && out[0].getAsJsonArray("jobs").size() == 3, "three pieces (block | far | wire): " + out[0]);
+            long conflicts = 0;
+            for (var j : out[0].getAsJsonArray("jobs")) {
+                var job = gm.jobs().get(j.getAsLong());
+                check(job.state() == ua.zentix.almighty.work.Job.State.DONE, "piece " + job.describe());
+                JsonObject d = job.describe();
+                if (d.has("conflicts")) conflicts += d.get("conflicts").getAsLong();
+            }
+            check(conflicts == 0, "no false conflict across pieces: " + conflicts);
+            check(h.getLevel().getBlockState(wire).isAir() && h.getLevel().getBlockState(block).isAir() && h.getLevel().getBlockState(far).isAir()
+                    && h.getLevel().getBlockState(block.below()).isAir() && h.getLevel().getBlockState(wire.below()).isAir(),
+                    "all reverted: wire " + h.getLevel().getBlockState(wire) + ", block " + h.getLevel().getBlockState(block));
         });
     }
 

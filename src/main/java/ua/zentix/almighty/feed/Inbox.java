@@ -63,7 +63,7 @@ public final class Inbox {
 
     /** {@code /gm [@agent] text}; false if the server refused it (and told the player why). */
     public boolean gm(ServerPlayer player, String text) {
-        String agent = GmConfig.FEED_DEFAULT_AGENT.get();
+        String agent = defaultAgent();
         String body = text.strip();
         if (body.startsWith("@")) {
             // "@<agent> …" routes to that agent; "@everyone …" or any other word is just text for the default agent.
@@ -120,13 +120,22 @@ public final class Inbox {
             // reaching the GM; the player is never told off for chatting.
             via = null;
         }
-        if (via != null && !heard(player, GmConfig.FEED_DEFAULT_AGENT.get())) via = null;
+        String to = defaultAgent();
+        if (via != null && !heard(player, to)) via = null;
         if (via == null) {
             d.addProperty("addressed", false);
             feed.add("chat", d);
             return;
         }
-        deliver(player, "chat", d, via, GmConfig.FEED_DEFAULT_AGENT.get());
+        deliver(player, "chat", d, via, to);
+    }
+
+    /** The agent that gets messages not addressed to one by name ({@link Agents#route}). */
+    String defaultAgent() {
+        Agents known = agents.get();
+        String configured = GmConfig.FEED_DEFAULT_AGENT.get();
+        return known == null ? configured : known.route(configured, PRESENT_MS,
+                name -> ua.zentix.almighty.policy.Nodes.policy().ceiling(name) == ua.zentix.almighty.policy.Role.OWNER);
     }
 
     private void deliver(ServerPlayer player, String type, JsonObject d, Addressing.Via via, String agentName) {
@@ -145,18 +154,35 @@ public final class Inbox {
         if (!bot) tickets.mint(id, player.getUUID(), Mc.name(player.getGameProfile()), agentName, seq, verified);
         Agents known = agents.get();
         // Away replies only for messages the player clearly meant for the GM (/gm or its name).
-        if (known == null || (via != Addressing.Via.GM && via != Addressing.Via.NAME)) return;
+        if (via != Addressing.Via.GM && via != Addressing.Via.NAME) return;
+        // Paused by the owner (lead's F8): the agent cannot answer; the player hears it now, not silence.
+        if (ua.zentix.almighty.GmServer.of(server) instanceof ua.zentix.almighty.GmServer gm && gm.pause().paused(agentName)) {
+            tell(player, "almighty.gm.paused");
+            return;
+        }
+        if (known == null) return;
         Agent agent = known.get(agentName);
         if (agent == null || !agent.present(PRESENT_MS)) away(player);
         else awaiting.add(new Awaiting(seq, agentName, player.getUUID(), System.currentTimeMillis() + GmConfig.FEED_AWAY_SECONDS.get() * 1000L));
     }
 
     private void away(ServerPlayer player) {
+        tell(player, "almighty.gm.away");
+    }
+
+    /** When the player was last told the GM is away or paused (epoch ms), 0 if never (GameTest: mock connections keep no packets). */
+    public long toldAt(java.util.UUID player) {
+        Long t = toldAway.get(player);
+        return t == null ? 0 : t;
+    }
+
+    /** A gray server line to the player, at most once per {@link #AWAY_EVERY_MS} (away and paused share it). */
+    private void tell(ServerPlayer player, String key) {
         long now = System.currentTimeMillis();
         Long last = toldAway.get(player.getUUID());
         if (last != null && now - last < AWAY_EVERY_MS) return;
         toldAway.put(player.getUUID(), now);
-        player.sendSystemMessage(GmMessages.get("almighty.gm.away", lang(player)).copy().withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
+        player.sendSystemMessage(GmMessages.get(key, lang(player)).copy().withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
     }
 
     /** Once a second: tell players whose message their agent has not read in time that it is away. */

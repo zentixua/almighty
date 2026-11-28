@@ -70,9 +70,13 @@ public final class Decisions {
             String line = name + (allow ? " allowed: " : " denied: ") + p.text + " (for " + p.requesterName + ")";
             for (UUID o : owners) if (!o.equals(id)) tell(o, line);
         }
+        // Lead's F3: the requester who decided hears the translated outcome only; anyone else (an admin, the console)
+        // gets one line in their own language.
+        boolean self = id != null && id.equals(p.requester);
+        String lang = by == null ? "en_us" : ua.zentix.almighty.feed.GmMessages.language(by);
         if (!allow) {
             tell(p.requester, "almighty.outcome.not_allowed", p.text);
-            return "Denied: " + p.text;
+            return self ? "" : ua.zentix.almighty.feed.GmMessages.get("almighty.outcome.denied", lang, p.text).getString();
         }
         // The exact parameters that were shown. An admin's approval is carried by the running confirmation itself
         // (Pending.decider), never by a ticket in the parameters that could outlive this one call.
@@ -81,9 +85,20 @@ public final class Decisions {
                 ? Confirmations.run(p, dispatch, params, true) : Confirmations.run(p, dispatch, params, false);
         run.whenComplete((v, e) -> server.execute(() -> {
             event(p);
-            tell(p.requester, e == null ? "almighty.outcome.done" : "almighty.outcome.failed", p.text);
+            // Lead's F1 and F3: a command that ran but failed (ok: false) is a failure; a success already got its
+            // receipt ("Done for you", with [Undo]), so no second "Done" line.
+            if (e != null || failed(v)) tell(p.requester, "almighty.outcome.failed", p.text);
         }));
-        return "Allowed: " + p.text;
+        return self ? "" : ua.zentix.almighty.feed.GmMessages.get("almighty.outcome.allowed", lang, p.text).getString();
+    }
+
+    /** Whether a call's result reports a failed command ({@code ok: false} in a command list). */
+    public static boolean failed(Object result) {
+        if (result instanceof com.google.gson.JsonArray list) {
+            for (var r : list) if (r instanceof JsonObject o && o.has("ok") && !o.get("ok").getAsBoolean()) return true;
+        }
+        // A function's result is one object with ok (review of #101).
+        return result instanceof JsonObject o && o.has("ok") && o.get("ok").isJsonPrimitive() && !o.get("ok").getAsBoolean();
     }
 
     /** The policy's owners (UUIDs), told of every admin decision. */

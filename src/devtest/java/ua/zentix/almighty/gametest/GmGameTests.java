@@ -238,6 +238,35 @@ public final class GmGameTests {
                 .thenSucceed();
     }
 
+    /** Lead's F4: undoing a build with a door leaves no door item (a door's other half broken by a write drops nothing). */
+    @GameTest(template = "floor", batch = "gm_undo_door", timeoutTicks = 400, skyAccess = true)
+    public static void undoOfADoorDropsNothing(GameTestHelper h) {
+        loadNow(h, 0, 0, 8, 8);
+        CompletableFuture<JsonElement> build = call(h, "build", params(
+                "{\"ops\":[{\"op\":\"set\",\"pos\":%s,\"block\":\"minecraft:oak_door[half=lower,facing=north]\"},"
+                        + "{\"op\":\"set\",\"pos\":%s,\"block\":\"minecraft:oak_door[half=upper,facing=north]\"}],\"wait\":50}",
+                at(h, 5, 2, 5), at(h, 5, 3, 5)));
+        AtomicReference<CompletableFuture<JsonElement>> undo = new AtomicReference<>();
+        h.startSequence()
+                .thenWaitUntil(() -> ready(build))
+                .thenExecute(() -> {
+                    JsonObject r = result(build);
+                    check(r.get("state").getAsString().equals("done"), "build: " + r);
+                    h.assertBlockPresent(Blocks.OAK_DOOR, new BlockPos(5, 3, 5));
+                    undo.set(call(h, "undo", params("{\"job\":%d,\"wait\":50}", r.get("id").getAsLong())));
+                })
+                .thenWaitUntil(() -> ready(undo.get()))
+                .thenIdle(2)
+                .thenExecute(() -> {
+                    h.assertBlockPresent(Blocks.AIR, new BlockPos(5, 2, 5));
+                    h.assertBlockPresent(Blocks.AIR, new BlockPos(5, 3, 5));
+                    var items = h.getLevel().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+                            new net.minecraft.world.phys.AABB(h.absolutePos(new BlockPos(5, 2, 5))).inflate(3));
+                    check(items.isEmpty(), "a free item after undo: " + items);
+                })
+                .thenSucceed();
+    }
+
     /**
      * Undo never destroys what others did since (plan 4.9, critique S3): a job's undo leaves a block a player put
      * there since, and a chest the build placed that someone filled since; the rest goes back.

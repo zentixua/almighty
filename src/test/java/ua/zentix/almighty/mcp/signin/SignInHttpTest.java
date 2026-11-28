@@ -107,6 +107,9 @@ class SignInHttpTest {
         assertEquals(401, first.statusCode());
         String challenge = first.headers().firstValue("WWW-Authenticate").orElseThrow();
         assertTrue(challenge.contains("resource_metadata=\"" + base() + "/.well-known/oauth-protected-resource/mcp\""), challenge);
+        // Lead's F6: a bare probe (curl -s shows no headers) learns from the body that no key is needed, and how to connect.
+        String body = first.body();
+        assertTrue(body.contains("No key or token is needed") && body.contains("claude mcp add --transport http almighty " + base() + "/mcp"), body);
 
         JsonObject resource = JsonParser.parseString(get(base() + "/.well-known/oauth-protected-resource/mcp").body()).getAsJsonObject();
         assertEquals(base() + "/mcp", resource.get("resource").getAsString());

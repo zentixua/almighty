@@ -497,8 +497,8 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
   `/clone`; `changeUndoRestoresChestContents`).
 - Building places positions as `/fill` (`FillCommand`): first `getBlockEntity` (initializes a fresh chunk's pending
   block entity; otherwise its data would survive the new block, "DUMMY"), snapshot via `saveWithFullMetadata`,
-  `Clearable.tryClear`, `BlockInput.place` with `UPDATE_CLIENTS`, then `blockUpdated` after the slice. Undo does not
-  restore entities or anything detached outside the box (a torch on a removed wall becomes an item).
+  `Clearable.tryClear`, `BlockInput.place` with `UPDATE_CLIENTS`, then `blockUpdated` after the slice. Writes suppress drops (`UPDATE_SUPPRESS_DROPS`):
+  a door half or a torch that a write breaks drops no free item (lead's F4). Undo does not restore entities.
 - A completed job's description in its future is shared by all waiters: copy responses (`GmServer.await`), or a
   snapshot would append the image to the shared object, retaining it in history and returning it again.
 - A method called on the server thread (GameTest) runs immediately (`server.execute` does not enqueue on that

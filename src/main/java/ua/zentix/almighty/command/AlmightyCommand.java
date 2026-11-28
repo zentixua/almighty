@@ -220,8 +220,7 @@ public final class AlmightyCommand {
         StringBuilder out = new StringBuilder("Almighty log (" + entries.size() + "):");
         for (var el : entries) {
             var e = el.getAsJsonObject();
-            String time = e.get("time").getAsString();
-            out.append("\n").append(time, Math.min(11, time.length()), Math.min(19, time.length())).append(' ')
+            out.append("\n").append(clock(e.get("time").getAsString(), gm.policies().current().timezone())).append(' ')
                     .append(e.get("agent").getAsString()).append(' ').append(e.get("method").getAsString()).append(' ')
                     .append(e.get("outcome").getAsString());
             if (e.has("job")) out.append(" job #").append(e.get("job").getAsLong());
@@ -269,8 +268,12 @@ public final class AlmightyCommand {
         if (!allow && SignInCommand.isCode(nonce) && Mc.has(source, 4)) return SignInCommand.deny(source, nonce);
         String answer = gm.decisions().decide(nonce, by, allow);
         gm.audit().owner(source.getTextName(), allow ? "confirm" : "deny", answer);
-        source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line(answer), false);
-        return answer.startsWith("Allowed") || answer.startsWith("Denied") ? 1 : 0;
+        // Empty: decided by the requester, who hears the translated outcome; else the decider's own line.
+        if (answer.isEmpty()) return 1;
+        boolean decided = !answer.startsWith("Not decided") && !answer.startsWith("No such request");
+        if (decided) source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line(answer), false);
+        else source.sendFailure(ua.zentix.almighty.policy.Prompts.line(answer));
+        return decided ? 1 : 0;
     }
 
     /** Admin requests the viewer may decide (the console sees all). */
@@ -393,6 +396,18 @@ public final class AlmightyCommand {
         gm.audit().owner(by, "role", text);
         source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line(text), true);
         return 1;
+    }
+
+    /**
+     * An audit time (UTC, ISO) as the owner reads it: HH:mm:ss in the policy's timezone, which is the server JVM's
+     * zone when unset (lead's F11: the log showed UTC).
+     */
+    static String clock(String iso, java.time.ZoneId zone) {
+        try {
+            return java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss", java.util.Locale.ROOT).format(java.time.Instant.parse(iso).atZone(zone));
+        } catch (java.time.DateTimeException e) {
+            return iso;
+        }
     }
 
     /** A time in the policy's zone, as players read it: {@code 2026-11-28 18:30 Europe/Warsaw}. */

@@ -32,15 +32,15 @@ import java.util.Arrays;
  * positions (26.x, as its {@code /fill}: also {@code UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS}, then
  * {@code updateNeighboursOnBlockSet} with the old state, which also runs the old block's removal updates).
  * The snapshot of all changed positions enables undo ({@code undo}), which is itself the same kind
- * of job with its own snapshot. Undo does not restore changes outside the box (a torch detached when its wall
- * is removed becomes an item), or entities.
+ * of job with its own snapshot. Writes carry {@code UPDATE_SUPPRESS_DROPS}: a neighbour a write breaks (a door's
+ * other half, a torch on a removed wall) drops no item (lead's F4). Undo does not restore entities.
  */
 public final class BuildJob extends Job {
     /** Placement flags, as {@code /fill}. */
     //? if >=26.1 {
-    /*private static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS;
+    /*private static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS | Block.UPDATE_SUPPRESS_DROPS;
     *///?} else {
-    private static final int FLAGS = Block.UPDATE_CLIENTS;
+    private static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SUPPRESS_DROPS;
     //?}
 
     @Override
@@ -116,6 +116,27 @@ public final class BuildJob extends Job {
         this.after = job;
     }
     private int restoreAt;
+    /** The positions an undo or revert writes, for {@link #partnerWritten}; built on first need. */
+    private it.unimi.dsi.fastutil.longs.LongOpenHashSet restored;
+
+    /** Whether {@code old} is one half of a door, bed or tall plant whose other half this undo or revert also writes. */
+    private boolean partnerWritten(BlockState old, BlockPos pos) {
+        BlockPos other;
+        if (old.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.DOUBLE_BLOCK_HALF)) {
+            other = old.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.DOUBLE_BLOCK_HALF)
+                    == net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER ? pos.above() : pos.below();
+        } else if (old.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.BED_PART)
+                && old.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING)) {
+            other = pos.relative(net.minecraft.world.level.block.BedBlock.getConnectedDirection(old));
+        } else {
+            return false;
+        }
+        if (restored == null) {
+            restored = new it.unimi.dsi.fastutil.longs.LongOpenHashSet(restore.size);
+            for (int i = 0; i < restore.size; i++) restored.add(restore.pos[i]);
+        }
+        return restored.contains(other.asLong());
+    }
 
     private BuildJob(String kind, ServerLevel level, Areas areas, int[] bounds, long timeoutTicks,
                      BuildPlan<BlockInput> plan, Snapshot restore, long undoOf) {
@@ -298,11 +319,18 @@ public final class BuildJob extends Job {
             container.clearContent();
         }
         boolean changed;
+        // Lead's F4: replacing one half of a door, bed or tall plant breaks the other half through its shape update,
+        // with a drop (vanilla clears UPDATE_SUPPRESS_DROPS for neighbour updates). Without shape updates here the
+        // other half stays for its own write (both halves are in a build or a change), and nothing drops.
+        // Only in an undo or revert, and only when the other half is written by this job too (review of #101: a build
+        // over one half, or a revert of one half, keeps vanilla's shape update, or the other half would float).
+        int flags = FLAGS;
+        if (plan == null && partnerWritten(old, pos)) flags |= Block.UPDATE_KNOWN_SHAPE;
         if (plan != null) {
-            changed = cursor.block.place(level, pos, FLAGS);
+            changed = cursor.block.place(level, pos, flags);
         } else {
             BlockState target = Block.stateById(restore.state[restoreAt]);
-            changed = level.setBlock(pos, target, FLAGS);
+            changed = level.setBlock(pos, target, flags);
             CompoundTag tag = restore.nbt.get(restoreAt);
             BlockEntity restored = tag != null ? level.getBlockEntity(pos) : null;
             if (restored != null) {

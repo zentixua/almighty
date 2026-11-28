@@ -1,5 +1,6 @@
 {
   "almighty.gm.unavailable": "Ведущий не запущен на этом сервере",
+  "almighty.gm.paused": "Владелец сервера приостановил ведущего; ваше сообщение сохранено.",
   "almighty.gm.away": "Ведущего сейчас нет; ваше сообщение сохранено.",
   "almighty.gm.not_heard": "Ведущий здесь принимает просьбы только от игроков, которым доверено то, что он может делать.",
   "almighty.gm.slow_down": "Слишком много сообщений ведущему; попробуйте позже.",
@@ -15,6 +16,8 @@
   "almighty.prompt.dialog_irreversible": "Это нельзя отменить.",
   "almighty.receipt.done": "Сделано по вашей просьбе: %s ",
   "almighty.receipt.undo": "[Отменить]",
+  "almighty.outcome.allowed": "Разрешено: %s",
+  "almighty.outcome.denied": "Отклонено: %s",
   "almighty.outcome.not_allowed": "Отклонено: %s",
   "almighty.outcome.done": "Готово: %s",
   "almighty.outcome.failed": "Не получилось: %s",

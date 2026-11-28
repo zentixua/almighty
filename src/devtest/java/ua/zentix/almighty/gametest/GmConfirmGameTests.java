@@ -145,6 +145,36 @@ public final class GmConfirmGameTests {
         h.succeed();
     }
 
+    /** Lead's F10: [Undo] on a player's receipt runs on click, as [Allow] does (it used to be typed into the chat box). */
+    @GameTest(template = "floor", batch = "gm_receipt_undo")
+    public static void undoOnAReceiptRunsOnClick(GameTestHelper h) {
+        String c = ua.zentix.almighty.policy.Prompts.receipt("build #5", 5L, "en_us").toString();
+        check(c.contains("/almighty undo 5") && !c.toLowerCase(java.util.Locale.ROOT).contains("suggest"), "receipt click: " + c);
+        h.succeed();
+    }
+
+    /** Lead's F1: a request the player could not run anyway is not put to them (it would fail after Allow). */
+    @GameTest(template = "floor", batch = "gm_confirm_level")
+    public static void aCommandAboveTheRequestersLevelIsNotAsked(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        ServerPlayer alex = player(h, "level_alex", UUID.randomUUID());
+        try {
+            gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\""));
+            String t = ticket(h, gm, alex, "summon a zombie");
+            try {
+                gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"summon zombie ~ ~ ~\"],\"for\":\"%s\"}", t));
+                throw new GameTestAssertException("a member's summon ran or was asked");
+            } catch (RpcException e) {
+                check(e.status() == 403 && e.details() != null && e.details().has("needs_level"), "refused with needs_level: " + e.status() + " " + e.getMessage());
+            }
+        } finally {
+            gm.policies().set(before);
+            h.getLevel().getServer().getPlayerList().remove(alex);
+        }
+        h.succeed();
+    }
+
     /** Scenario P10: a teleport to a friend waits for the friend's yes, not the asker's. */
     @GameTest(template = "floor", batch = "gm_confirm_tp")
     public static void aTeleportToAFriendAsksTheFriend(GameTestHelper h) throws Exception {

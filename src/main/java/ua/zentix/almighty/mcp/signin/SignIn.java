@@ -313,6 +313,12 @@ public final class SignIn {
     /** A new login waiting for the owner, with a four-digit code unique among waiting logins. */
     public synchronized Pending authorize(Client client, Map<String, String> q, String resource, String address) throws OAuthError {
         expire();
+        Long refused = refusedAt.get(refusalKey(client, q.get("redirect_uri") != null ? q.get("redirect_uri")
+                : client.redirects().size() == 1 ? client.redirects().get(0) : "", address));
+        if (refused != null && clock.getAsLong() - refused < REFUSED_MS) {
+            throw new OAuthError(403, "access_denied", "The server owner refused this app's sign-in. Ask the owner first; it can"
+                    + " try again in " + (REFUSED_MS - (clock.getAsLong() - refused) + 59_999) / 60_000 + " min");
+        }
         if (!"code".equals(q.get("response_type"))) throw new OAuthError(400, "unsupported_response_type", "response_type must be code");
         String redirect = q.get("redirect_uri");
         if (redirect == null) {
@@ -330,10 +336,10 @@ public final class SignIn {
         if (q.containsKey("resource") && !resource.equals(resource(q.get("resource")))) {
             throw new OAuthError(400, "invalid_target", "resource must be " + resource);
         }
-        if (pending.values().stream().filter(x -> x.client.id().equals(client.id())).count() >= MAX_PENDING_PER_CLIENT) {
+        if (pending.values().stream().filter(x -> !x.denied && x.client.id().equals(client.id())).count() >= MAX_PENDING_PER_CLIENT) {
             throw new OAuthError(429, "temporarily_unavailable", "This app already has sign-ins waiting; finish or wait for them");
         }
-        if (pending.values().stream().filter(x -> java.util.Objects.equals(x.address, address)).count() >= MAX_PENDING_PER_ADDRESS) {
+        if (pending.values().stream().filter(x -> !x.denied && java.util.Objects.equals(x.address, address)).count() >= MAX_PENDING_PER_ADDRESS) {
             throw new OAuthError(429, "temporarily_unavailable", "Sign-ins from this address are already waiting; finish or wait for them");
         }
         if (pending.size() >= MAX_PENDING) {
@@ -377,6 +383,8 @@ public final class SignIn {
         expire();
         Pending p = pending.values().stream().filter(x -> x.code.equals(code) && x.agent == null && !x.denied).findFirst()
                 .orElseThrow(() -> new OAuthError(404, "not_found", "No login is waiting with code " + code + " (codes last 10 minutes)"));
+        // The owner is approving now: earlier refusals no longer hold anyone back.
+        refusedAt.clear();
         String agent = name != null ? name : agentName(p.client.name());
         if (agent.equals("gm")) throw new OAuthError(400, "invalid_request", "gm is the default agent; choose another name");
         if (!AGENT_NAME.matcher(agent).matches()) {
@@ -406,11 +414,22 @@ public final class SignIn {
         return hash(current).equals(agents.get(name));
     }
 
+    /** After a refusal, the same app (by name) from the same address starts no new sign-in for this long. */
+    static final long REFUSED_MS = 10 * 60_000L;
+    private final Map<String, Long> refusedAt = new java.util.HashMap<>();
+
+    /** The same app instance asking again: its client id, its redirect and its address (not a shared name). */
+    private static String refusalKey(Client client, String redirect, String address) {
+        return client.id() + "|" + redirect + "|" + address;
+    }
+
     public synchronized boolean deny(String code) {
         expire();
         for (Pending p : pending.values()) {
             if (p.code.equals(code) && p.agent == null && !p.denied) {
                 p.denied = true;
+                // Lead's F9: an app told "refused" may start again at once (Codex does); it waits instead.
+                refusedAt.put(refusalKey(p.client, p.redirect, p.address), clock.getAsLong());
                 return true;
             }
         }

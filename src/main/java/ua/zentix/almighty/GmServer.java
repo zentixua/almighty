@@ -109,6 +109,7 @@ public final class GmServer {
                 GmConfig.AUDIT_DAYS.get());
         jobs.paused(pause::paused);
         rules.paused(pause::all);
+        rules.agentPaused(pause::paused);
         this.inbox = new Inbox(server, feed, tickets, () -> bridge == null ? null : bridge.agents());
         this.roles = new ua.zentix.almighty.policy.Roles(GmServer.configDir == null ? null : GmServer.configDir.resolve("roles.json"),
                 System::currentTimeMillis);

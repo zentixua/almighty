@@ -32,6 +32,14 @@ public final class PolicyFile {
 
     private static String ownersLocked(Path file, Set<UUID> owners) throws IOException {
         String old = Files.isRegularFile(file) ? Files.readString(file, StandardCharsets.UTF_8) : "";
+        // As the file route (ConfigFiles): the last owner is never removed, or nobody could run the server's policy.
+        if (owners.isEmpty()) {
+            try {
+                if (!Policy.parse(old).owners().isEmpty()) return "This would remove the last owner: refused (add another owner first)";
+            } catch (Policy.Invalid ignored) {
+                // An unreadable file: the write below validates the new text.
+            }
+        }
         String list = "owners = [" + owners.stream().map(u -> "\"" + u + "\"").collect(Collectors.joining(", ")) + "]";
         Matcher m = OWNERS.matcher(old);
         String text = m.find() ? old.substring(0, m.start()) + list + old.substring(m.end()) : list + "\n" + old;

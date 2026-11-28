@@ -202,7 +202,15 @@ public final class AlmightyCommand {
     private static int log(CommandSourceStack source, String who, int count) {
         GmServer gm = GmServer.of(source.getServer());
         if (gm == null) return 0;
-        var entries = gm.audit().recent(count, e -> who == null || e.get("agent").getAsString().equals(who));
+        // An agent's name, or a player's (the calls made for their requests).
+        java.util.UUID player = null;
+        if (who != null) {
+            var profile = Mc.cachedProfile(source.getServer(), who);
+            if (profile != null) player = Mc.id(profile);
+        }
+        String requester = player == null ? null : player.toString();
+        var entries = gm.audit().recent(count, e -> who == null || e.get("agent").getAsString().equals(who)
+                || (requester != null && e.has("requester") && e.get("requester").getAsString().equals(requester)));
         StringBuilder out = new StringBuilder("Almighty log (" + entries.size() + "):");
         for (var el : entries) {
             var e = el.getAsJsonObject();
@@ -370,6 +378,7 @@ public final class AlmightyCommand {
         java.util.Set<java.util.UUID> owners = new java.util.LinkedHashSet<>(gm.policies().current().owners());
         if (add) owners.add(Mc.id(profile));
         else owners.remove(Mc.id(profile));
+        // PolicyFile.owners refuses to remove the last owner, as the file route does.
         try {
             String why = ua.zentix.almighty.policy.PolicyFile.owners(gm.policies().file(), owners);
             if (why == null) why = gm.policies().reload();

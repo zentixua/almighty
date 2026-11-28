@@ -60,6 +60,11 @@ public interface GameEvents {
      * Properties an event has beyond its getters (Fabric: the callback's arguments by name, so a tick rule sees
      * {@code server} as on NeoForge); the feed and declarative rules read them as fields, scripts as properties.
      */
+    /** The command line of a command event (a player's or the server's), or null for any other event. */
+    default String command(Object event) {
+        return null;
+    }
+
     default Map<String, Object> properties(Object event) {
         return Map.of();
     }

@@ -81,6 +81,55 @@ public final class GmRuleGameTests {
         return "gone";
     }
 
+    private static int emits(GmServer gm, long after) throws InterruptedException {
+        int n = 0;
+        for (JsonElement e : gm.feed().read(after, 1000, 0).getAsJsonArray("events")) {
+            if (e.getAsJsonObject().get("type").getAsString().equals("emit")) n++;
+        }
+        return n;
+    }
+
+    /**
+     * Pausing one agent stops its rules, not only its builds (AGENTS.md "Pause"); and a rule without a script on
+     * command events never puts a player's private message into the feed (the feed's own filter, FeedListeners).
+     */
+    @GameTest(template = "floor", batch = "gm_rules_pause")
+    public static void pausedAgentsRulesStopAndPrivateCommandsStayOut(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        ServerPlayer p = player(h, "rule-watcher", UUID.randomUUID());
+        BlockPos at = h.absolutePos(new BlockPos(3, 2, 3));
+        try {
+            call(gm, "rule.add", "{\"event\":\"" + Gt.BREAK_EVENT + "\",\"name\":\"watch-break\"}");
+            long after = gm.feed().read(0, 4096, 0).get("next").getAsLong();
+            gm.pause().pause("gm");
+            breaks(h, at, p);
+            check(emits(gm, after) == 0, "a paused agent's rule ran");
+            gm.pause().resume("gm");
+            breaks(h, at, p);
+            check(emits(gm, after) == 1, "the rule after resume: " + emits(gm, after));
+            //? if neoforge {
+            call(gm, "rule.add", "{\"event\":\"CommandEvent\",\"name\":\"watch-commands\"}");
+            after = gm.feed().read(0, 4096, 0).get("next").getAsLong();
+            var commands = h.getLevel().getServer().getCommands();
+            commands.performPrefixedCommand(p.createCommandSourceStack(), "msg rule-watcher a secret");
+            commands.performPrefixedCommand(p.createCommandSourceStack(), "list");
+            String feed = gm.feed().read(after, 1000, 0).toString();
+            check(emits(gm, after) == 1 && !feed.contains("a secret"), "private message in a rule's output: " + feed);
+            //?}
+        } finally {
+            for (String name : new String[] {"watch-break", "watch-commands"}) {
+                try {
+                    call(gm, "rule.remove", "{\"name\":\"" + name + "\"}");
+                } catch (Exception ignored) {
+                    // Not added (Fabric has no command event).
+                }
+            }
+            gm.pause().resume(null);
+            h.getLevel().getServer().getPlayerList().remove(p);
+        }
+        h.succeed();
+    }
+
     @GameTest(template = "floor", batch = "gm_rules_declarative")
     public static void declarativeRulesFollowTheirCreator(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);

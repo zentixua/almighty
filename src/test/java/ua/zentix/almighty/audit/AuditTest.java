@@ -56,6 +56,18 @@ class AuditTest {
         assertTrue(Files.exists(dir.resolve("audit-" + LocalDate.now().minusDays(3) + ".jsonl")));
     }
 
+    /** A call made for a player's request names that player, so /almighty log <player> finds it. */
+    @Test
+    void recordsTheRequester() {
+        Audit audit = new Audit(null, 30);
+        java.util.UUID player = java.util.UUID.randomUUID();
+        ua.zentix.almighty.bridge.Caller gm = new ua.zentix.almighty.bridge.Caller(
+                ua.zentix.almighty.bridge.Agents.of(java.util.Map.of("gm", "g".repeat(32))).get("gm"), "test").withRequester(player);
+        audit.ended(gm, "build", new JsonObject(), "{}", new JsonObject(), null, 1_000_000, false, 0);
+        var e = audit.recent(1, x -> true).get(0).getAsJsonObject();
+        assertEquals(player.toString(), e.get("requester").getAsString(), e.toString());
+    }
+
     @Test
     void boundedAndClipped() {
         Audit audit = new Audit(null, 30);

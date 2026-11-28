@@ -83,6 +83,13 @@ public final class Rules {
         this.paused = paused;
     }
 
+    /** Whether an agent is paused (one agent, or all): its rules do not run meanwhile. */
+    private java.util.function.Predicate<String> agentPaused = agent -> false;
+
+    public void agentPaused(java.util.function.Predicate<String> agentPaused) {
+        this.agentPaused = agentPaused;
+    }
+
     public Rules(MinecraftServer server, GameEvents bus, Feed feed, Map<String, Object> state, Path store) {
         this.server = server;
         this.bus = bus;
@@ -374,6 +381,8 @@ public final class Rules {
             if (off != null || running) return;
             // Paused: scripts stop, and so do rules made below the owner (they act for an agent or a player).
             if (paused.getAsBoolean() && (spec.script() != null || !ownerMade())) return;
+            // One agent paused: its rules stop too (the console's and internal rules have no agent).
+            if (spec.creator().agent() != null && agentPaused.test(spec.creator().agent())) return;
             if (!server.isSameThread()) {
                 if (!wrongThread) {
                     wrongThread = true;
@@ -401,6 +410,12 @@ public final class Rules {
                     turnOff(spec.creator().describe() + " may no longer have this rule: " + lost);
                     return;
                 }
+            }
+            // Players' private messages (and /gm, /almighty) never reach a rule without a script: its output would
+            // put their text in the feed, which the feed itself never shows (FeedListeners.privateCommand).
+            if (spec.script() == null) {
+                String command = bus.command(event);
+                if (command != null && ua.zentix.almighty.feed.FeedListeners.privateCommand(command)) return;
             }
             JsonObject fields = null;
             if (spec.decl() != null && !spec.decl().when().isEmpty()) {

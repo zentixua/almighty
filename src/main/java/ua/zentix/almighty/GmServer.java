@@ -311,6 +311,9 @@ public final class GmServer {
         return lagGuard.lagging() ? GmConfig.workNanosPerTick() / 4 : GmConfig.workNanosPerTick();
     }
 
+    /** A revert splits into at most this many pieces of consecutive writes (exact reverse order); more: by region. */
+    static final int REVERT_PIECES = 64;
+
     /**
      * Run queued world calls while {@code nanos} last; {@code atLeastOne} at tick end, so the queue always progresses.
      * Time used counts against this tick's GM budget.
@@ -632,6 +635,18 @@ public final class GmServer {
                 maxX = Math.max(maxX, x);
                 minZ = Math.min(minZ, z);
                 maxZ = Math.max(maxZ, z);
+            }
+            if (groups.size() > REVERT_PIECES) {
+                // Writes alternating between far places (thousands of runs): bound the pieces by area instead, one per
+                // dimension and 128×128-block region, newest last write first. Exact order then holds within a region.
+                Map<String, List<Integer>> byRegion = new LinkedHashMap<>();
+                for (int i = 0; i < rec.size(); i++) {
+                    long pp = rec.pos()[i];
+                    String k = rec.dim()[i] + "/" + (net.minecraft.core.BlockPos.getX(pp) >> 7) + "/" + (net.minecraft.core.BlockPos.getZ(pp) >> 7);
+                    byRegion.computeIfAbsent(k, x -> new ArrayList<>()).add(i);
+                }
+                groups = new ArrayList<>(byRegion.values());
+                groups.sort(java.util.Comparator.comparingInt(g -> g.get(g.size() - 1)));
             }
             java.util.Collections.reverse(groups);
             List<Job> started = new ArrayList<>();

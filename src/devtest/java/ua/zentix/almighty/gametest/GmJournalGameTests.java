@@ -135,6 +135,36 @@ public final class GmJournalGameTests {
         });
     }
 
+    /** Writes alternating between two far places (100 runs): the pieces stay bounded (one per region), all reverted. */
+    @GameTest(template = "floor", batch = "gm_journal_alternating", timeoutTicks = 200)
+    public static void alternatingWritesRevertInFewPieces(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        BlockPos a = h.absolutePos(new BlockPos(1, 20, 1)), b = a.offset(300, 0, 0);
+        for (BlockPos at : new BlockPos[] {a, b}) {
+            for (int i = -1; i <= 2; i++) for (int j = -1; j <= 1; j++) h.getLevel().getChunk((at.getX() >> 4) + i, (at.getZ() >> 4) + j);
+        }
+        com.google.gson.JsonArray commands = new com.google.gson.JsonArray();
+        for (int i = 0; i < 50; i++) {
+            commands.add(String.format(java.util.Locale.ROOT, "setblock %d %d %d minecraft:stone", a.getX() + (i % 10), a.getY(), a.getZ() + i / 10));
+            commands.add(String.format(java.util.Locale.ROOT, "setblock %d %d %d minecraft:stone", b.getX() + (i % 10), b.getY(), b.getZ() + i / 10));
+        }
+        JsonObject call = new JsonObject();
+        call.add("commands", commands);
+        gm.dispatch().invoke(GM, "command", call).join();
+        long id = newest(gm);
+        JsonObject[] out = new JsonObject[1];
+        gm.dispatch().invoke(GM, "undo", params("{\"change\":%d,\"wait\":0}", id)).thenAccept(o -> out[0] = o.getAsJsonObject());
+        h.succeedWhen(() -> {
+            check(out[0] != null && out[0].getAsJsonArray("jobs").size() == 2, "one piece per region, not per run: " + out[0]);
+            for (var j : out[0].getAsJsonArray("jobs")) {
+                check(gm.jobs().get(j.getAsLong()).state() == ua.zentix.almighty.work.Job.State.DONE, "piece " + gm.jobs().get(j.getAsLong()).describe());
+            }
+            for (int i = 0; i < 50; i++) {
+                check(h.getLevel().getBlockState(a.offset(i % 10, 0, i / 10)).isAir() && h.getLevel().getBlockState(b.offset(i % 10, 0, i / 10)).isAir(), "reverted " + i);
+            }
+        });
+    }
+
     /** One command writing in two places far apart: the revert splits by region instead of leasing everything between. */
     @GameTest(template = "floor", batch = "gm_journal_4", timeoutTicks = 300)
     public static void spreadOutChangesRevert(GameTestHelper h) throws Exception {

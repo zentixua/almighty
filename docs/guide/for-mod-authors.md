@@ -3,7 +3,7 @@
 English · [Русский](for-mod-authors.ru.md)
 
 Agents learn any modpack from the running server: `notes {query: "<your mod id>"}` returns your blocks with their
-states, items, entities, recipes, commands with their usage, game events and your NeoForge config values (keys that
+states, items, entities, recipes, commands with their usage, game events and, on NeoForge, your config values (keys that
 look like secrets are hidden). You do not need to do anything for that.
 
 ## Leave the agent a note
@@ -39,3 +39,18 @@ description: How to build and fly this mod's airships, and which commands contro
   in the entity tag `almighty:driven_by_rider`; add it from your mod's data or a datapack.
 - Buttons whose clients send your own packets: bots can send them with the `payload` step (packet id and the bytes
   after it). Say in your note which packet does what.
+
+## Rules on your events
+
+Agents can add rules that react to your mod's events in the same tick: on NeoForge any event on the game bus, on
+Fabric any static `Event<T>` callback of Fabric API or your mod whose listeners return nothing, `PASS`, `DEFAULT` or
+an allow/before boolean (so that listening alone never changes the game). Fire events on the server thread; a rule
+on an event from another thread turns itself off.
+
+## Tags
+
+| Tag | Use |
+|---|---|
+| `almighty:driven_by_rider` (entity types) | Vehicles bots drive with the rider's input |
+| `almighty:never_build` (blocks) | Blocks the game master never places below the owner; add your admin-only blocks |
+| `almighty:never_give` (items) | Items the game master never gives below the owner; add your admin-only items |

@@ -512,7 +512,8 @@ public final class GmGameTests {
 
     /**
      * GM tickets: an area retains chunks with a ring (1 chunk gives 9 tickets); release removes them next tick,
-     * shutdown ({@code releaseAll}) immediately; a build releases its chunks on completion; exceeding the limit is an error.
+     * shutdown ({@code releaseAll}) immediately; a build releases its chunks on completion; exceeding the limit is an error;
+     * a large release is spread at most 64 chunks per tick.
      */
     @GameTest(template = "floor", batch = "gm_tickets", timeoutTicks = 200, skyAccess = true)
     public static void ticketsHeldAndReleased(GameTestHelper h) {
@@ -547,7 +548,17 @@ public final class GmGameTests {
                 .thenExecuteAfter(1, () -> {
                     check(result(build.get()).get("state").getAsString().equals("done"), "build: " + result(build.get()));
                     check(GmTickets.count(level) == 0, "completed build retains tickets: " + GmTickets.count(level));
+                    // Release at most RELEASE_PER_TICK (64) chunks per tick: 10×10 chunks with the ring are 144 tickets.
+                    try {
+                        gm.areas().acquire(level, "release pace", x0, z0, x0 + 159, z0 + 159, 0).release();
+                    } catch (RpcException e) {
+                        throw new GameTestAssertException(e.getMessage());
+                    }
+                    check(GmTickets.count(level) == 144, "10×10-chunk area with ring: " + GmTickets.count(level));
                 })
+                .thenExecuteAfter(1, () -> check(GmTickets.count(level) == 80 && gm.areas().ticketed() == 80, "first tick released 64: " + GmTickets.count(level) + ", areas " + gm.areas().ticketed()))
+                .thenExecuteAfter(1, () -> check(GmTickets.count(level) == 16 && gm.areas().ticketed() == 16, "second tick released 64: " + GmTickets.count(level) + ", areas " + gm.areas().ticketed()))
+                .thenExecuteAfter(1, () -> check(GmTickets.count(level) == 0, "third tick released the rest: " + GmTickets.count(level)))
                 .thenSucceed();
     }
 }

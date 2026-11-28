@@ -121,6 +121,26 @@ public final class Gate implements Dispatch.Check {
         };
     }
 
+    /** Allowed, but irreversible for others (or listed in confirm_first): the requester confirms the exact call. */
+    private void requesterConfirms(Caller caller, String method, JsonObject params, Rights r, Node node, boolean decided) throws RpcException {
+        if (!decided && confirmations != null && r.ticket != null && Nodes.role(r.ticket.player()) != Role.OWNER
+                && Confirmations.needsRequester(method, params, r.ticket.name(), r.ticket.player(), policies.current().safety().confirmFirst())) {
+            // P10: a teleport to (or of) one other player is that player's to allow, not the asker's.
+            String partner = Confirmations.teleportPartner(method, params, r.ticket.name());
+            UUID confirmer = r.ticket.player();
+            if (partner != null) {
+                confirmer = Nodes.onlineId(partner);
+                if (confirmer == null) throw RpcException.conflict(partner + " is offline: a teleport with them waits for their yes");
+            }
+            Confirmations.Pending p = confirmations.ask(Confirmations.Kind.REQUESTER, caller, method, params,
+                    confirmer, node, r.ticket.player(), r.ticket.name(),
+                    partner == null ? null : r.ticket.name() + " asks: " + Confirmations.render(method, params));
+            prompter.prompt(p);
+            throw Confirmations.waiting(p, r.ticket.name());
+        }
+    }
+
+
     /** A private reply to the requester alone (chat or actionbar): the only {@code say} below {@code speak.all}. */
     static boolean replyToRequester(JsonObject p, Tickets.Ticket t) throws RpcException {
         if (t == null || !has(p, "to")) return false;
@@ -178,6 +198,7 @@ public final class Gate implements Dispatch.Check {
         if (caller.agent() == null) return;
         // Only the gate sets this marker: whatever the agent sent under the name is dropped.
         params.remove(ZONE_ONLY);
+        params.remove(ZONE_GRANT);
         Node node = node(method, params, isBot);
         if (node == null) throw new RpcException(403, "policy", "No permission node for " + method + ": refused by default");
         Rights r = rights(caller, params);
@@ -207,23 +228,20 @@ public final class Gate implements Dispatch.Check {
             }
         }
         if (r.holds(node, holder)) {
-            // Allowed, but irreversible for others (or listed in confirm_first): the requester confirms the exact call.
-            if (!decided && confirmations != null && r.ticket != null && Nodes.role(r.ticket.player()) != Role.OWNER
-                    && Confirmations.needsRequester(method, params, r.ticket.name(), r.ticket.player(), policies.current().safety().confirmFirst())) {
-                // P10: a teleport to (or of) one other player is that player's to allow, not the asker's.
-                String partner = Confirmations.teleportPartner(method, params, r.ticket.name());
-                UUID confirmer = r.ticket.player();
-                if (partner != null) {
-                    confirmer = Nodes.onlineId(partner);
-                    if (confirmer == null) throw RpcException.conflict(partner + " is offline: a teleport with them waits for their yes");
-                }
-                Confirmations.Pending p = confirmations.ask(Confirmations.Kind.REQUESTER, caller, method, params,
-                        confirmer, node, r.ticket.player(), r.ticket.name(),
-                        partner == null ? null : r.ticket.name() + " asks: " + Confirmations.render(method, params));
-                prompter.prompt(p);
-                throw Confirmations.waiting(p, r.ticket.name());
-            }
+            requesterConfirms(caller, method, params, r, node, decided);
             return;
+        }
+        // A request beyond the player's rights, where a permission plugin grants the node in some zone (the dynamic
+        // context almighty:zone, plan 4.3): allowed only wholly inside such a zone; the method checks its exact box.
+        if (r.ticket != null && r.ceiling.atLeast(node.defaultRole()) && ZONED.contains(method)) {
+            for (Policy.Zone z : policies.current().zones().values()) {
+                if (Nodes.holdsIn(r.ticket.player(), node, z.name())) {
+                    // The same confirmations as a grant everywhere (confirm_first; review of #98).
+                    requesterConfirms(caller, method, params, r, node, decided);
+                    params.addProperty(ZONE_GRANT, true);
+                    return;
+                }
+            }
         }
         // Unasked, above the floor: allowed only inside a zone where the owner lets the agent (agent_may); the method
         // checks its exact box against those zones.
@@ -260,6 +278,8 @@ public final class Gate implements Dispatch.Check {
 
     /** Set by the gate on a call it let through only for an {@code agent_may} zone; the method then checks the box. */
     public static final String ZONE_ONLY = "\u0000zone_only";
+    /** Set by the gate when only a zone-scoped grant of the requester's allows the call (dropped from incoming parameters). */
+    public static final String ZONE_GRANT = "\u0000zone_grant";
     /** Methods whose box is known to the method (and checked there): the only ones an agent_may zone can allow. */
     static final Set<String> ZONED = Set.of("build", "area.prepare", "bot.spawn");
 
@@ -279,6 +299,13 @@ public final class Gate implements Dispatch.Check {
                 if (z.agentMay().contains(node.id()) && z.holds(dim, lo, hi)) return;
             }
             throw new RpcException(403, "policy", "Not allowed: " + node.key() + " outside the zones where the agent may (agent_may)");
+        }
+        if (params.has(ZONE_GRANT) && r.ticket() != null) {
+            for (Policy.Zone z : policies.current().zones().values()) {
+                if (z.holds(dim, lo, hi) && Nodes.holdsIn(r.ticket().player(), node, z.name())) return;
+            }
+            throw new RpcException(403, "policy", "Not allowed: " + r.ticket().name() + " may " + node.description()
+                    + " only inside the zones granted to them (almighty:zone)");
         }
     }
 

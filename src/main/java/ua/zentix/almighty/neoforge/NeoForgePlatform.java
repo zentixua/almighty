@@ -49,15 +49,54 @@ public final class NeoForgePlatform implements Platform {
     private final Map<Node, PermissionNode<Boolean>> nodes = new EnumMap<>(Node.class);
     private final ua.zentix.almighty.policy.OfflineAnswers offline = ua.zentix.almighty.policy.OfflineAnswers.background();
 
+    /** The dynamic context {@code almighty:zone}: a grant scoped to one policy zone (plan 4.3). */
+    static final net.neoforged.neoforge.server.permission.nodes.PermissionDynamicContextKey<String> ZONE =
+            new net.neoforged.neoforge.server.permission.nodes.PermissionDynamicContextKey<>(String.class, "almighty:zone", z -> z);
+    /** Per-player hourly limits as integer nodes {@code almighty.quota.<counter>}; the default is the policy's. */
+    static final List<String> QUOTAS = List.of("build_blocks", "give_items");
+    private final Map<String, PermissionNode<Integer>> quotas = new java.util.HashMap<>();
+
     NeoForgePlatform() {
         for (Node n : Node.values()) {
             nodes.put(n, new PermissionNode<>(Almighty.ID, n.nodeName(), PermissionTypes.BOOLEAN,
-                    (player, id, context) -> Nodes.byDefault(id, n)));
+                    (player, id, context) -> Nodes.byDefault(id, n), ZONE));
+        }
+        for (String q : QUOTAS) {
+            quotas.put(q, new PermissionNode<>(Almighty.ID, "quota." + q, PermissionTypes.INTEGER, (player, id, context) -> {
+                var limits = Nodes.policy().limits();
+                return (int) Math.min(Integer.MAX_VALUE, q.equals("build_blocks") ? limits.buildBlocks() : limits.giveItems());
+            }));
         }
     }
 
-    Collection<PermissionNode<Boolean>> nodes() {
-        return nodes.values();
+    Collection<PermissionNode<?>> nodes() {
+        List<PermissionNode<?>> all = new ArrayList<>(nodes.values());
+        all.addAll(quotas.values());
+        return all;
+    }
+
+    @Override
+    public Boolean permissionIn(UUID player, ServerPlayer online, Node node, String zone) {
+        // Only a real permission plugin scopes grants; NeoForge's own handler is the ladder, which has no zones.
+        if (net.neoforged.neoforge.server.permission.handler.DefaultPermissionHandler.IDENTIFIER.equals(PermissionAPI.getActivePermissionHandler())) {
+            return null;
+        }
+        try {
+            return Boolean.TRUE.equals(PermissionAPI.getPermission(online, nodes.get(node), ZONE.createContext(zone)));
+        } catch (UnregisteredPermissionException | IllegalStateException e) {
+            return null;
+        }
+    }
+
+    @Override
+    public Integer quota(ServerPlayer online, String counter) {
+        PermissionNode<Integer> pn = quotas.get(counter);
+        if (pn == null) return null;
+        try {
+            return PermissionAPI.getPermission(online, pn);
+        } catch (UnregisteredPermissionException | IllegalStateException e) {
+            return null;
+        }
     }
 
     @Override

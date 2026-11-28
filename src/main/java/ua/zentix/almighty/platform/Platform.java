@@ -56,6 +56,16 @@ public interface Platform {
      */
     Boolean permission(UUID player, ServerPlayer online, Node node);
 
+    /** As {@link #permission} with the dynamic context {@code almighty:zone=<zone>}; null where the loader has none. */
+    default Boolean permissionIn(UUID player, ServerPlayer online, Node node, String zone) {
+        return null;
+    }
+
+    /** The integer node {@code almighty.quota.<counter>} for an online player; null: no handler answers. */
+    default Integer quota(ServerPlayer online, String counter) {
+        return null;
+    }
+
     // --- Bots: the loader's parts of a connection and of the server's packet handling ---
 
     /** Give a bot's in-memory connection every channel a real client of this loader negotiates. */

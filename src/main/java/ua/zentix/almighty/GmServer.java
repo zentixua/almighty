@@ -695,6 +695,12 @@ public final class GmServer {
             pieces.add(new Object[] {rec.dims().get(rec.dim()[idx.get(0)]), pos, before, after, tags, n});
         }
         if (!reverting.add(id)) throw RpcException.conflict("Change " + id + " is being undone already");
+        // Checked again now that this revert holds the id: another may have finished while the file was read.
+        JsonObject again = journal.describe(id);
+        if (again == null || again.has("undone_by")) {
+            reverting.remove(id);
+            throw RpcException.conflict("Change " + id + " was already undone");
+        }
         CompletableFuture<JsonObject> result = onMain(() -> {
             List<Job> started = new ArrayList<>();
             try {

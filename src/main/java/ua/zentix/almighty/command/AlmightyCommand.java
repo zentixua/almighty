@@ -313,9 +313,22 @@ public final class AlmightyCommand {
             } catch (ua.zentix.almighty.bridge.RpcException e) {
                 throw new java.util.concurrent.CompletionException(e);
             }
-        }).thenCompose(f -> f).whenComplete((done, e) -> source.getServer().execute(() -> {
+        }).thenCompose(f -> f).whenComplete((started, e) -> source.getServer().execute(() -> {
             Throwable cause = e instanceof java.util.concurrent.CompletionException c && c.getCause() != null ? c.getCause() : e;
-            if (cause != null) source.sendFailure(Component.literal("Change " + id + " was not undone: " + cause.getMessage()));
+            if (cause != null) {
+                source.sendFailure(Component.literal("Change " + id + " was not undone: " + cause.getMessage()));
+                return;
+            }
+            // Its pieces run over later ticks: a piece that fails (a timeout) is told when it ends.
+            for (com.google.gson.JsonElement j : started.getAsJsonObject().getAsJsonArray("jobs")) {
+                ua.zentix.almighty.work.Job job = gm.jobs().get(j.getAsLong());
+                if (job != null) job.done().thenAccept(d -> source.getServer().execute(() -> {
+                    if (job.state() != ua.zentix.almighty.work.Job.State.DONE) {
+                        source.sendFailure(Component.literal("Change " + id + ": part of the undo did not finish (job #" + job.id() + ", "
+                                + job.state().id() + (d.has("error") ? ": " + d.get("error").getAsString() : "") + ")"));
+                    }
+                }));
+            }
         }));
         gm.audit().owner(source.getTextName(), "undo", "change " + id);
         source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("Undoing change " + id

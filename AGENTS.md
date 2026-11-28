@@ -136,7 +136,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `bridge.integrated` starts the bridge on single-player/LAN worlds, loopback only.
 - `bridge/`: Java's own HTTP (`com.sun.net.httpserver`): `POST /rpc` `{"method", "params"}` → `{"ok": true, "result"}`
   or `{"ok": false, "error": {code, message}}`. Threads: a 4-thread accept pool checks the request and hands it to a
-  bounded call pool (8 threads) or long-poll pool (16 threads, methods in `Api.LONG`); a full queue (64) → 503.
+  bounded call pool (8 threads) or long-poll pool (16 threads, methods in `Api.LONG`); a full queue (64) → 503;
+  at stop, queued requests are answered 503 `stopping` without running (stop runs on the server thread).
   Agents (`Agents`): one bearer token per agent; `gm` is `config/almighty/token`, others
   `config/almighty/agents/<name>.token` (32 bytes in hex, permissions 600; never logged or printed), compared in
   constant time; `/almighty agent add|remove`, `revoke` (rotate), `reload`, `agents` (presence). A present `Origin`
@@ -174,7 +175,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `/almighty reload`, a bad file keeps the last good policy with the exact error; at startup, with no last good one,
   `Policy.lockdown()`: public, no owners): `preset` (private | friends |
   public), `owners` (UUIDs), `identity`, `[agents.<name>]` `ceiling`/`floor`. `Node`: capabilities `almighty.<id>`
-  registered with the NeoForge permission API (`Nodes`; LuckPerms decides when installed; default resolver = role
+  registered with the NeoForge permission API (`Nodes`; LuckPerms decides when installed; an offline player's answer from a non-default handler is asked in the
+  background and cached 30 s, dropped on policy or role changes, `policy/OfflineAnswers`, never waited for on the server thread; default resolver = role
   ladder `Role`: policy owners (verified) → owner, op level ≥ 3 → admin, 2 → builder, verified → member on friends
   and guest otherwise, unverified → guest whatever a plugin says). `Gate` (a `Dispatch` check after the deny list
   and pause): every method maps to a node (`Gate.node`, parameters refine it: `see` a player, `rule.add` with
@@ -266,7 +268,9 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   with effects within 10 minutes returns the first result (joining it if still running); the same key for a
   different call → 409; read-only calls (`Api.readOnly`; `notes` with `text` writes) ignore keys (images are never kept); a failed call
   forgets its key. Vanilla caps one `fill`/`clone` at 32 768 blocks; one agent call may fill/clone/fillbiome at most 131 072
-  positions in all (`act/CommandVolume`, 400 "use build"): larger work uses `build`.
+  positions in all (`act/CommandVolume`, 400 "use build"): larger work uses `build`. Below owner, a fill/clone/fillbiome
+  under an `execute` that repeats per entity (`as|at @e|@a` without `limit=1`, `on passengers`) is refused, and a
+  rule's command gets the same bound at each fire.
 - `act/`: commands and functions (`CommandRunner`), messages to players (`Chat`); `feed/`: event feed and a player's
   private channel to the GM: `/gm <text>` (any player) emits `gm` in the feed, invisible to others; reply with `say` and `to`.
   Who asked (step 3): player events carry `uuid`, `verified` (`policy/Identity`: v4 Mojang and Floodgate yes, v3
@@ -314,7 +318,9 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `/almighty undo <change>` revert in reverse write order, conflict-aware: a position goes back only if it still
   holds what the change put there; the rest are `conflicts` in the job (`BuildJob.revert`). Another agent's or
   requester's change needs `undo.any`; reverting an undo (a redo) needs the owner. `changes {limit?}` lists them;
-  receipts and audit lines carry the change id. Block-entity-only edits (container contents), entities and
+  receipts and audit lines carry the change id. A declarative rule's command writes go to one change per rule
+  (method `rule <name>`, its creator as agent and requester), open for up to a minute (`GmServer.RULE_CHANGE_TICKS`),
+  then revertible. Block-entity-only edits (container contents), entities and
   inventories are not recorded. Writes are recorded at the start of `setBlockState` (true order; a block that
   rewrites itself while placed, such as redstone wire, reverts exactly). The index is saved at most every 5 s
   (tick end) and keeps at most 1000 changes; a change still running cannot be reverted; a revert is split into

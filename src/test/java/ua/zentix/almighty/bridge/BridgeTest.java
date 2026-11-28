@@ -205,4 +205,28 @@ class BridgeTest {
             assertTrue(status == 200 || status == 503, "status " + status);
         }
     }
+
+    /** Stability M8: stop() runs on the server thread at shutdown; queued long polls are answered, never run there. */
+    @Test
+    void stopAnswersQueuedRequestsWithoutRunningThem() throws Exception {
+        List<CompletableFuture<HttpResponse<String>>> held = new ArrayList<>();
+        for (int i = 0; i < Bridge.POLL_THREADS + 4; i++) {
+            held.add(http.sendAsync(request("secret-abc", "{\"method\":\"hold\"}", null), HttpResponse.BodyHandlers.ofString()));
+        }
+        for (int i = 0; i < 400 && bridge.queued(true) < 4; i++) Thread.sleep(10);
+        assertEquals(4, bridge.queued(true), "four holds wait in the queue");
+        long start = System.nanoTime();
+        bridge.stop();
+        assertTrue(System.nanoTime() - start < TimeUnit.SECONDS.toNanos(2), "stop does not wait for queued polls");
+        int stopping = 0;
+        for (CompletableFuture<HttpResponse<String>> f : held) {
+            try {
+                HttpResponse<String> r = f.get(5, TimeUnit.SECONDS);
+                if (r.statusCode() == 503 && "stopping".equals(json(r).getAsJsonObject("error").get("code").getAsString())) stopping++;
+            } catch (java.util.concurrent.ExecutionException e) {
+                // A running hold's connection closed by the stop.
+            }
+        }
+        assertEquals(4, stopping, "each queued request is answered 503 stopping");
+    }
 }

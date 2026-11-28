@@ -47,6 +47,7 @@ public final class NeoForgePlatform implements Platform {
     private final GameEvents events = new NeoForgeEvents();
     /** The {@link Node}s as NeoForge permission nodes; the default resolver is the role ladder. */
     private final Map<Node, PermissionNode<Boolean>> nodes = new EnumMap<>(Node.class);
+    private final ua.zentix.almighty.policy.OfflineAnswers offline = ua.zentix.almighty.policy.OfflineAnswers.background();
 
     NeoForgePlatform() {
         for (Node n : Node.values()) {
@@ -121,9 +122,17 @@ public final class NeoForgePlatform implements Platform {
     @Override
     public Boolean permission(UUID player, ServerPlayer online, Node node) {
         PermissionNode<Boolean> pn = nodes.get(node);
+        // An offline player's answer never waits (stability audit M10): a handler may load the user from storage
+        // first (LuckPerms does), which would stall the server thread. Asked in the background and cached; until the
+        // first answer the ladder decides.
+        // NeoForge's own handler answers from the default resolver (the ladder) at once and stays direct.
         try {
-            Boolean v = online != null ? PermissionAPI.getPermission(online, pn) : PermissionAPI.getOfflinePermission(player, pn);
-            return Boolean.TRUE.equals(v);
+            if (online == null && !net.neoforged.neoforge.server.permission.handler.DefaultPermissionHandler.IDENTIFIER
+                    .equals(PermissionAPI.getActivePermissionHandler())) {
+                return offline.get(player, pn.getNodeName(), ua.zentix.almighty.policy.Policies.CHANGES.get(),
+                        () -> Boolean.TRUE.equals(PermissionAPI.getOfflinePermission(player, pn)));
+            }
+            return Boolean.TRUE.equals(online != null ? PermissionAPI.getPermission(online, pn) : PermissionAPI.getOfflinePermission(player, pn));
         } catch (UnregisteredPermissionException | IllegalStateException e) {
             // No handler yet or nodes not gathered: the ladder answers.
             return null;

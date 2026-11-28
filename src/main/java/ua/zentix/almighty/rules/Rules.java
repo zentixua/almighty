@@ -522,7 +522,7 @@ public final class Rules {
                         }
                         case "emit" -> emit(fields);
                         case "say" -> guard.say(c, Declarative.fill(a.text(), fields, false), a.to() == null ? null : Declarative.fill(a.to(), fields, true), a.style());
-                        case "command" -> guard.command(c, event, Declarative.fill(a.text(), fields, true));
+                        case "command" -> guard.command(c, event, Declarative.fill(a.text(), fields, true), spec.name() != null ? spec.name() : "#" + id);
                         default -> throw new IllegalStateException("unknown action " + a.kind());
                     }
                     if (off != null) return;

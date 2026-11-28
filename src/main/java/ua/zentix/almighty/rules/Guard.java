@@ -17,8 +17,11 @@ public interface Guard {
     /** Say as the rule (text already filled in). */
     void say(Declarative.Creator c, String text, String to, String style) throws RpcException;
 
-    /** Run a command as the creator (deny list, zones, the creator's own permission level). */
-    void command(Declarative.Creator c, Object event, String command) throws RpcException;
+    /**
+     * Run a command as the creator (deny list, zones, the creator's own permission level). {@code rule} names the
+     * rule (its name, else {@code #id}): its block writes go to that rule's journal change, so they can be undone.
+     */
+    void command(Declarative.Creator c, Object event, String command, String rule) throws RpcException;
 
     /** Whether the creator is the owner (no TTL, no re-checks). */
     boolean owner(Declarative.Creator c);
@@ -34,7 +37,7 @@ public interface Guard {
 
         public void say(Declarative.Creator c, String text, String to, String style) {}
 
-        public void command(Declarative.Creator c, Object event, String command) {}
+        public void command(Declarative.Creator c, Object event, String command, String rule) {}
 
         public boolean owner(Declarative.Creator c) {
             return true;

@@ -11,7 +11,9 @@ import java.util.Locale;
  * {@code fillbiome} (plan 4.11, F3): those run in one go on the server thread, so past {@value #MAX_PER_CALL}
  * positions a call is refused with "use build", which runs in portions between ticks. A box whose size cannot be
  * read from the text (local {@code ^} coordinates, macros, mixed absolute and relative corners) counts as vanilla's
- * largest, 32 768. Pure: unit-tested. An accident guard: {@code execute as @e run fill …} repeats per entity unseen.
+ * largest, 32 768. Pure: unit-tested. Below owner, a fill, clone or fillbiome under an {@code execute} that repeats
+ * it for an unknown number of entities ({@code as @e}, {@code at @a}, {@code on passengers} …, without
+ * {@code limit=1}) is refused: its volume cannot be bounded from the text. The owner's such commands count once.
  */
 public final class CommandVolume {
     /** Vanilla's own limit for one fill or clone ({@code commandModificationBlockLimit}). */
@@ -20,15 +22,60 @@ public final class CommandVolume {
 
     private CommandVolume() {}
 
+    /** Execute modifiers that run the rest once per matched entity, with the selector they match. */
+    private static final java.util.regex.Pattern FAN_OUT = java.util.regex.Pattern.compile(
+            "\\b(?:as|at|positioned\\s+as|rotated\\s+as|facing\\s+entity)\\s+(@[aesprn])(\\[[^\\]]*\\])?", java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static final java.util.regex.Pattern MANY_RELATION = java.util.regex.Pattern.compile("\\bon\\s+passengers\\b", java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static final java.util.regex.Pattern LIMIT = java.util.regex.Pattern.compile("\\blimit\\s*=\\s*(\\d+)");
+    private static final java.util.regex.Pattern RUN = java.util.regex.Pattern.compile("\\brun\\s+");
+
     public static void check(List<String> commands) throws RpcException {
+        check(commands, true);
+    }
+
+    /** {@code owner}: the call's effective role is the owner (an execute's repeats are not counted). */
+    public static void check(List<String> commands, boolean owner) throws RpcException {
         long total = 0;
         for (String c : commands) {
+            if (!owner && repeatsWrites(c)) {
+                throw RpcException.badRequest("This command would fill or clone once per matched entity (execute as/at @e or @a"
+                        + " without limit=1), which cannot be bounded: use build, or name one target");
+            }
             for (String seg : DenyList.segments(c)) total += volume(seg);
             if (total > MAX_PER_CALL) {
                 throw RpcException.badRequest("This call would fill or clone over " + MAX_PER_CALL + " blocks in one tick: use build,"
                         + " which works in portions between ticks (and keeps an undo)");
             }
         }
+    }
+
+    /** Whether a fill, clone or fillbiome in this command runs under an execute that repeats for many entities. */
+    static boolean repeatsWrites(String command) {
+        List<String> segs = DenyList.segments(command);
+        if (segs.size() < 2) return false;
+        // The execute text before each run, joined: a repeat anywhere before a write multiplies it.
+        String[] parts = RUN.split(segs.get(0), -1);
+        StringBuilder before = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0 && volume(parts[i]) > 0 && many(before)) return true;
+            before.append(parts[i]).append(' ');
+        }
+        return false;
+    }
+
+    private static boolean many(CharSequence executeText) {
+        if (MANY_RELATION.matcher(executeText).find()) return true;
+        java.util.regex.Matcher m = FAN_OUT.matcher(executeText);
+        while (m.find()) {
+            String kind = m.group(1).toLowerCase(java.util.Locale.ROOT);
+            if (kind.equals("@s")) continue;
+            java.util.regex.Matcher limit = m.group(2) == null ? null : LIMIT.matcher(m.group(2));
+            String n = limit != null && limit.find() ? limit.group(1) : null;
+            // @a and @e match any number unless limit=1; @p, @r and @n match one unless a larger limit.
+            boolean single = kind.equals("@a") || kind.equals("@e") ? "1".equals(n) : n == null || n.equals("1") || n.equals("0");
+            if (!single) return true;
+        }
+        return false;
     }
 
     /** Positions one command segment writes with fill, clone or fillbiome; 0 for any other command. */

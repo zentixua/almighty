@@ -141,7 +141,7 @@ public final class McpEndpoint implements HttpHandler {
                             } finally {
                                 exchange.close();
                             }
-                        });
+                        }, () -> stopping(exchange, body));
                         if (!moved) reply(exchange, McpProtocol.busy(prepared));
                     } else {
                         reply(exchange, McpProtocol.finish(prepared, settings, backend));
@@ -158,7 +158,7 @@ public final class McpEndpoint implements HttpHandler {
                 } finally {
                     if (!moved) exchange.close();
                 }
-            });
+            }, () -> stopping(exchange, body));
             if (!handedOff) {
                 send(exchange, 503, McpProtocol.error(McpProtocol.id(body), McpProtocol.INTERNAL, "The bridge is busy; retry shortly", null));
             }
@@ -251,6 +251,17 @@ public final class McpEndpoint implements HttpHandler {
         }
         if (shown < list.size()) out.append("\n- … ").append(list.size() - shown).append(" more: the notes tool");
         return out.toString();
+    }
+
+    /** Answer a request the bridge dropped from its queue at shutdown, without running it. */
+    private static void stopping(HttpExchange exchange, byte[] body) {
+        try {
+            send(exchange, 503, McpProtocol.error(McpProtocol.id(body), McpProtocol.INTERNAL, "The server is stopping", null));
+        } catch (IOException | RuntimeException ignored) {
+            // The client disconnected.
+        } finally {
+            exchange.close();
+        }
     }
 
     private static void reply(HttpExchange exchange, McpProtocol.Reply reply) throws IOException {

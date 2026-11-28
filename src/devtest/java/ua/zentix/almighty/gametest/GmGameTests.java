@@ -487,6 +487,13 @@ public final class GmGameTests {
         check(entry.get("states").getAsString().contains("facing=north|south|west|east"), "stairs states: " + entry);
         JsonObject recipes = soon(call(h, "notes", params("{\"kind\":\"recipes\",\"query\":\"oak_planks\",\"limit\":5}"))).getAsJsonObject();
         check(recipes.get("total").getAsInt() >= 1 && recipes.getAsJsonArray("entries").size() <= 5, "recipes: " + recipes);
+        // Plan 5.1: loot tables, advancements and recipe types are in the catalog too.
+        JsonObject loot = soon(call(h, "notes", params("{\"kind\":\"loot_tables\",\"query\":\"minecraft:chests/simple_dungeon\"}"))).getAsJsonObject();
+        check(loot.toString().contains("\"id\":\"minecraft:chests/simple_dungeon\"") && loot.toString().contains("\"group\":\"chests\""), "loot tables: " + loot);
+        JsonObject adv = soon(call(h, "notes", params("{\"kind\":\"advancements\",\"query\":\"minecraft:story/mine_stone\"}"))).getAsJsonObject();
+        check(adv.toString().contains("\"parent\":\"minecraft:story/root\"") && adv.toString().contains("\"title\""), "advancements: " + adv);
+        JsonObject types = soon(call(h, "notes", params("{\"kind\":\"recipe_types\",\"query\":\"minecraft:smelting\"}"))).getAsJsonObject();
+        check(types.get("total").getAsInt() >= 1, "recipe types: " + types);
         JsonObject commands = soon(call(h, "notes", params("{\"kind\":\"commands\",\"query\":\"gamerule\"}"))).getAsJsonObject();
         check(commands.toString().contains("\"id\":\"gamerule\""), "commands: " + commands);
         JsonObject config = soon(call(h, "notes", params("{\"kind\":\"config\",\"query\":\"almighty:bridge.port\"}"))).getAsJsonObject();

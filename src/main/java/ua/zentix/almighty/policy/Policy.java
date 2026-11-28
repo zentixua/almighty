@@ -116,10 +116,28 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
      * ({@code profile} full or compact, {@code images}); null: unset (the URL's {@code ?profile=}, {@code ?images=} or
      * the defaults decide).
      */
-    public record AgentRules(Role ceiling, Role floor, String profile, Boolean images) {
+    /** {@code allowFrom}: addresses the agent's token is accepted from; empty: any (plan 9.1, F1). */
+    public record AgentRules(Role ceiling, Role floor, String profile, Boolean images, List<AddressRange> allowFrom) {
         public AgentRules(Role ceiling, Role floor) {
-            this(ceiling, floor, null, null);
+            this(ceiling, floor, null, null, List.of());
         }
+
+        public AgentRules(Role ceiling, Role floor, String profile, Boolean images) {
+            this(ceiling, floor, profile, images, List.of());
+        }
+
+        /** Whether the agent's token is accepted from {@code address}. */
+        public boolean allows(String address) {
+            if (allowFrom.isEmpty()) return true;
+            for (AddressRange r : allowFrom) if (r.contains(address)) return true;
+            return false;
+        }
+    }
+
+    /** Whether {@code agent}'s token is accepted from {@code address} ({@code [agents.<name>] allow_from}). */
+    public boolean allowsFrom(String agent, String address) {
+        AgentRules r = agents.get(agent);
+        return r == null || r.allows(address);
     }
 
     /** The agent's MCP profile from the policy, or null when unset. */
@@ -240,7 +258,7 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                     continue;
                 }
                 for (Config.Entry k : t.entrySet()) {
-                    if (!Set.of("ceiling", "floor", "profile", "images").contains(k.getKey())) errors.add("agents." + name + ": unknown key " + k.getKey());
+                    if (!Set.of("ceiling", "floor", "profile", "images", "allow_from").contains(k.getKey())) errors.add("agents." + name + ": unknown key " + k.getKey());
                 }
                 Role ceiling = role(t.get("ceiling"), "agents." + name + ".ceiling", errors);
                 Role floor = role(t.get("floor"), "agents." + name + ".floor", errors);
@@ -258,7 +276,21 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                     if (givenImages instanceof Boolean b) images = b;
                     else errors.add("agents." + name + ".images: true or false");
                 }
-                agents.put(name, new AgentRules(ceiling, floor, profile, images));
+                List<AddressRange> allowFrom = new ArrayList<>();
+                Object from = t.get("allow_from");
+                if (from instanceof List<?> list) {
+                    for (Object x : list) {
+                        try {
+                            allowFrom.add(AddressRange.parse(String.valueOf(x)));
+                        } catch (IllegalArgumentException bad) {
+                            errors.add("agents." + name + ".allow_from: " + bad.getMessage());
+                        }
+                    }
+                    if (list.isEmpty()) errors.add("agents." + name + ".allow_from: an empty list would refuse every address; leave it out for any");
+                } else if (from != null) {
+                    errors.add("agents." + name + ".allow_from: a list of addresses or ranges such as [\"203.0.113.7\", \"10.0.0.0/8\"]");
+                }
+                agents.put(name, new AgentRules(ceiling, floor, profile, images, List.copyOf(allowFrom)));
             }
         } else if (a != null) {
             errors.add("agents: tables such as [agents.gm]");
@@ -417,6 +449,7 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 ceiling = "owner"
                 # profile = "compact"   # MCP tools for this agent: full (14) or compact (6, small local models)
                 # images = false        # views as text only; a connection URL's ?profile= and ?images= still override
+                # allow_from = ["203.0.113.7", "10.0.0.0/8"]   # the token works only from these addresses
 
                 [safety]
                 # The only kinds of request that may reach an admin when the player (or the agent acting on its own) lacks

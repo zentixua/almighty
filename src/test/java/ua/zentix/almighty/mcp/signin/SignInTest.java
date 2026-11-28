@@ -94,6 +94,14 @@ class SignInTest {
         assertThrows(SignIn.OAuthError.class, () -> s.exchange(form), "a code works once");
 
         Map<String, String> refresh = Map.of("grant_type", "refresh_token", "refresh_token", tokens.get("refresh_token").getAsString(), "client_id", c.id());
+        // allow_from (plan 9.1): a refresh from an address the owner did not list is refused and spends nothing.
+        ua.zentix.almighty.policy.Policy limited = ua.zentix.almighty.policy.Policy.parse("[agents.claude-code]\nallow_from = [\"10.0.0.0/8\"]\n");
+        ua.zentix.almighty.policy.Nodes.start(null, () -> limited);
+        try {
+            assertEquals(403, assertThrows(SignIn.OAuthError.class, () -> s.exchange(refresh, "198.51.100.9")).status());
+        } finally {
+            ua.zentix.almighty.policy.Nodes.start(null, ua.zentix.almighty.policy.Policy::defaults);
+        }
         JsonObject next = s.exchange(refresh);
         assertEquals("claude-code-token-2", next.get("access_token").getAsString(), "refresh rotates the agent token");
         SignIn.OAuthError reused = assertThrows(SignIn.OAuthError.class, () -> s.exchange(refresh));

@@ -423,9 +423,14 @@ public final class SignIn {
 
     /** {@code grant_type=authorization_code}: the code once, with the PKCE verifier and the same redirect. */
     public synchronized JsonObject exchange(Map<String, String> form) throws OAuthError, IOException {
+        return exchange(form, null);
+    }
+
+    /** As {@link #exchange(Map)}; {@code address} (the caller's; null in tests) is checked against the agent's allow_from. */
+    public synchronized JsonObject exchange(Map<String, String> form, String address) throws OAuthError, IOException {
         expire();
         String grant = form.get("grant_type");
-        if ("refresh_token".equals(grant)) return refresh(form);
+        if ("refresh_token".equals(grant)) return refresh(form, address);
         if (!"authorization_code".equals(grant)) throw new OAuthError(400, "unsupported_grant_type", "grant_type is authorization_code or refresh_token");
         Code c = codes.remove(form.getOrDefault("code", ""));
         if (c == null || c.expires < clock.getAsLong()) throw new OAuthError(400, "invalid_grant", "The code is unknown, used or expired");
@@ -451,8 +456,14 @@ public final class SignIn {
     }
 
     /** {@code grant_type=refresh_token}: rotates both tokens; a used refresh token is dead ({@code invalid_grant}). */
-    private JsonObject refresh(Map<String, String> form) throws OAuthError, IOException {
+    private JsonObject refresh(Map<String, String> form, String address) throws OAuthError, IOException {
         String given = form.get("refresh_token");
+        Refresh known = given == null ? null : refresh.get(hash(given));
+        // allow_from (plan 9.1): a refresh from elsewhere would rotate the live agent's token away; refused before use.
+        if (known != null && address != null && !ua.zentix.almighty.policy.Nodes.policy().allowsFrom(known.agent, address)) {
+            LOG.warn("Almighty sign-in: refresh for agent {} from {}, not in its allow_from", known.agent, address);
+            throw new OAuthError(403, "access_denied", "This agent's tokens are not issued to " + address + " (allow_from in policy.toml)");
+        }
         Refresh r = given == null ? null : refresh.remove(hash(given));
         if (r == null) throw new OAuthError(400, "invalid_grant", "The refresh token is unknown or already used; sign in again");
         if (form.containsKey("client_id") && !form.get("client_id").equals(r.client)) {

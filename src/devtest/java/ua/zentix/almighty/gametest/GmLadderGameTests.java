@@ -173,7 +173,7 @@ public final class GmLadderGameTests {
 
     //? if cpa {
     /*// Plan step 19: on Fabric, claims of any protection mod that registers with the Common Protection API. A
-    // provider protecting one chunk from everyone: the source refuses exactly that chunk, and the server's claims
+    // provider protecting one column of a chunk from everyone: the source refuses exactly that chunk, and the server's claims
     // (built at start from the installed mods) refuse a build there naming the API.
     @GameTest(template = "floor", batch = "gm_ladder_cpa")
     public static void commonProtectionApiDecidesClaims(GameTestHelper h) {
@@ -183,11 +183,12 @@ public final class GmLadderGameTests {
         net.minecraft.resources.ResourceLocation id = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("almighty", "test_protection");
         eu.pb4.common.protection.api.CommonProtection.register(id, new eu.pb4.common.protection.api.ProtectionProvider() {
             public boolean isProtected(net.minecraft.world.level.Level level, BlockPos pos) {
-                return (pos.getX() >> 4) == cx && (pos.getZ() >> 4) == cz;
+                return pos.getX() == (cx << 4) + 3 && pos.getZ() == (cz << 4) + 5;
             }
 
+            // A small claim (one column, off the chunk's centre and corners): the area query finds it.
             public boolean isAreaProtected(net.minecraft.world.level.Level level, net.minecraft.world.phys.AABB box) {
-                return false;
+                return box.minX <= (cx << 4) + 3 && box.maxX > (cx << 4) + 3 && box.minZ <= (cz << 4) + 5 && box.maxZ > (cz << 4) + 5;
             }
 
             public boolean canPlaceBlock(net.minecraft.world.level.Level level, BlockPos pos, net.minecraft.server.players.NameAndId who,

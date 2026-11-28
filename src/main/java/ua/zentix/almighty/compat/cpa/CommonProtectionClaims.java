@@ -11,9 +11,11 @@ import java.util.UUID;
 
 /**
  * Claims on Fabric through Patbox's Common Protection API (plan step 19, R9): every protection mod that registers a
- * provider (GOML, Flan, FTB Chunks, Open Parties and Claims builds that support it, …) answers one read-only query.
- * A chunk is open to a player when they may place and break blocks at its centre and its four corners, at sea level
- * (claims are areas on the map; height-limited regions are rare). Unasked builds ask as nobody ({@code UNKNOWN}).
+ * provider (GOML, Flan, …) answers one read-only query. A chunk with nothing protected in it (the API's area query
+ * over the whole chunk, full height) is open. Otherwise an unasked build (nobody) is refused, and a requester must
+ * be allowed to place and break at every column of the chunk at the bottom, sea level and top: a claim lying wholly
+ * between those heights is not seen (rare: claims are mostly full-height areas). Claims are read from memory by the
+ * mods this supports; a provider that loads chunks would do it on the server thread (nothing here can prevent that).
  */
 public final class CommonProtectionClaims implements Claims.Source {
     public static final String MOD_ID = "common-protection-api";
@@ -25,14 +27,21 @@ public final class CommonProtectionClaims implements Claims.Source {
 
     @Override
     public boolean mayBuild(UUID player, ServerLevel level, int chunkX, int chunkZ) {
-        ServerPlayer online = player == null ? null : level.getServer().getPlayerList().getPlayer(player);
-        NameAndId who = player == null ? CommonProtection.UNKNOWN
-                : online != null ? new NameAndId(online.getGameProfile()) : new NameAndId(player, "");
-        int x = chunkX << 4, z = chunkZ << 4, y = level.getSeaLevel();
-        int[][] points = {{8, 8}, {0, 0}, {15, 0}, {0, 15}, {15, 15}};
-        for (int[] p : points) {
-            BlockPos at = new BlockPos(x + p[0], y, z + p[1]);
-            if (!CommonProtection.canPlaceBlock(level, at, who, online) || !CommonProtection.canBreakBlock(level, at, who, online)) return false;
+        int x = chunkX << 4, z = chunkZ << 4;
+        int bottom = ua.zentix.almighty.platform.Mc.minBuildHeight(level), top = ua.zentix.almighty.platform.Mc.maxBuildHeight(level) - 1;
+        if (!CommonProtection.isAreaProtected(level, new net.minecraft.world.phys.AABB(x, bottom, z, x + 16, top + 1, z + 16))) return true;
+        if (player == null) return false;
+        ServerPlayer online = level.getServer().getPlayerList().getPlayer(player);
+        NameAndId who = online != null ? new NameAndId(online.getGameProfile()) : new NameAndId(player, "");
+        int[] heights = {bottom, level.getSeaLevel(), top};
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        for (int dx = 0; dx < 16; dx++) {
+            for (int dz = 0; dz < 16; dz++) {
+                for (int y : heights) {
+                    at.set(x + dx, y, z + dz);
+                    if (!CommonProtection.canPlaceBlock(level, at, who, online) || !CommonProtection.canBreakBlock(level, at, who, online)) return false;
+                }
+            }
         }
         return true;
     }

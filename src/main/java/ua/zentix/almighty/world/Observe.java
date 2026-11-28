@@ -116,6 +116,7 @@ public final class Observe {
             item.addProperty("item", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
             item.addProperty("count", stack.getCount());
             item.addProperty("name", stack.getHoverName().getString());
+            if (stack.has(net.minecraft.core.component.DataComponents.CUSTOM_NAME)) item.add("untrusted", ua.zentix.almighty.feed.Inbox.untrusted("name"));
             if (stack.isDamageableItem()) item.addProperty("durability_left", stack.getMaxDamage() - stack.getDamageValue());
             items.add(item);
         }
@@ -209,6 +210,8 @@ public final class Observe {
         JsonObject out = new JsonObject();
         out.addProperty("type", EntityType.getKey(e.getType()).toString());
         if (e instanceof ServerPlayer || e.hasCustomName()) out.addProperty("name", e.getName().getString());
+        // A custom name is player-written (a name tag, an anvil): data, never instructions (plan 4.11, P4).
+        if (!(e instanceof ServerPlayer) && e.hasCustomName()) out.add("untrusted", ua.zentix.almighty.feed.Inbox.untrusted("name"));
         out.addProperty("uuid", e.getUUID().toString());
         out.add("pos", vec(e.position()));
         if (e instanceof LivingEntity living) out.addProperty("health", round(living.getHealth(), 1));

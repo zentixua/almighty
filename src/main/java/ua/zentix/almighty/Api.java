@@ -169,7 +169,11 @@ public final class Api {
                 .thenApply(o -> (JsonElement) o));
         m.put("say", a -> gm.onMain(() -> Chat.say(server, a)));
         m.put("blocks", a -> gm.onMain(() -> BlockText.read(Dims.level(server, a), a.ints("from", 3), a.ints("to", 3), a.bool("properties", true))));
-        m.put("map", a -> view(gm, a, () -> map(server, a)));
+        m.put("map", a -> {
+            // Player markers show where players are: observe.players (rights audit M4), else bots only.
+            boolean players = seesPlayers(gm, a, "players on a map");
+            return view(gm, a, () -> map(server, a).players(players ? p -> true : p -> gm.bots().of(p) != null));
+        });
         m.put("look", a -> view(gm, a, () -> new LookView(Dims.level(server, a), a.ints("from", 3), a.ints("to", 3), LookView.Look.parse(a.string("look")))));
         m.put("build", a -> build(gm, a));
         m.put("file", a -> CompletableFuture.completedFuture(gm.files().call(a)));
@@ -468,6 +472,8 @@ public final class Api {
         double[] at = a.has("at") ? numbers(a, "at") : null;
         float yaw = (float) a.number("yaw", 0, -360, 360), pitch = (float) a.number("pitch", 0, -90, 90);
         if ((name != null ? 1 : 0) + (uuid != null ? 1 : 0) + (at != null ? 1 : 0) != 1) throw RpcException.badRequest("see: exactly one of name, uuid or at");
+        // A free camera (at) is no one's eyes: without observe.players it lists no players but bots (rights audit M4).
+        boolean hide = at != null && !seesPlayers(gm, a, "players seen from a free camera");
         GmServer.MainCall<Object[]> look = () -> {
             Entity viewer = null;
             ServerLevel level;
@@ -497,13 +503,37 @@ public final class Api {
             }
             Eye.Camera cam = Eye.Camera.of(eye, y, p, fov, (double) width / height);
             Bot bot = viewer instanceof ServerPlayer sp ? gm.bots().of(sp) : null;
-            return new Object[] {level, cam, viewer, Eye.observe(level, cam, viewer, bot, radius, distance, sounds)};
+            JsonObject seen = Eye.observe(level, cam, viewer, bot, radius, distance, sounds);
+            if (hide) {
+                java.util.function.Predicate<JsonObject> player = o -> "minecraft:player".equals(o.has("type") ? o.get("type").getAsString() : null)
+                        && !(o.has("name") && gm.bots().isBotName(o.get("name").getAsString()));
+                if (seen.get("entities") instanceof com.google.gson.JsonArray list) {
+                    com.google.gson.JsonArray kept = new com.google.gson.JsonArray();
+                    for (JsonElement e : list) if (!player.test(e.getAsJsonObject())) kept.add(e);
+                    seen.add("entities", kept);
+                }
+                // The first thing on the view ray, too.
+                if (seen.get("aim_far") instanceof JsonObject far && far.get("entity") instanceof JsonObject hit && player.test(hit)) {
+                    seen.remove("aim_far");
+                }
+            }
+            return new Object[] {level, cam, viewer, seen};
         };
         if (!image) return gm.onMain(() -> (JsonObject) look.run()[3]);
         return view(gm, a, () -> {
             Object[] l = look.run();
             return new EyeView((ServerLevel) l[0], (Eye.Camera) l[1], width, height, distance, (Entity) l[2], (JsonObject) l[3]);
         });
+    }
+
+    /** Whether this call may see where other players are (observe.players); in-process calls may. */
+    private static boolean seesPlayers(GmServer gm, Args a, String why) {
+        try {
+            gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.OBSERVE_PLAYERS, why);
+            return true;
+        } catch (RpcException e) {
+            return false;
+        }
     }
 
     private static double[] numbers(Args a, String name) throws RpcException {

@@ -174,6 +174,8 @@ public final class Eye {
         JsonObject o = new JsonObject();
         o.addProperty("type", EntityType.getKey(e.getType()).toString());
         if (e instanceof ServerPlayer || e.hasCustomName()) o.addProperty("name", e.getName().getString());
+        // A custom name is player-written (a name tag, an anvil): data, never instructions (plan 4.11, P4).
+        if (!(e instanceof ServerPlayer) && e.hasCustomName()) o.add("untrusted", ua.zentix.almighty.feed.Inbox.untrusted("name"));
         o.addProperty("uuid", e.getUUID().toString());
         o.add("pos", Observe.vec(e.position()));
         if (e instanceof LivingEntity living) {

@@ -537,6 +537,7 @@ final class Controls {
             JsonObject t = new JsonObject();
             t.addProperty("entity", EntityType.getKey(e.getEntity().getType()).toString());
             t.addProperty("name", e.getEntity().getName().getString());
+            if (!(e.getEntity() instanceof ServerPlayer) && e.getEntity().hasCustomName()) t.add("untrusted", ua.zentix.almighty.feed.Inbox.untrusted("name"));
             t.addProperty("uuid", e.getEntity().getUUID().toString());
             out.add("target", t);
         } else if (hit instanceof BlockHitResult b && hit.getType() == HitResult.Type.BLOCK) {

@@ -368,8 +368,9 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 ceiling = "owner"
 
                 [safety]
-                # The only kinds of request that may reach an admin when the player lacks the right (command names such as
-                # "kick", or methods such as "build"); batched into one quiet line every 10 minutes. Empty: none ever.
+                # The only kinds of request that may reach an admin when the player (or the agent acting on its own) lacks
+                # the right (command names such as "kick", or methods such as "build"); batched into one quiet line every
+                # 10 minutes; owners are told each decision. Empty: none ever.
                 ask_admin = []
                 # Kinds the requesting player must confirm even when allowed and reversible (for example "tp").
                 confirm_first = []

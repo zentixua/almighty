@@ -64,6 +64,12 @@ public final class Decisions {
         String why = confirmations.decide(p, id, name, allow, node -> Nodes.holds(id, node));
         if (why != null) return "Not decided: " + why;
         event(p);
+        // Plan 4.8: an admin's decision is told to the owners online (the owner's own decisions need no notice).
+        if (p.kind == Confirmations.Kind.ADMIN) {
+            java.util.Set<UUID> owners = this.owners.get();
+            String line = name + (allow ? " allowed: " : " denied: ") + p.text + " (for " + p.requesterName + ")";
+            for (UUID o : owners) if (!o.equals(id)) tell(o, line);
+        }
         if (!allow) {
             tell(p.requester, "Not allowed: " + p.text);
             return "Denied: " + p.text;
@@ -80,7 +86,15 @@ public final class Decisions {
         return "Allowed: " + p.text;
     }
 
+    /** The policy's owners (UUIDs), told of every admin decision. */
+    private volatile java.util.function.Supplier<java.util.Set<UUID>> owners = java.util.Set::of;
+
+    public void owners(java.util.function.Supplier<java.util.Set<UUID>> owners) {
+        this.owners = owners;
+    }
+
     private void tell(UUID player, String text) {
+        if (player == null) return;
         ServerPlayer p = server.getPlayerList().getPlayer(player);
         if (p != null) p.sendSystemMessage(Prompts.line(text));
     }

@@ -137,6 +137,7 @@ public final class GmServer {
                 gate),
                 Api::readOnly);
         decisions.dispatch(dispatch);
+        decisions.owners(() -> policies.current().owners());
         rules.guard(ruleGuard(), System::currentTimeMillis);
         this.files = new ua.zentix.almighty.policy.ConfigFiles(GmServer.configDir == null ? server.getServerDirectory().resolve("config")
                 .resolve("almighty") : GmServer.configDir, policies, gate, ua.zentix.almighty.policy.ConfigFiles.digest(decisions));

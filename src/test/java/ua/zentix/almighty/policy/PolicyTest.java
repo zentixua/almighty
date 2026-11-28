@@ -90,4 +90,15 @@ class PolicyTest {
         assertTrue(PolicyEdits.grants(Policy.parse(""), quiet) != null, "silencing the notice needs an approval");
         assertEquals(null, PolicyEdits.grants(quiet, Policy.parse("")), "turning it on does not");
     }
+
+    /** Plan 4.5/7.2: per-agent MCP defaults are read, and named mistakes. */
+    @Test
+    void agentProfileAndImages() throws Exception {
+        Policy p = Policy.parse("[agents.local]\nceiling = \"member\"\nprofile = \"compact\"\nimages = false");
+        assertEquals("compact", p.profile("local"));
+        assertEquals(Boolean.FALSE, p.images("local"));
+        assertEquals(null, p.profile("gm"));
+        assertThrows(Policy.Invalid.class, () -> Policy.parse("[agents.x]\nprofile = \"tiny\""));
+        assertThrows(Policy.Invalid.class, () -> Policy.parse("[agents.x]\nimages = \"no\""));
+    }
 }

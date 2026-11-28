@@ -491,7 +491,8 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
   (`src/test/resources/mcp/`); re-record with a new client release. Tool argument checks live in `Tools.route`
   (the bridge would ignore unknown parameters); tool errors are `isError` results, not protocol errors.
   Instructions: the core rule in the first 512 characters (Codex and ChatGPT read only those), notes one line each,
-  under 3,000 characters (Claude Code cuts at 4,096). `?profile=compact` (6 tools) and `?images=false` per URL.
+  under 3,000 characters (Claude Code cuts at 4,096). `?profile=compact` (6 tools) and `?images=false` per URL; `[agents.<name>] profile, images` in `policy.toml` are
+  that agent's defaults (the URL overrides them).
 - Groovy 4 ships as a nested jar (`jarJar`; dedicated NeoForge servers load it into the game layer, exposing game
   and mod classes). Gradle runs use `additionalRuntimeClasspath` (nested jars are not read there). Each script has
   its own `GroovyClassLoader` over the mod's loader; call `Compiled.close` after the last run, or classes never unload.

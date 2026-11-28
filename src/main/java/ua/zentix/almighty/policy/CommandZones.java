@@ -60,7 +60,7 @@ public final class CommandZones {
                 else if (lit.equals("run")) inExecute = false;
                 else if (inExecute && MOVES.contains(lit)) {
                     throw new RpcException(403, "policy", "Not run: execute " + lit + " moves where the command runs, and zones "
-                            + "protect places on this server; run it without execute " + lit);
+                            + "or claims protect places on this server; run it without execute " + lit);
                 }
                 literals.add(lit);
             }

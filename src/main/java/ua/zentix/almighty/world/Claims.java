@@ -34,6 +34,11 @@ public final class Claims {
         return out;
     }
 
+    /** Whether any claim mod (or a test source) is checked: commands below owner are then checked at their places. */
+    public boolean active() {
+        return !sources.isEmpty() || !extra.isEmpty();
+    }
+
     /** GameTest: a source standing in for a claim mod. */
     public static void testSource(Source s) {
         extra.clear();

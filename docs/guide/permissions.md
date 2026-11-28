@@ -164,18 +164,22 @@ call itself), with `[Allow]`, `[Deny]` and `[Details]`:
 
 ```
 [Almighty] Cloudien wants to “clear the arena” (its own words) — what runs: kill — target: every player.
-It cannot be undone. [Allow] [Deny] [Details] (no clicks: type /almighty confirm <id> to allow, …)
+It cannot be undone. [Allow] [Deny] [Details]
 ```
 
-The summary is optional, at most 80 characters, and can never hide or change the server's part. The exact call is
-on hover, behind `[Details]` or `/almighty show <id>`, and written out for Bedrock players, who cannot hover. On
-26.x a confirmation dialog with the same buttons opens too. Only that player can answer, within 2 minutes. At most
+The summary is optional, at most 80 characters, and can never hide or change the server's part. The question ends
+with "It cannot be undone." for a command that is irreversible for others, and with "You can undo it." for a `build`
+or a command made only of `setblock`, `fill` and `clone` (not in `destroy` mode), which the journal can revert. Any
+other question, such as a teleport, says neither. The exact call is on hover and behind `[Details]` or
+`/almighty show <id>`. Where nobody can click (Bedrock players through Geyser, the console), the typed commands and
+the exact call are written out too. On 26.x a confirmation dialog with the same
+buttons opens too. Only that player can answer, within 2 minutes. At most
 3 requests wait per player and 20 per agent.
 
 - A request that is one teleport between the requester and one other player (`tp Bob`, `tp Bob Me`) waits for that
   other player's answer instead; if they are offline, it is refused.
 - A command the requester could not run at their own level is refused at once, with the level it needs, rather than
-  offered for confirmation.
+  offered for confirmation, unless its kind is in `ask_admin` (below): then an admin is asked instead.
 - The outcome reaches the player as one line in their game language: done, failed, denied or expired.
 
 `[safety]` adjusts this:

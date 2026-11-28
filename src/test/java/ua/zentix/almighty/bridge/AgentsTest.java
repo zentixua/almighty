@@ -79,4 +79,15 @@ class AgentsTest {
         agents.reload();
         assertSame(film, agents.get("film"), "unchanged token keeps the agent (and its presence)");
     }
+
+    /** Lead's F7: a freshly signed-in app hears players while the token-only gm is not running. */
+    @Test
+    void playersReachTheAgentThatRuns() {
+        Agents a = Agents.of(java.util.Map.of("gm", "g".repeat(32), "claude-code", "c".repeat(32)));
+        assertEquals("gm", a.route("gm", 60_000), "nobody connected yet: the configured agent");
+        a.get("claude-code").seen("127.0.0.1");
+        assertEquals("claude-code", a.route("gm", 60_000), "gm is not running: the app that is");
+        a.get("gm").seen("127.0.0.1");
+        assertEquals("gm", a.route("gm", 60_000), "the configured agent while it runs");
+    }
 }

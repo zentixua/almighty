@@ -71,6 +71,26 @@ public final class GmInboxGameTests {
         h.getLevel().getServer().getCommands().performPrefixedCommand(p.createCommandSourceStack(), "gm " + text);
     }
 
+    /** Lead's F8: during /almighty pause a player's /gm is answered by the server ("paused"), not by silence. */
+    @GameTest(template = "floor", batch = "gm_inbox_paused")
+    public static void aPausedAgentsPlayerIsTold(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        ServerPlayer p = player(h, "paused_alex", UUID.randomUUID());
+        ua.zentix.almighty.policy.Policy before = gm.policies().current();
+        try {
+            gm.policies().set(ua.zentix.almighty.policy.Policy.parse("preset = \"friends\"\nidentity = \"proxy\""));
+            ua.zentix.almighty.policy.Nodes.refresh(h.getLevel().getServer());
+            gm.pause().pause(null);
+            gmCommand(h, p, "hello?");
+            check(gm.inbox().toldAt(p.getUUID()) > 0, "the player was told the game master is paused");
+        } finally {
+            gm.pause().resume(null);
+            gm.policies().set(before);
+            h.getLevel().getServer().getPlayerList().remove(p);
+        }
+        h.succeed();
+    }
+
     @GameTest(template = "floor", batch = "gm_inbox")
     public static void gmMessagesCarryIdentityAndTicket(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);

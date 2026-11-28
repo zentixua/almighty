@@ -145,6 +145,14 @@ public final class GmConfirmGameTests {
         h.succeed();
     }
 
+    /** Lead's F10: [Undo] on a player's receipt runs on click, as [Allow] does (it used to be typed into the chat box). */
+    @GameTest(template = "floor", batch = "gm_receipt_undo")
+    public static void undoOnAReceiptRunsOnClick(GameTestHelper h) {
+        String c = ua.zentix.almighty.policy.Prompts.receipt("build #5", 5L, "en_us").toString();
+        check(c.contains("/almighty undo 5") && !c.toLowerCase(java.util.Locale.ROOT).contains("suggest"), "receipt click: " + c);
+        h.succeed();
+    }
+
     /** Scenario P10: a teleport to a friend waits for the friend's yes, not the asker's. */
     @GameTest(template = "floor", batch = "gm_confirm_tp")
     public static void aTeleportToAFriendAsksTheFriend(GameTestHelper h) throws Exception {

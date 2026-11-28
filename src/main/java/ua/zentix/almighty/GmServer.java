@@ -122,6 +122,24 @@ public final class GmServer {
         this.gate = new Gate(policies, tickets, Nodes::holds, bots::isBotName);
         this.decisions = new Decisions(server, new Confirmations(System::currentTimeMillis), tickets, feed);
         gate.confirmations(decisions.confirmations(), decisions::prompt);
+        // Lead's F1: whether a request's commands parse at the requester's level, checked where they would run.
+        gate.levelCheck((caller, method, params, rights) -> {
+            CompletableFuture<Integer> needed = onMain(() -> {
+                ua.zentix.almighty.act.CommandRunner.As as = commandAs(rights);
+                ua.zentix.almighty.bridge.Args args = new ua.zentix.almighty.bridge.Args(params, caller);
+                int max = 0;
+                for (String c : Confirmations.commands(method, params)) max = Math.max(max, ua.zentix.almighty.act.CommandRunner.levelNeeded(server, args, as, c));
+                return max;
+            });
+            try {
+                return needed.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (java.util.concurrent.ExecutionException e) {
+                // The requester went offline, or the like: the confirmation path reports it as before.
+                return 0;
+            } catch (java.util.concurrent.TimeoutException | InterruptedException e) {
+                return 0;
+            }
+        });
         Confirmations.players(name -> Nodes.online(name));
         this.dispatch = new Dispatch(Api.methods(this), List.of(
                 (caller, method, params) -> {
@@ -183,6 +201,8 @@ public final class GmServer {
                 return;
             }
             if (error != null || Api.readOnly(method, params)) return;
+            // A reply is its own answer (lead's F2): no "Done for you: say" under it.
+            if (method.equals("say")) return;
             // Commands report per command; a receipt only for what actually happened.
             if (result instanceof com.google.gson.JsonArray results) {
                 for (var r : results) if (r instanceof JsonObject o && o.has("ok") && !o.get("ok").getAsBoolean()) return;

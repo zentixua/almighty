@@ -235,6 +235,21 @@ class SignInTest {
         assertTrue(s.waiting().isEmpty(), "waiting logins expire after 10 minutes");
     }
 
+    /** Lead's F9: a refused app does not start a new sign-in at once (its page used to restart with a new code). */
+    @Test
+    void aRefusedAppWaitsBeforeAskingAgain() throws Exception {
+        SignIn s = signIn();
+        SignIn.Client c = register(s, "Codex", "http://127.0.0.1:9/cb");
+        SignIn.Pending p = s.authorize(c, authorizeQuery(c.id(), "http://127.0.0.1:9/cb"), "http://127.0.0.1:25650/mcp", "10.0.0.5");
+        assertTrue(s.deny(p.code()));
+        SignIn.Client again = register(s, "Codex", "http://127.0.0.1:9/cb");
+        SignIn.OAuthError e = assertThrows(SignIn.OAuthError.class, () -> s.authorize(again, authorizeQuery(again.id(), "http://127.0.0.1:9/cb"),
+                "http://127.0.0.1:25650/mcp", "10.0.0.5"));
+        assertEquals("access_denied", e.error());
+        now.addAndGet(SignIn.REFUSED_MS + 1);
+        s.authorize(again, authorizeQuery(again.id(), "http://127.0.0.1:9/cb"), "http://127.0.0.1:25650/mcp", "10.0.0.5");
+    }
+
     @Test
     void approvalNeverTakesOverAHandMadeAgent() throws Exception {
         SignIn s = signIn();

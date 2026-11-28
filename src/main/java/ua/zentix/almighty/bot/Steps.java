@@ -355,6 +355,12 @@ final class Steps {
             for (Controls.Key key : keys) bot.controls.release(p, key);
             int broken = bot.controls.takeBroken();
             if (broken > 0) out.addProperty("blocks_broken", broken);
+            java.util.List<net.minecraft.core.BlockPos> at = bot.controls.takeBrokenAt();
+            if (!at.isEmpty()) {
+                com.google.gson.JsonArray list = new com.google.gson.JsonArray();
+                for (net.minecraft.core.BlockPos b : at) list.add(ua.zentix.almighty.world.Observe.pos(b));
+                out.add("broken_at", list);
+            }
             return true;
         }
     }

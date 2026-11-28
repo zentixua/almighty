@@ -207,7 +207,8 @@ public final class Bridge {
             if (lock > 0) {
                 LOG.warn("Almighty bridge: {} failed authentications from {}; locked out for {} s", AuthGuard.FREE_FAILURES, address, lock / 1000);
             } else if (guard.firstInWindow(address)) {
-                LOG.warn("Almighty bridge: request without a valid token from {}", address);
+                LOG.warn("Almighty bridge: request without a valid token from {} (an AI app needs no key: it signs in by itself;"
+                        + " Claude Code: claude mcp add --transport http almighty <the /mcp URL>, then sign in; /almighty connect shows it)", address);
             }
             throw new RpcException(401, "unauthorized", "Header Authorization: Bearer <token> required");
         }

@@ -1,5 +1,6 @@
 {
   "almighty.gm.unavailable": "The game master is not running on this server",
+  "almighty.gm.paused": "The game master is paused by the server owner; your message is kept.",
   "almighty.gm.away": "The game master is away right now; your message is kept.",
   "almighty.gm.not_heard": "The game master here takes requests only from players trusted with what it can do.",
   "almighty.gm.slow_down": "Too many messages to the game master; try again later.",
@@ -15,6 +16,8 @@
   "almighty.prompt.dialog_irreversible": "This cannot be undone.",
   "almighty.receipt.done": "Done for you: %s ",
   "almighty.receipt.undo": "[Undo]",
+  "almighty.outcome.allowed": "Allowed: %s",
+  "almighty.outcome.denied": "Denied: %s",
   "almighty.outcome.not_allowed": "Not allowed: %s",
   "almighty.outcome.done": "Done: %s",
   "almighty.outcome.failed": "Failed: %s",

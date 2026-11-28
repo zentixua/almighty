@@ -103,11 +103,11 @@ public final class Prompts {
         return prefix().append(t(key, lang, arg).copy().withStyle(ChatFormatting.GRAY));
     }
 
-    /** A receipt with a suggested undo: "Done for you: … [Undo]", in the player's language. */
+    /** A receipt with an undo that runs on click (lead's F10): "Done for you: … [Undo]", in the player's language. */
     public static Component receipt(String text, Long job, String lang) {
         MutableComponent c = prefix().append(t("almighty.receipt.done", lang, text).copy().withStyle(ChatFormatting.GRAY));
         if (job != null) c.append(t("almighty.receipt.undo", lang).copy().withStyle(s -> s.withColor(ChatFormatting.GOLD)
-                .withClickEvent(Mc.suggestCommand("/almighty undo " + job))));
+                .withClickEvent(Mc.runCommand("/almighty undo " + job))));
         return c;
     }
 }

@@ -313,6 +313,11 @@ public final class SignIn {
     /** A new login waiting for the owner, with a four-digit code unique among waiting logins. */
     public synchronized Pending authorize(Client client, Map<String, String> q, String resource, String address) throws OAuthError {
         expire();
+        Long refused = refusedAt.get(refusalKey(client, address));
+        if (refused != null && clock.getAsLong() - refused < REFUSED_MS) {
+            throw new OAuthError(403, "access_denied", "The server owner refused this app's sign-in. Ask the owner first; it can"
+                    + " try again in " + (REFUSED_MS - (clock.getAsLong() - refused) + 59_999) / 60_000 + " min");
+        }
         if (!"code".equals(q.get("response_type"))) throw new OAuthError(400, "unsupported_response_type", "response_type must be code");
         String redirect = q.get("redirect_uri");
         if (redirect == null) {
@@ -406,11 +411,21 @@ public final class SignIn {
         return hash(current).equals(agents.get(name));
     }
 
+    /** After a refusal, the same app (by name) from the same address starts no new sign-in for this long. */
+    static final long REFUSED_MS = 10 * 60_000L;
+    private final Map<String, Long> refusedAt = new java.util.HashMap<>();
+
+    private static String refusalKey(Client client, String address) {
+        return client.name() + "|" + address;
+    }
+
     public synchronized boolean deny(String code) {
         expire();
         for (Pending p : pending.values()) {
             if (p.code.equals(code) && p.agent == null && !p.denied) {
                 p.denied = true;
+                // Lead's F9: an app told "refused" may start again at once (Codex does); it waits instead.
+                refusedAt.put(refusalKey(p.client, p.address), clock.getAsLong());
                 return true;
             }
         }

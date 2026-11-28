@@ -155,6 +155,15 @@ public final class CommandRunner {
         return 0;
     }
 
+    /**
+     * The permission level {@code command} needs beyond what {@code who} runs at (0 if it parses at their level), as
+     * the command would run (lead's F1: a request is not sent for confirmation when it would fail anyway).
+     */
+    public static int levelNeeded(MinecraftServer server, Args args, As who, String command) throws RpcException {
+        String text = command.startsWith("/") ? command.substring(1) : command;
+        return levelNeeded(server, sourceFor(server, args, who), text, who.level());
+    }
+
     private static boolean complete(com.mojang.brigadier.ParseResults<CommandSourceStack> parse) {
         return !parse.getReader().canRead() && parse.getExceptions().isEmpty() && parse.getContext().getCommand() != null;
     }

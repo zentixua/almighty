@@ -114,6 +114,20 @@ final class Controls {
         return b;
     }
 
+    /** Where the blocks broken since the last take were (lead's F5: the aim may move while attack is held), at most 16. */
+    private final java.util.List<BlockPos> brokenAt = new java.util.ArrayList<>();
+
+    java.util.List<BlockPos> takeBrokenAt() {
+        java.util.List<BlockPos> out = java.util.List.copyOf(brokenAt);
+        brokenAt.clear();
+        return out;
+    }
+
+    private void broke(BlockPos pos) {
+        broken++;
+        if (brokenAt.size() < 16) brokenAt.add(pos.immutable());
+    }
+
     /** Client tick start: counters; releasing use stops item use (a drawn bow fires). */
     void begin(ServerPlayer p) {
         long now = bot.tickNow();
@@ -273,7 +287,7 @@ final class Controls {
         if (p.gameMode.getGameModeForPlayer().isCreative() && p.level().getWorldBorder().isWithinBounds(pos)) {
             destroyDelay = 5;
             action(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, pos, face);
-            broken++;
+            broke(pos);
             return true;
         }
         if (!sameTarget(p, pos)) return startDestroyBlock(p, pos, face);
@@ -288,7 +302,7 @@ final class Controls {
             action(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, pos, face);
             destroyProgress = 0;
             destroyDelay = 5;
-            broken++;
+            broke(pos);
         }
         return true;
     }

@@ -32,15 +32,15 @@ import java.util.Arrays;
  * positions (26.x, as its {@code /fill}: also {@code UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS}, then
  * {@code updateNeighboursOnBlockSet} with the old state, which also runs the old block's removal updates).
  * The snapshot of all changed positions enables undo ({@code undo}), which is itself the same kind
- * of job with its own snapshot. Undo does not restore changes outside the box (a torch detached when its wall
- * is removed becomes an item), or entities.
+ * of job with its own snapshot. Writes carry {@code UPDATE_SUPPRESS_DROPS}: a neighbour a write breaks (a door's
+ * other half, a torch on a removed wall) drops no item (lead's F4). Undo does not restore entities.
  */
 public final class BuildJob extends Job {
     /** Placement flags, as {@code /fill}. */
     //? if >=26.1 {
-    /*private static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS;
+    /*private static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS | Block.UPDATE_SUPPRESS_DROPS;
     *///?} else {
-    private static final int FLAGS = Block.UPDATE_CLIENTS;
+    private static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SUPPRESS_DROPS;
     //?}
 
     @Override
@@ -298,11 +298,19 @@ public final class BuildJob extends Job {
             container.clearContent();
         }
         boolean changed;
+        // Lead's F4: replacing one half of a door, bed or tall plant breaks the other half through its shape update,
+        // with a drop (vanilla clears UPDATE_SUPPRESS_DROPS for neighbour updates). Without shape updates here the
+        // other half stays for its own write (both halves are in a build or a change), and nothing drops.
+        int flags = FLAGS;
+        if (old.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.DOUBLE_BLOCK_HALF)
+                || old.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.BED_PART)) {
+            flags |= Block.UPDATE_KNOWN_SHAPE;
+        }
         if (plan != null) {
-            changed = cursor.block.place(level, pos, FLAGS);
+            changed = cursor.block.place(level, pos, flags);
         } else {
             BlockState target = Block.stateById(restore.state[restoreAt]);
-            changed = level.setBlock(pos, target, FLAGS);
+            changed = level.setBlock(pos, target, flags);
             CompoundTag tag = restore.nbt.get(restoreAt);
             BlockEntity restored = tag != null ? level.getBlockEntity(pos) : null;
             if (restored != null) {

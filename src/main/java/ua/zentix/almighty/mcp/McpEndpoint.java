@@ -103,7 +103,9 @@ public final class McpEndpoint implements HttpHandler {
                 if (e.status() == 401) exchange.getResponseHeaders().set("WWW-Authenticate", wwwAuthenticate(exchange));
                 // The body is read only to answer with its id: a stdio relay matches replies by id.
                 byte[] unread = exchange.getRequestBody().readNBytes(64 * 1024);
-                send(exchange, e.status(), McpProtocol.error(McpProtocol.id(unread), McpProtocol.INVALID_REQUEST, e.getMessage(), null));
+                // A bare probe (curl -s shows no headers) must still learn that no key is needed (lead's F6).
+                String message = e.status() == 401 && challenge != null ? signInHint(url(exchange)) : e.getMessage();
+                send(exchange, e.status(), McpProtocol.error(McpProtocol.id(unread), McpProtocol.INVALID_REQUEST, message, null));
                 return;
             }
             McpProtocol.Settings settings;
@@ -174,6 +176,21 @@ public final class McpEndpoint implements HttpHandler {
         } finally {
             if (!handedOff) exchange.close();
         }
+    }
+
+    /** This endpoint's URL as the client reached it. */
+    private String url(HttpExchange exchange) {
+        String host = exchange.getRequestHeaders().getFirst("Host");
+        if (host == null) host = exchange.getLocalAddress().getHostString() + ":" + exchange.getLocalAddress().getPort();
+        return (bridge.tls() ? "https" : "http") + "://" + host + exchange.getRequestURI().getPath();
+    }
+
+    /** What a 401 from /mcp says: sign-in needs no key, and the one command that connects Claude Code. */
+    public static String signInHint(String url) {
+        return "Not signed in. No key or token is needed: this server signs agents in through the browser (OAuth), and the"
+                + " owner approves the code in game. Claude Code: claude mcp add --transport http almighty " + url
+                + " then sign in (/mcp, or claude mcp login almighty). Codex: codex mcp add almighty --url " + url
+                + " then codex mcp login almighty. Other apps: add this URL as an HTTP MCP server and sign in when asked.";
     }
 
     private String wwwAuthenticate(HttpExchange exchange) {

@@ -122,9 +122,30 @@ public final class Gate implements Dispatch.Check {
     }
 
     /** Allowed, but irreversible for others (or listed in confirm_first): the requester confirms the exact call. */
+    /** The permission level a request's commands need beyond the requester's, or 0 (set by the server; 0 in tests). */
+    public interface LevelCheck {
+        int needed(Caller caller, String method, JsonObject params, Rights r) throws RpcException;
+    }
+
+    private LevelCheck levelCheck = (c, m, p, r) -> 0;
+
+    public void levelCheck(LevelCheck check) {
+        this.levelCheck = check;
+    }
+
     private void requesterConfirms(Caller caller, String method, JsonObject params, Rights r, Node node, boolean decided) throws RpcException {
         if (!decided && confirmations != null && r.ticket != null && Nodes.role(r.ticket.player()) != Role.OWNER
                 && Confirmations.needsRequester(method, params, r.ticket.name(), r.ticket.player(), policies.current().safety().confirmFirst())) {
+            // Lead's F1: a command the requester could not run anyway is not put to them (it would fail after Allow).
+            if (method.equals("command")) {
+                int needs = levelCheck.needed(caller, method, params, r);
+                if (needs > 0) {
+                    RpcException e = new RpcException(403, "policy", "Not asked: this command needs permission level " + needs
+                            + ", above what " + r.ticket.name() + " may run");
+                    e.detail("needs_level", new com.google.gson.JsonPrimitive(needs));
+                    throw e;
+                }
+            }
             // P10: a teleport to (or of) one other player is that player's to allow, not the asker's.
             String partner = Confirmations.teleportPartner(method, params, r.ticket.name());
             UUID confirmer = r.ticket.player();

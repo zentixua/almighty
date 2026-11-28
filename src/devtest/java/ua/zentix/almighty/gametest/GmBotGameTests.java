@@ -272,6 +272,10 @@ public final class GmBotGameTests {
                     JsonObject r = mine.join().getAsJsonObject();
                     h.assertBlockPresent(Blocks.AIR, stone);
                     check(r.getAsJsonArray("results").get(3).getAsJsonObject().get("blocks_broken").getAsInt() == 1, "broken: " + r);
+                    // Lead's F5: the release names the block actually broken (the aim can move while attack is held).
+                    BlockPos abs = h.absolutePos(stone);
+                    check(r.getAsJsonArray("results").get(3).getAsJsonObject().getAsJsonArray("broken_at").get(0).toString()
+                            .equals("[" + abs.getX() + "," + abs.getY() + "," + abs.getZ() + "]"), "broken_at: " + r);
                     check(bot.player().getMainHandItem().getDamageValue() == 1, "pickaxe did not wear: " + bot.player().getMainHandItem());
                     bot.player().setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.DIRT, 4));
                     place.set(act(h, "GmTestMiner", "[{\"look_at\":" + block(h, 12, GROUND - 1, 10) + "},{\"click\":\"use\"}]"));

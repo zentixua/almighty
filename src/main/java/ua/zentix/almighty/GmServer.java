@@ -507,7 +507,7 @@ public final class GmServer {
                         // A rule's block edits go only where its creator may build (claims), as its cancels do.
                         if (node == ua.zentix.almighty.policy.Node.BUILD && claims.active()) {
                             String refusal = claims.refusal(c.player(), source.getLevel(), lo[0], lo[2], hi[0], hi[2]);
-                            if (refusal != null) throw new RpcException(403, "policy", refusal);
+                            if (refusal != null) throw new RpcException(403, "policy", "Not run: " + refusal);
                         }
                     });
                 }
@@ -566,12 +566,21 @@ public final class GmServer {
             return;
         }
         var dispatcher = server.getCommands().getDispatcher();
+        // Each command of a request starts from where the requester is when it runs, but all are checked from where
+        // they are now: after a command that moves them, relative places are refused (send them in a later call).
+        boolean moved = false;
         for (String line : a.strings(function ? "lines" : "commands")) {
+            String low = line.strip().replaceFirst("^/", "").toLowerCase(java.util.Locale.ROOT);
+            if (!function && moved && (low.contains("~") || low.contains("^"))) {
+                throw new RpcException(403, "policy", "Not run: a command with relative places after one that moves you, while zones or"
+                        + " claims protect places; send it in a separate call");
+            }
+            if (!function && low.matches("(minecraft:)?(tp|teleport|spreadplayers|ride|spectate)\\b.*")) moved = true;
             String t = line.strip();
             if (function && (t.isEmpty() || t.startsWith("#"))) continue;
             if (function) {
                 String why = ua.zentix.almighty.policy.CommandZones.unchecked(t);
-                if (why != null) throw new RpcException(403, "policy", "Not run: " + why + ", and zones protect places on this server");
+                if (why != null) throw new RpcException(403, "policy", "Not run: " + why + ", and zones or claims protect places on this server");
             }
             ua.zentix.almighty.policy.CommandZones.check(dispatcher, source, t, check);
         }

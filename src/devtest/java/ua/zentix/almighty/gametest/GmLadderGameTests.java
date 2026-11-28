@@ -217,7 +217,7 @@ public final class GmLadderGameTests {
 
     /**
      * Rights audit M6: below owner a command's block edits are checked against claims as a build's are. An agent
-     * at builder floor (level 2) may setblock outside a claimed chunk, not inside it, nor reach it with execute.
+     * at builder floor (level 2) may setblock outside a claimed chunk, not inside it; a box too large to check is refused.
      */
     @GameTest(template = "floor", batch = "gm_ladder_command_claims")
     public static void commandsRespectClaims(GameTestHelper h) throws Exception {
@@ -246,6 +246,15 @@ public final class GmLadderGameTests {
             }
             check(claimed != null && claimed.status() == 403 && claimed.getMessage().contains("claimed"), "setblock in a claim: " + claimed);
             check(!h.getLevel().getBlockState(in).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK), "nothing placed in the claim");
+            // A box far too large to check (far coordinates) is refused, never walked on the server thread.
+            RpcException far = null;
+            try {
+                gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"execute if block 19999999 0 19999999 air run setblock %d %d %d minecraft:stone\"]}",
+                        out.getX(), out.getY(), out.getZ())).join();
+            } catch (java.util.concurrent.CompletionException e) {
+                far = e.getCause() instanceof RpcException r ? r : null;
+            }
+            check(far != null && far.status() == 403 && far.getMessage().contains("too large"), "a far box: " + far);
             gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"setblock %d %d %d minecraft:gold_block\"]}", out.getX(), out.getY(), out.getZ())).join();
             check(h.getLevel().getBlockState(out).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK), "setblock outside the claim runs");
             h.getLevel().setBlockAndUpdate(out, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());

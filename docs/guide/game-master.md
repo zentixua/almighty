@@ -8,8 +8,8 @@ server's event feed. Each app has its own way to keep a session running; the ser
 
 ## How players reach the game master
 
-- **`/gm <text>`** is a private message to the game master. Other players and operators do not see it, and the agent
-  can answer that player alone. With several agents, `/gm @<agent> <text>` picks one.
+- **`/gm <text>`** is a private message to the game master. The player sees it echoed as "To Almighty: <text>"; other
+  players and operators do not see it, and the agent can answer that player alone. With several agents, `/gm @<agent> <text>` picks one.
 - **Its name in public chat** (`name`, or the words in `feed.names`) addresses it too, even with stretched letters
   or, for names in `feed.typo_names`, one typo.
 - **A conversation** stays open for 3 minutes after a player addressed the game master or got an answer: their lines
@@ -35,7 +35,9 @@ reach the new app. While you pause it
 lines follow the player's game language: Russian for `ru_ru`, English otherwise.
 
 Each addressed message carries a ticket. When the agent acts on it (every tool takes it as `for`), the call runs with that player's rights
-([Permissions](permissions.md)), and anything that affects others waits for the player's confirmation.
+([Permissions](permissions.md)), and anything that affects others waits for the player's confirmation. Every tool
+also takes a short `summary` in the agent's own words, which players see in quotes beside the server's own account of
+what runs.
 
 ## Keep the agent running
 

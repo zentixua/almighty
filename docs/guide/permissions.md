@@ -158,8 +158,19 @@ A player's request to run a command runs at once when every command in it is har
   `experience`, `enchant`, `kill`, `spawnpoint`, `title`, `ride`, `attribute`, `item`, `advancement`, `recipe`.
 
 Anything else (another player as a target, any mod command, `data`, `summon`, `function`, `ban` and so on) waits for
-the requester to confirm. The server shows them the exact call with `[Allow]` and `[Deny]`; only that player can
-answer, within 2 minutes. At most 3 requests wait per player and 20 per agent.
+the requester to confirm. The server asks them in one sentence: the game master's own short summary in quotes,
+marked as its words, then what really runs in the server's own words (the action and its target, taken from the
+call itself), with `[Allow]`, `[Deny]` and `[Details]`:
+
+```
+[Almighty] Cloudien wants to “snow over your base” (its own words) — what runs: change blocks at 0 64 0 … 20 70 20.
+It cannot be undone. [Allow] [Deny] [Details]
+```
+
+The summary is optional, at most 80 characters, and can never hide or change the server's part. The exact call is
+on hover, behind `[Details]` or `/almighty show <id>`, and written out for Bedrock players, who cannot hover. On
+26.x a confirmation dialog with the same buttons opens too. Only that player can answer, within 2 minutes. At most
+3 requests wait per player and 20 per agent.
 
 - A request that is one teleport between the requester and one other player (`tp Bob`, `tp Bob Me`) waits for that
   other player's answer instead; if they are offline, it is refused.
@@ -176,8 +187,9 @@ confirm_first = ["tp"]     # these always need the requester's confirmation
 ```
 
 A request in `ask_admin` above the player's rights goes to admins who hold what it needs (for a command,
-`almighty.approve`) as one quiet chat line
-at most every 10 minutes; they see it with `/almighty inbox`. An approved request runs once with that admin's rights.
+`almighty.approve`). Admins online are asked directly in chat, with the server's facts and the exact call: at
+most 3 questions per admin and one per player or agent every 10 minutes, and a repeat of a waiting request is never
+asked again. The rest wait in `/almighty inbox`, announced by one quiet line at most every 10 minutes. An approved request runs once with that admin's rights.
 Empty `ask_admin` (the default) means such requests are simply refused.
 
 ## Zones

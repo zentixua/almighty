@@ -67,9 +67,10 @@ level. Scripts and rules with scripts need the owner.
   can be undone even after a crash. An undo puts back only positions that still hold what the change put there;
   anything changed since stays. Edits that change only a block entity's contents (a chest's items without replacing
   the chest), entities and inventories are not recorded. A build or undo that breaks an attached block (a door half,
-  a torch) drops no item.
-- **Receipts.** After a request with an effect, the player who asked gets a line in chat with `[Undo]`; clicking it
-  undoes the change.
+  a torch, a lantern hanging from a removed ceiling) drops no item; rails and redstone wire that pop off still do.
+- **Receipts.** After a request with an effect, the player who asked gets a line in chat, such as
+  `[Almighty] Done for you: “snow over your base” [Undo]` (what ran is on hover). Clicking `[Undo]` answers
+  "Undoing change 2. Blocks changed since then stay as they are."; a second click says the change is already undone.
 - **Audit log.** Every call with an effect and every refusal is a line in `logs/almighty/audit-<date>.jsonl` (kept
   30 days, `audit.days`); `/almighty log [agent | player] [count]` shows the latest, of one
   agent or made for one player, at the server's local time (`timezone` in `policy.toml`).

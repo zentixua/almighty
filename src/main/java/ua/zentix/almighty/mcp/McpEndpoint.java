@@ -62,10 +62,6 @@ public final class McpEndpoint implements HttpHandler {
     private final String version;
     private final Function<HttpExchange, String> challenge;
 
-    /**
-     * @param challenge what to add to a 401 (the {@code WWW-Authenticate} header pointing to the login, set by the
-     *                  sign-in step); may return null
-     */
     /** The agent's own defaults from policy.toml ({@code [agents.<name>] profile, images}); the URL overrides them. */
     public interface Defaults {
         String profile(String agent);
@@ -79,6 +75,10 @@ public final class McpEndpoint implements HttpHandler {
         this.defaults = d;
     }
 
+    /**
+     * @param challenge what to add to a 401 (the {@code WWW-Authenticate} header pointing to the login, set by the
+     *                  sign-in step); may return null
+     */
     public McpEndpoint(Bridge bridge, Set<String> longMethods, String version, Function<HttpExchange, String> challenge) {
         this.bridge = bridge;
         this.longMethods = Set.copyOf(longMethods);

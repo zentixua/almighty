@@ -111,7 +111,6 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
         }
     }
 
-    /** One agent: its ceiling (the most it may ever do) and, if set, an explicit floor (what it may do unasked). */
     /**
      * {@code [agents.<name>]}: {@code ceiling}, {@code floor}, and the MCP defaults for that agent's connections
      * ({@code profile} full or compact, {@code images}); null: unset (the URL's {@code ?profile=}, {@code ?images=} or
@@ -237,13 +236,14 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                     errors.add("agents." + name + ".floor: above its ceiling " + ceiling.id());
                 }
                 String profile = null;
-                if (t.get("profile") != null) {
-                    profile = String.valueOf((Object) t.get("profile")).strip().toLowerCase(Locale.ROOT);
-                    if (!profile.equals("full") && !profile.equals("compact")) errors.add("agents." + name + ".profile: full or compact, not " + (Object) t.get("profile"));
+                Object givenProfile = t.get("profile"), givenImages = t.get("images");
+                if (givenProfile != null) {
+                    profile = String.valueOf(givenProfile).strip().toLowerCase(Locale.ROOT);
+                    if (!profile.equals("full") && !profile.equals("compact")) errors.add("agents." + name + ".profile: full or compact, not " + givenProfile);
                 }
                 Boolean images = null;
-                if (t.get("images") != null) {
-                    if ((Object) t.get("images") instanceof Boolean b) images = b;
+                if (givenImages != null) {
+                    if (givenImages instanceof Boolean b) images = b;
                     else errors.add("agents." + name + ".images: true or false");
                 }
                 agents.put(name, new AgentRules(ceiling, floor, profile, images));

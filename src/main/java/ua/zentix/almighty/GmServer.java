@@ -603,14 +603,14 @@ public final class GmServer {
         return gate;
     }
 
+    /** Changes whose revert is running: a second revert of one is refused until the first ends. */
+    private final java.util.Set<Long> reverting = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     /**
      * Revert journal change {@code id} (conflict-aware): one job per dimension it touched. {@code caller} null is the
      * owner (console); otherwise another agent's or requester's change needs {@code undo.any}, and reverting a revert
      * (a redo) needs the owner. Called on the bridge thread (reads the change file), jobs submitted on the server thread.
      */
-    /** Changes whose revert is running: a second revert of one is refused until the first ends. */
-    private final java.util.Set<Long> reverting = java.util.concurrent.ConcurrentHashMap.newKeySet();
-
     public CompletableFuture<JsonElement> revert(long id, ua.zentix.almighty.bridge.Caller caller, JsonObject params, int waitSeconds)
             throws RpcException {
         JsonObject meta = journal.describe(id);

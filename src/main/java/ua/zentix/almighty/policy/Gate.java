@@ -154,8 +154,7 @@ public final class Gate implements Dispatch.Check {
                 if (confirmer == null) throw RpcException.conflict(partner + " is offline: a teleport with them waits for their yes");
             }
             Confirmations.Pending p = confirmations.ask(Confirmations.Kind.REQUESTER, caller, method, params,
-                    confirmer, node, r.ticket.player(), r.ticket.name(),
-                    partner == null ? null : r.ticket.name() + " asks: " + Confirmations.render(method, params));
+                    confirmer, node, r.ticket.player(), r.ticket.name());
             prompter.prompt(p);
             throw Confirmations.waiting(p, r.ticket.name());
         }

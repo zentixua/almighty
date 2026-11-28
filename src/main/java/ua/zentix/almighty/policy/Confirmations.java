@@ -72,8 +72,12 @@ public final class Confirmations {
         public final Caller caller;
         public final String method;
         public final JsonObject params;
-        /** The exact call as shown to the person who decides. */
+        /** The exact call as shown to the person who decides (on hover, {@code /almighty show}, Bedrock inline). */
         public final String text;
+        /** The agent's own words for it ({@link Summary}, cleaned), or null: always shown beside {@link #facts}. */
+        public final String summary;
+        /** What runs, in plain words, made by the server from the call itself ({@link Facts}). */
+        public final List<Facts.Fact> facts;
         /** Requester kind: the only player who may decide. */
         public final UUID confirmer;
         /** Admin kind: the right the deciding admin must hold. */
@@ -101,12 +105,15 @@ public final class Confirmations {
             this.method = method;
             this.params = params.deepCopy();
             this.text = text;
+            this.summary = Summary.of(params);
+            this.facts = Facts.of(method, params, requester != null ? requesterName : null);
             this.confirmer = confirmer;
             this.node = node;
             this.requester = requester;
             this.requesterName = requesterName;
             this.shown = params.deepCopy();
             this.shown.remove("for");
+            this.shown.remove(Summary.PARAM);
             this.expires = expires;
         }
 
@@ -129,6 +136,9 @@ public final class Confirmations {
             o.addProperty("kind", kind.name().toLowerCase(Locale.ROOT));
             o.addProperty("state", state.name().toLowerCase(Locale.ROOT));
             o.addProperty("call", text);
+            // What the person deciding reads (the summary as cleaned, or none when it was dropped).
+            o.addProperty("shown", Facts.english(facts));
+            if (summary != null) o.addProperty("summary", summary);
             o.addProperty("requester", requesterName);
             if (count > 1) o.addProperty("count", count);
             if (decidedBy != null) o.addProperty("by", decidedBy);
@@ -300,6 +310,7 @@ public final class Confirmations {
         } else {
             JsonObject shown = p.deepCopy();
             shown.remove("for");
+            shown.remove(Summary.PARAM);
             text = method + " " + Dispatch.clipped(shown, MAX_SHOWN + 1);
         }
         // Shown verbatim, never styled by the text itself.
@@ -327,6 +338,7 @@ public final class Confirmations {
         if (text.length() > MAX_SHOWN) throw RpcException.badRequest("This call is too long to show a person for confirmation; split it");
         JsonObject shown = params.deepCopy();
         shown.remove("for");
+        shown.remove(Summary.PARAM);
         if (kind == Kind.REQUESTER) {
             int mine = 0, agent = 0;
             for (Pending p : byId.values()) {

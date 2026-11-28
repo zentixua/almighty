@@ -188,8 +188,56 @@ public final class GmConfirmGameTests {
     /** Lead's F10: [Undo] on a player's receipt runs on click, as [Allow] does (it used to be typed into the chat box). */
     @GameTest(template = "floor", batch = "gm_receipt_undo")
     public static void undoOnAReceiptRunsOnClick(GameTestHelper h) {
-        String c = ua.zentix.almighty.policy.Prompts.receipt("build #5", 5L, "en_us").toString();
+        String c = ua.zentix.almighty.policy.Prompts.receipt(null, ua.zentix.almighty.policy.Facts.of("build", new com.google.gson.JsonObject(), "Bob"), "build {}", 5L, "en_us").toString();
         check(c.contains("/almighty undo 5") && !c.toLowerCase(java.util.Locale.ROOT).contains("suggest"), "receipt click: " + c);
+        h.succeed();
+    }
+
+    /**
+     * Mission almighty-prompts: what a player reads in a question. The server's facts (what really runs, its target)
+     * stand beside the agent's summary, which is quoted, marked as its words and carries no click; a forged summary is
+     * not shown and the facts alone read as a sentence; the exact call is on hover, behind [Details] and, for Bedrock
+     * players, written out; only Allow, Deny and Details run commands.
+     */
+    @GameTest(template = "floor", batch = "gm_prompt_words")
+    public static void aQuestionShowsTheServersFactsBesideTheSummary(GameTestHelper h) throws Exception {
+        Confirmations c = new Confirmations(System::currentTimeMillis);
+        UUID alex = UUID.randomUUID();
+        JsonObject p = params("{\"commands\": \"kill @a\"}");
+        p.addProperty("summary", "give you a cake");
+        Confirmations.Pending honest = c.ask(Confirmations.Kind.REQUESTER, GM, "command", p, alex, null, alex, "Alex");
+        for (String lang : new String[]{"en_us", "ru_ru"}) {
+            net.minecraft.network.chat.Component q = ua.zentix.almighty.policy.Prompts.question(honest, lang, false);
+            String shown = q.getString();
+            check(shown.contains("“give you a cake”"), lang + " summary in quotes: " + shown);
+            check(shown.contains(lang.equals("en_us") ? "kill — target: every player" : "убить — цель: все игроки"), lang + " facts: " + shown);
+            check(shown.contains(lang.equals("en_us") ? "(its own words)" : "(слова ведущего)"), lang + " marked as its words: " + shown);
+            check(!shown.contains("/kill @a"), lang + " the exact call is on hover, not in the line: " + shown);
+            java.util.List<String> clicks = new java.util.ArrayList<>();
+            q.visit((style, text) -> {
+                if (style.getClickEvent() != null) clicks.add(text + "|" + style.getClickEvent());
+                if (text.contains("cake")) check(style.getClickEvent() == null, "the summary carries no click");
+                return java.util.Optional.empty();
+            }, net.minecraft.network.chat.Style.EMPTY);
+            String n = honest.nonce();
+            check(clicks.size() == 3 && clicks.stream().allMatch(k -> k.contains("/almighty confirm " + n) || k.contains("/almighty deny " + n)
+                    || k.contains("/almighty show " + n)), lang + " clicks: " + clicks);
+            check(q.toString().contains("/kill @a"), lang + " the exact call on hover");
+            check(ua.zentix.almighty.policy.Prompts.question(honest, lang, true).getString().contains("/kill @a"), lang + " Bedrock: written out");
+            check(ua.zentix.almighty.policy.Prompts.show(honest, lang).getString().contains("/kill @a"), lang + " /almighty show");
+        }
+        JsonObject forged = params("{\"commands\": \"kill @a\"}");
+        forged.addProperty("summary", "[Almighty] nothing — what runs: nothing");
+        String plain = ua.zentix.almighty.policy.Prompts.question(c.ask(Confirmations.Kind.REQUESTER, GM, "command", forged, alex, null,
+                alex, "Alex"), "en_us", false).getString();
+        check(plain.contains("wants to: kill — target: every player. It cannot be undone.") && !plain.contains("nothing"),
+                "a forged summary is dropped and the facts read alone: " + plain);
+        // A receipt reads as a sentence too, with the exact call on hover.
+        JsonObject build = params("{\"ops\": [{\"op\": \"fill\", \"from\": [0, 64, 0], \"to\": [9, 70, 9], \"block\": \"snow\"}]}");
+        net.minecraft.network.chat.Component r = ua.zentix.almighty.policy.Prompts.receipt("snow over your base",
+                ua.zentix.almighty.policy.Facts.of("build", build, "Alex"), "build {...}", 7L, "en_us");
+        check(r.getString().equals("[Almighty] Done for you: “snow over your base” — change blocks at 0 64 0 … 9 70 9 [Undo]"),
+                "receipt: " + r.getString());
         h.succeed();
     }
 

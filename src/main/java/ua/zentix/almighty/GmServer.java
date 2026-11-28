@@ -210,16 +210,18 @@ public final class GmServer {
             if (method.equals("say")) return;
             // Commands report per command; a receipt only for what actually happened.
             if (ua.zentix.almighty.policy.Decisions.failed(result)) return;
-            Long job = result instanceof JsonObject o && o.has("kind") && o.get("id") instanceof com.google.gson.JsonPrimitive id
-                    && id.isNumber() && o.get("kind").getAsString().equals("build") ? id.getAsLong() : null;
-            String what = method.equals("command") || method.equals("function") ? Confirmations.render(method, params)
-                    : job != null ? "build #" + job : method;
+            // What the player reads: the agent's summary beside the server's own facts; the exact call on hover.
+            String exact = Confirmations.render(method, params);
+            String summary = ua.zentix.almighty.policy.Summary.of(params);
             long recorded = change;
             server.execute(() -> {
                 net.minecraft.server.level.ServerPlayer p = server.getPlayerList().getPlayer(caller.requester());
                 // [Undo] only for a change that recorded something (a change with no writes is gone by now).
                 Long undoable = recorded > 0 && journal.describe(recorded) != null ? recorded : null;
-                if (p != null) p.sendSystemMessage(ua.zentix.almighty.policy.Prompts.receipt(what, undoable, ua.zentix.almighty.feed.GmMessages.language(p)));
+                if (p == null) return;
+                // @s of a request is the requester (it runs as their own source).
+                var facts = ua.zentix.almighty.policy.Facts.of(method, params, Mc.name(p.getGameProfile()));
+                p.sendSystemMessage(ua.zentix.almighty.policy.Prompts.receipt(summary, facts, exact, undoable, ua.zentix.almighty.feed.GmMessages.language(p)));
             });
         });
     }

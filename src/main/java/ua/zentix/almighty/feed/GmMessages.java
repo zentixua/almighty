@@ -27,6 +27,12 @@ public final class GmMessages {
         return Component.translatableWithFallback(key, fallback, args);
     }
 
+    /** The server's own text for a key (English or Russian by {@code language}), without arguments filled in. */
+    public static String raw(String key, String language) {
+        JsonObject table = language.toLowerCase(Locale.ROOT).startsWith("ru_") ? RUSSIAN : ENGLISH;
+        return table.has(key) ? table.get(key).getAsString() : ENGLISH.get(key).getAsString();
+    }
+
     /** A player's client language ({@code en_us} when unknown). */
     public static String language(net.minecraft.server.level.ServerPlayer player) {
         return player == null ? "en_us" : player.clientInformation().language();

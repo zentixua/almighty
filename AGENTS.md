@@ -219,9 +219,15 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   requester and one other player (`tp Bob`, `tp @s Bob`, `tp Bob Me`) waits for that other player instead
   (`Confirmations.teleportPartner`, scenario P10; offline → 409). Function macros are expanded before the
   check and in the prompt. Also any kind in `[safety] confirm_first`. → 202 `pending` with an id; the server asks
-  that player (the exact call, `[Allow]`/`[Deny]` and the typed `/almighty confirm <nonce>`; on 26.x also a vanilla
-  confirmation dialog with the same buttons, `Mc.confirmDialog`, except for Bedrock players; never clipped: a call
-  too long to show is refused); only that player may answer; at most 3 waiting per player and 20 per agent;
+  that player in a sentence (`policy/Prompts`): the agent's optional `summary` (any call; `policy/Summary`: one
+  line of at most 80 characters, no formatting, brackets or quotes, dropped when it spells the mod's name or its own
+  labels in either language) in quotes, marked as the agent's words, then always the server's own facts
+  (`policy/Facts`: the action in plain words and its target, from the parsed call; under `execute` the chain is shown,
+  not resolved), `[Allow]`/`[Deny]`/`[Details]` and the typed `/almighty confirm|deny|show <nonce>`; the exact call on
+  hover, behind `show` and written out for Bedrock players; on 26.x also a vanilla confirmation dialog with the same
+  buttons and the exact call, `Mc.confirmDialog`, except for Bedrock players; never clipped: a call too long to show
+  is refused). Receipts and outcomes name the call the same way (`FactsTest`, `SummaryTest`,
+  `GmConfirmGameTests.aQuestionShowsTheServersFactsBesideTheSummary`); only that player may answer; at most 3 waiting per player and 20 per agent;
   2 minutes. A request above the player's rights (or the agent's own call above its floor, for methods; limited per agent
   the same way) whose kind is in `[safety] ask_admin` → 202 for an admin; the owners online are told every admin decision (for
   commands: when the player's own source cannot parse it; the decider needs `almighty.approve` and the call's own node): merged with an

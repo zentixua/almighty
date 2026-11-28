@@ -47,6 +47,9 @@ public final class AlmightyCommand {
         root.then(Commands.literal("deny").then(Commands.argument("nonce", StringArgumentType.word())
                 .executes(c -> decide(c.getSource(), StringArgumentType.getString(c, "nonce"), false))));
         root.then(Commands.literal("inbox").executes(c -> inbox(c.getSource())));
+        // The exact call of a waiting question, written out (Bedrock players see no hover; the console).
+        root.then(Commands.literal("show").then(Commands.argument("nonce", StringArgumentType.word())
+                .executes(c -> show(c.getSource(), StringArgumentType.getString(c, "nonce")))));
         // Roles on the ladder (no permission plugin): admins and the console, only below their own role.
         root.then(Commands.literal("role").then(Commands.argument("player", StringArgumentType.word())
                 .then(Commands.argument("role", StringArgumentType.word())
@@ -276,16 +279,40 @@ public final class AlmightyCommand {
         return decided ? 1 : 0;
     }
 
+    /**
+     * The exact call of a question, for whoever was shown it: the player it asks (requester kind), an admin who may
+     * decide it, or the console. The nonce is only ever shown to them; an unknown or foreign one says nothing more.
+     */
+    private static int show(CommandSourceStack source, String nonce) {
+        GmServer gm = GmServer.of(source.getServer());
+        if (gm == null) return 0;
+        var p = gm.decisions().confirmations().byNonce(nonce);
+        net.minecraft.server.level.ServerPlayer by = Mc.typedBy(source);
+        java.util.UUID id = by == null ? null : by.getUUID();
+        boolean may = p != null && (id == null ? source.getEntity() == null && Mc.has(source, 4)
+                : p.kind == ua.zentix.almighty.policy.Confirmations.Kind.REQUESTER ? id.equals(p.confirmer)
+                : ua.zentix.almighty.policy.Identity.verified(id) && ua.zentix.almighty.policy.Nodes.holds(id, p.node)
+                && (p.node == ua.zentix.almighty.policy.Node.ENGINE || ua.zentix.almighty.policy.Nodes.holds(id, ua.zentix.almighty.policy.Node.APPROVE)));
+        if (!may) {
+            source.sendFailure(ua.zentix.almighty.policy.Prompts.line("No such request (it may have expired)"));
+            return 0;
+        }
+        Component line = ua.zentix.almighty.policy.Prompts.show(p, ua.zentix.almighty.feed.GmMessages.language(by));
+        source.sendSuccess(() -> line, false);
+        return 1;
+    }
+
     /** Admin requests the viewer may decide (the console sees all). */
     private static int inbox(CommandSourceStack source) {
         GmServer gm = GmServer.of(source.getServer());
         if (gm == null) return 0;
         java.util.UUID id = source.getEntity() instanceof net.minecraft.server.level.ServerPlayer p ? p.getUUID() : null;
+        String lang = ua.zentix.almighty.feed.GmMessages.language(source.getEntity() instanceof net.minecraft.server.level.ServerPlayer q ? q : null);
         int n = 0;
         for (var p : gm.decisions().confirmations().waitingForAdmins()) {
             if (id == null ? !Mc.has(source, 4) : !(ua.zentix.almighty.policy.Identity.verified(id) && ua.zentix.almighty.policy.Nodes.holds(id, p.node)
                     && (p.node == ua.zentix.almighty.policy.Node.ENGINE || ua.zentix.almighty.policy.Nodes.holds(id, ua.zentix.almighty.policy.Node.APPROVE)))) continue;
-            Component line = ua.zentix.almighty.policy.Prompts.inboxLine(p);
+            Component line = ua.zentix.almighty.policy.Prompts.inboxLine(p, lang);
             source.sendSuccess(() -> line, false);
             n++;
         }

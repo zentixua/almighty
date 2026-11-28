@@ -8,7 +8,9 @@ description: "Groovy scripts and event rules in Almighty - what the script varia
 # Scripts and rules
 
 `script {code, args?, timeout_ms?}` runs Groovy on the server thread; everything in the game and in any mod is
-reachable. `rule {action: "add", event, script?}` reacts to any game event in the same tick, without you.
+reachable (owner only). `script {name, args?}` runs a script the owner approved (`config/almighty/scripts/<name>.groovy`,
+builder and up). `rule {action: "add", event, when?, then? | script?}` reacts to any game event in the same tick,
+without you.
 
 ## Variables
 `server` (MinecraftServer); `gm`: `gm.command('...')`, `gm.commandAs(entity, '...')`, `gm.emit(data)` (an `emit`
@@ -24,12 +26,21 @@ Component, BuiltInRegistries...). The returned value comes back as JSON; `printl
 - Never load chunks from a script (`level.getChunk`, own tickets): use `getChunkNow` and `area prepare` for a
   distant place.
 - Never sleep or wait on the server thread; never exit the JVM or start processes.
-- `timeout_ms` (up to 10000; 50 below owner, and a rule below owner has budget_ms at most 2.5) interrupts loops; what was done stays. There is no undo for script changes: large block
-  changes belong in `build`.
+- `timeout_ms` (up to 10000; 50 below owner, and a rule below owner has budget_ms at most 2.5) interrupts loops; what was done stays. Its block writes are recorded in
+  the change journal (`build {undo_change}` reverts them), but entities and inventories are not: large block changes
+  belong in `build`.
 
 ## Rules
-- `event`: a NeoForge event class by short name (`BlockEvent.BreakEvent`, `LivingDamageEvent.Pre`,
-  `CommandEvent`) or `tick`. Find events with `rule {action: "types", query}` or `notes {kind: "events", query}`.
+- `event`: on NeoForge an event class by short name (`BlockEvent.BreakEvent`, `LivingDamageEvent.Pre`,
+  `CommandEvent`); on Fabric a callback field (`PlayerBlockBreakEvents.BEFORE`, `ServerLivingEntityEvents.ALLOW_DAMAGE`;
+  only callbacks whose neutral answer leaves the game as it is); or `tick`. Find events with
+  `rule {action: "types", query}` or `notes {kind: "events", query}`.
+- Declarative rules (no Groovy, builder and up): `when` - conditions on the event's fields as a rule without a script
+  reports them, `{"path": value}` or `{"path": {"ne"|"lt"|"gt"|"in"|"contains"|"exists": x}}`, dotted paths
+  (`entity.name`, `pos.1`); `then` - a list of `"cancel"`, `"emit"`, `{"say": "text {path}", "to"?, "style"?}`,
+  `{"command": "..."}`. `{path}` fills say text with any value, but `to` and commands only with plain names, ids and
+  numbers. The rule acts with its creator's rights (the requester of the call, or you unasked), re-checked at every
+  fire; below owner it cancels only where its creator may build and expires after `ttl_hours` (at most 7 days).
 - Without a script, the event's properties go to the feed. `event.canceled = true` cancels a cancellable event; use
   `priority: "highest"` to forbid something.
 - `every` (ticks), `limit` (runs, then removed), `name` (replaces the rule with that name), `persist` (survives

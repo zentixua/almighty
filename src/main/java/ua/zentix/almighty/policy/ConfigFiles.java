@@ -30,6 +30,8 @@ import java.util.regex.Pattern;
 public final class ConfigFiles {
     static final int HISTORY = 50;
     private static final Pattern SCRIPT = Pattern.compile("scripts/[a-z0-9_-]{1,40}\\.groovy");
+    /** The owner's server-wide notes ({@code server:<name>} in {@code notes}), plan 4.10. */
+    private static final Pattern NOTE = Pattern.compile("notes/[a-z0-9_-]{1,40}(/[a-z0-9_-]{1,40})?\\.md");
 
     private final Path dir;
     private final Policies policies;
@@ -90,8 +92,8 @@ public final class ConfigFiles {
     }
 
     private Path resolve(String path) throws RpcException {
-        if (path.equals("policy.toml") || SCRIPT.matcher(path).matches()) return dir.resolve(path);
-        throw RpcException.badRequest("path: policy.toml or scripts/<name>.groovy (lowercase letters, digits, - and _)");
+        if (path.equals("policy.toml") || SCRIPT.matcher(path).matches() || NOTE.matcher(path).matches()) return dir.resolve(path);
+        throw RpcException.badRequest("path: policy.toml, scripts/<name>.groovy or notes/<name>.md (lowercase letters, digits, - and _)");
     }
 
     /** {@code file {action: list | read | write | undo, path?, text?}}. Bridge thread (small files). */
@@ -120,6 +122,12 @@ public final class ConfigFiles {
                 s.forEach(paths::add);
             }
         }
+        Path notes = dir.resolve("notes");
+        if (Files.isDirectory(notes)) {
+            try (java.util.stream.Stream<Path> w = Files.walk(notes, 2)) {
+                w.filter(x -> NOTE.matcher(dir.relativize(x).toString().replace('\\', '/')).matches()).sorted().forEach(paths::add);
+            }
+        }
         for (Path p : paths) {
             if (!Files.isRegularFile(p)) continue;
             JsonObject f = new JsonObject();
@@ -136,7 +144,8 @@ public final class ConfigFiles {
     private JsonObject read(Args a, String path) throws IOException, RpcException {
         Path p = resolve(path);
         // Scripts are the owner's code (they may hold anything the owner wrote): only the owner reads them here.
-        if (!path.equals("policy.toml") && !owner(a)) throw new RpcException(403, "policy", "Scripts are read only when the owner asks");
+        // Notes are served to every agent by notes anyway.
+        if (SCRIPT.matcher(path).matches() && !owner(a)) throw new RpcException(403, "policy", "Scripts are read only when the owner asks");
         if (!Files.isRegularFile(p)) throw RpcException.notFound("No " + path);
         JsonObject out = new JsonObject();
         out.addProperty("path", path);
@@ -198,6 +207,20 @@ public final class ConfigFiles {
         boolean owner = owner(a);
         if (!owner && a.caller().requester() != null && !approved()) {
             throw new RpcException(403, "policy", "Players cannot change Almighty's files (only the owner, or restricting changes by the agent)");
+        }
+        if (NOTE.matcher(path).matches()) {
+            // The owner's server notes are served as the owner's (plan 5.4): written only when the owner asks. The
+            // agent's own notes go to world notes (notes {id: "world:<name>", text}), with provenance.
+            if (!owner) throw new RpcException(403, "policy", "Server notes are written only when the owner asks; write a world note instead (notes {id: \"world:<name>\", text})");
+            if (text.isEmpty()) {
+                Files.deleteIfExists(p);
+                return done(path, what, "removed");
+            }
+            Files.createDirectories(p.getParent());
+            Path tmp = p.resolveSibling(p.getFileName() + ".tmp");
+            Files.writeString(tmp, text, StandardCharsets.UTF_8);
+            Files.move(tmp, p, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            return done(path, what, "written; served as server:" + path.substring("notes/".length(), path.length() - 3));
         }
         if (!path.equals("policy.toml")) {
             // Scripts run code in the server JVM: only the owner writes them (and approves them to run, step 11).
@@ -389,7 +412,8 @@ public final class ConfigFiles {
         out.addProperty("path", path);
         out.addProperty("done", what);
         out.addProperty("how", how);
-        out.addProperty("undo", "file {action: \"undo\"} or /almighty policy undo");
+        if (path.equals("policy.toml")) out.addProperty("undo", "file {action: \"undo\"} or /almighty policy undo");
+        else out.addProperty("undo", "write the previous text back (read it first)");
         return out;
     }
 }

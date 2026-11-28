@@ -224,6 +224,28 @@ public final class Confirmations {
         return false;
     }
 
+    /**
+     * Scenario P10: a call that is one teleport between the requester and one other player ({@code tp Bob},
+     * {@code tp @s Bob}, {@code tp Me Bob}, {@code tp Bob Me}): that other player's name, who confirms it (being
+     * visited or moved is theirs to allow); null for anything else (the requester confirms as before).
+     */
+    public static String teleportPartner(String method, JsonObject p, String requesterName) {
+        if (!method.equals("command") && !method.equals("function")) return null;
+        List<String> commands = commands(method, p);
+        if (commands.size() != 1) return null;
+        List<String> segs = segments(commands.get(0));
+        if (segs.size() != 1) return null;
+        String[] t = segs.get(0).strip().split("\\s+");
+        String root = root(segs.get(0));
+        if (!root.equals("tp") && !root.equals("teleport")) return null;
+        java.util.function.Predicate<String> self = w -> w.equals("@s") || w.equalsIgnoreCase(requesterName);
+        java.util.function.Predicate<String> name = w -> w.matches("[.*]?[A-Za-z0-9_]{1,16}") && !self.test(w) && looksLikePlayer(w);
+        if (t.length == 2 && name.test(t[1])) return t[1];
+        if (t.length == 3 && self.test(t[1]) && name.test(t[2])) return t[2];
+        if (t.length == 3 && name.test(t[1]) && self.test(t[2])) return t[1];
+        return null;
+    }
+
     /** Every target in the command is the requester: no selector but {@code @s}, no other name or UUID, no {@code execute on}. */
     private static boolean onlySelf(String c, String requesterName, UUID requester) {
         String text = c.strip().replaceFirst("^[/$]+", "");
@@ -386,7 +408,7 @@ public final class Confirmations {
             return "expired";
         }
         // A requester question is that player's alone (it runs as them); the console may answer admin requests.
-        if (p.kind == Kind.REQUESTER && (byUuid == null || !byUuid.equals(p.confirmer))) return "only " + p.requesterName + " can answer this";
+        if (p.kind == Kind.REQUESTER && (byUuid == null || !byUuid.equals(p.confirmer))) return p.confirmer != null && !p.confirmer.equals(p.requester) ? "only the player it concerns can answer this" : "only " + p.requesterName + " can answer this";
         if (byUuid != null) {
             if (p.kind == Kind.ADMIN && !(Identity.verified(byUuid) && holds.test(p.node))) return "you do not hold " + p.node.key();
         }

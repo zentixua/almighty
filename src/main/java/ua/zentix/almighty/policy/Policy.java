@@ -186,6 +186,18 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
         List<String> errors = new ArrayList<>();
         Set<String> known = Set.of("preset", "owners", "identity", "timezone", "agents", "safety", "zones", "quotas", "version");
         for (Config.Entry entry : c.entrySet()) if (!known.contains(entry.getKey())) errors.add("unknown key " + entry.getKey());
+        // Schema version (plan F7): absent = 1. A file from a newer Almighty is refused with the reason, so the last
+        // good policy stays instead of a newer file being half understood. Older schemas would be migrated here,
+        // before reading; schema 1 is the first, so there is nothing to migrate yet.
+        Object version = c.get("version");
+        if (version != null) {
+            if (!(version instanceof Number n) || n.doubleValue() != Math.floor(n.doubleValue()) || n.intValue() < 1) {
+                errors.add("version: a whole number from 1, not " + version);
+            } else if (n.intValue() > VERSION) {
+                throw new Invalid("version " + n.intValue() + " was written by a newer Almighty (this one reads version " + VERSION
+                        + "): update Almighty, or set version = " + VERSION + " and check the file");
+            }
+        }
 
         Preset preset = Preset.PRIVATE;
         Object p = c.get("preset");
@@ -372,6 +384,9 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
     }
 
     /** The file written on first start, with comments; {@code preset} chosen by {@link Policies}. */
+    /** The policy schema this Almighty writes and reads; {@code version} in the file, absent = 1. */
+    public static final int VERSION = 1;
+
     public static String template(Preset preset) {
         return """
                 # Almighty policy: who may make the game master do what. Edit by hand and run /almighty reload, or ask
@@ -382,6 +397,9 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 # friends: anyone's text may reach the agents; unasked, they act as a member would.
                 # public:  unasked, the agents act as a guest would; players' requests run with the player's rights.
                 preset = "%s"
+
+                # The file's format version (Almighty refuses a file from a newer version rather than misread it).
+                version = 1
 
                 # Owners by UUID (in game: /almighty whoami). Names are never trusted: anyone can take a name offline.
                 owners = []

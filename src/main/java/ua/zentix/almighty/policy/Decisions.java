@@ -71,7 +71,7 @@ public final class Decisions {
             for (UUID o : owners) if (!o.equals(id)) tell(o, line);
         }
         if (!allow) {
-            tell(p.requester, "Not allowed: " + p.text);
+            tell(p.requester, "almighty.outcome.not_allowed", p.text);
             return "Denied: " + p.text;
         }
         // The exact parameters that were shown. An admin's approval is carried by the running confirmation itself
@@ -81,7 +81,7 @@ public final class Decisions {
                 ? Confirmations.run(p, dispatch, params, true) : Confirmations.run(p, dispatch, params, false);
         run.whenComplete((v, e) -> server.execute(() -> {
             event(p);
-            tell(p.requester, (e == null ? "Done: " : "Failed: ") + p.text);
+            tell(p.requester, e == null ? "almighty.outcome.done" : "almighty.outcome.failed", p.text);
         }));
         return "Allowed: " + p.text;
     }
@@ -99,6 +99,13 @@ public final class Decisions {
         if (p != null) p.sendSystemMessage(Prompts.line(text));
     }
 
+    /** A translated outcome to the requester (English or Russian by their client). */
+    private void tell(UUID player, String key, String arg) {
+        if (player == null) return;
+        ServerPlayer p = server.getPlayerList().getPlayer(player);
+        if (p != null) p.sendSystemMessage(Prompts.line(key, ua.zentix.almighty.feed.GmMessages.language(p), arg));
+    }
+
     private void event(Confirmations.Pending p) {
         feed.add("confirmation", p.describe());
     }
@@ -108,7 +115,7 @@ public final class Decisions {
         if (tickCount % 20 != 0) return;
         for (Confirmations.Pending p : confirmations.expire(System.currentTimeMillis())) {
             event(p);
-            tell(p.requester, "Request expired: " + p.text);
+            tell(p.requester, "almighty.outcome.expired", p.text);
         }
         if (!news || tickCount - lastDigest < DIGEST_TICKS) return;
         List<Confirmations.Pending> waiting = confirmations.waitingForAdmins();

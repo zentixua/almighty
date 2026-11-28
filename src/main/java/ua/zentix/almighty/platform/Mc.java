@@ -481,21 +481,21 @@ public final class Mc {
      * their commands as the player. False where the game has no dialogs (1.21.1): the chat line stands alone.
      */
     public static boolean confirmDialog(net.minecraft.server.level.ServerPlayer player, Component title, Component body,
-                                        String allow, String deny) {
+                                        String allow, String deny, Component allowLabel, Component denyLabel, Component laterLabel) {
         //? if >=26.1 {
         /*var common = new net.minecraft.server.dialog.CommonDialogData(title, java.util.Optional.empty(), true, false,
                 net.minecraft.server.dialog.DialogAction.CLOSE,
                 java.util.List.of(new net.minecraft.server.dialog.body.PlainMessage(body, 300)), java.util.List.of());
         var yes = new net.minecraft.server.dialog.ActionButton(new net.minecraft.server.dialog.CommonButtonData(
-                Component.literal("Allow").withStyle(net.minecraft.ChatFormatting.GREEN), 150),
+                allowLabel.copy().withStyle(net.minecraft.ChatFormatting.GREEN), 150),
                 java.util.Optional.of(new net.minecraft.server.dialog.action.StaticAction(new ClickEvent.RunCommand(allow))));
         var no = new net.minecraft.server.dialog.ActionButton(new net.minecraft.server.dialog.CommonButtonData(
-                Component.literal("Deny").withStyle(net.minecraft.ChatFormatting.RED), 150),
+                denyLabel.copy().withStyle(net.minecraft.ChatFormatting.RED), 150),
                 java.util.Optional.of(new net.minecraft.server.dialog.action.StaticAction(new ClickEvent.RunCommand(deny))));
         // Allow, Deny and Later: closing (Escape, Later) leaves the request waiting; it is answered from chat or the
         // typed command until it expires. A confirmation dialog would turn Escape into Deny.
         var later = new net.minecraft.server.dialog.ActionButton(new net.minecraft.server.dialog.CommonButtonData(
-                Component.literal("Later"), 100), java.util.Optional.empty());
+                laterLabel, 100), java.util.Optional.empty());
         player.openDialog(net.minecraft.core.Holder.direct(new net.minecraft.server.dialog.MultiActionDialog(common,
                 java.util.List.of(yes, no), java.util.Optional.of(later), 2)));
         return true;

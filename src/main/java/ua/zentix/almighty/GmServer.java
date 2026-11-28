@@ -455,7 +455,7 @@ public final class GmServer {
                 // Only a chat line to the creator themself is a reply; anyone else, or a title, speaks to all.
                 boolean all = ua.zentix.almighty.rules.Declarative.speaksToAll(to, style, c);
                 if (!owner(c)) {
-                    if (text.contains(ua.zentix.almighty.act.Chat.RESERVED)) throw new RpcException(403, "policy", "Rule text may not carry " + ua.zentix.almighty.act.Chat.RESERVED);
+                    if (ua.zentix.almighty.policy.Forgery.prefix(text)) throw new RpcException(403, "policy", "Rule text may not carry " + ua.zentix.almighty.act.Chat.RESERVED);
                     ua.zentix.almighty.policy.Node node = all ? ua.zentix.almighty.policy.Node.SPEAK_ALL : ua.zentix.almighty.policy.Node.SPEAK_REPLY;
                     if (!gate.holds(c.agent(), c.player(), node)) throw new RpcException(403, "policy", c.describe() + " may not " + node.description());
                 }
@@ -486,6 +486,9 @@ public final class GmServer {
                     as = new ua.zentix.almighty.act.CommandRunner.As(role.commandLevel(), null);
                 }
                 if (role != ua.zentix.almighty.policy.Role.OWNER) {
+                    // The filled command, not only the template: plain-name fills could still complete a forged prefix.
+                    String forged = ua.zentix.almighty.policy.Forgery.refusal(command);
+                    if (forged != null) throw new RpcException(403, "policy", forged);
                     net.minecraft.commands.CommandSourceStack source = ua.zentix.almighty.act.CommandRunner.sourceFor(server, level, pos, as);
                     ua.zentix.almighty.policy.CommandZones.check(server.getCommands().getDispatcher(), source, command, (node, dim, lo, hi) -> {
                         String d = gate.zoneDenies(role, node, dim, lo, hi);

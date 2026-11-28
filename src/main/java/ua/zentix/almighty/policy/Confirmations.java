@@ -179,6 +179,7 @@ public final class Confirmations {
         List<String> raw = new ArrayList<>();
         if (e.isJsonPrimitive()) raw.add(e.getAsString());
         else if (e.isJsonArray()) for (JsonElement x : e.getAsJsonArray()) if (x.isJsonPrimitive()) raw.add(x.getAsString());
+        if (method.equals("function")) raw = DenyList.logicalLines(raw);
         for (String c : raw) {
             // A macro line ($…) runs with its arguments filled in and without its $.
             out.add(method.equals("function") && c.strip().startsWith("$") ? DenyList.expand(c.strip().substring(1), args) : c);

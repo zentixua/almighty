@@ -182,8 +182,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   (private: = ceiling; friends: member; public: guest; or `floor`); `for: <ticket>` → that player's rights, capped
   by the ceiling (a ticket only narrows). `say` needs `speak.all` unless it is a chat/actionbar reply to the ticket's
   player alone; `entities` needs `observe.players` unless it asks for a non-player type; `undo`/`cancel` of another
-  agent's job need `undo.any` (`Gate.require`). Below owner, `say` components lose `run_command`/`suggest_command`
-  clicks (JSON-level, translation arguments included) and may not contain `[Almighty]`. Parameters are read
+  agent's job need `undo.any` (`Gate.require`). Below owner, `say` components keep only `open_url`, `copy_to_clipboard`
+  and `change_page` clicks (JSON-level, translation arguments included; `show_dialog`, `custom` go too) and may not contain `[Almighty]`. Parameters are read
   null-safe (null = absent, as `Args`) and a malformed one is 400. The gate never reads server lists off the server
   thread: bot names (`Bots.isBotName`), ops and online players (`Nodes.refresh`, once a second) are snapshots.
   `Identity`: in `auto`/`mojang` nothing is verified when `online-mode=false` (use `proxy` behind Velocity).
@@ -211,7 +211,11 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   identical waiting one, 1 per player per 10 minutes, 20 per hour, one digest line at most every 10 minutes,
   `/almighty inbox`; it runs as the requester with the admin's rights for that one call (`Pending.decider`; no
   ticket is minted). Owners' requests apply at once. Below owner, commands may not carry
-  `run_command`/`suggest_command` or `[Almighty]` (forged prompts via tellraw, signs, books). `/gm` and
+  clicks that act as whoever clicks, dialogs, or `[Almighty]` (forged prompts via tellraw, signs, books), checked by
+  `policy/Forgery` on the command's folded letters after undoing every escape (`\u`, `\U`, `\x`, `\N{}`), so split parts,
+  selectors, translation keys and look-alike letters do not hide them; function continuation lines are joined and lines
+  trimmed as the game trims them
+  (`DenyList.logicalLines`, which the deny list reads too); an agent's function `args` must be a JSON object. `/gm` and
   `/almighty confirm|deny` accept only the player's own typing (`source.source == player`); `/gm` is on the deny
   list for GM commands (a GM bot's own `/gm` chat is allowed); `/almighty …` stays out of the feed. The agent
   polls `pending {id, wait?}`; every state change is a `confirmation` feed event. 5 policy refusals of one player's

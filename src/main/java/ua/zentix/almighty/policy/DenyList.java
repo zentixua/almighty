@@ -76,7 +76,7 @@ public final class DenyList {
             }
             case "function" -> {
                 JsonObject args = p.get("args") instanceof JsonObject o ? o : new JsonObject();
-                for (String line : strings(p.get("lines"))) {
+                for (String line : logicalLines(strings(p.get("lines")))) {
                     String why = command(expand(line, args));
                     if (why != null) return why;
                 }
@@ -153,8 +153,9 @@ public final class DenyList {
     }
 
     private static String strip(String s) {
-        s = s.strip();
-        while (s.startsWith("/") || s.startsWith("$")) s = s.substring(1).strip();
+        // As the game trims (control characters too: "\u0001stop" runs stop).
+        s = Forgery.trim(s);
+        while (s.startsWith("/") || s.startsWith("$")) s = Forgery.trim(s.substring(1));
         return s;
     }
 
@@ -189,6 +190,27 @@ public final class DenyList {
         }
         for (Map.Entry<String, JsonElement> x : e.getAsJsonObject().entrySet()) if (onPlot(x.getValue())) return true;
         return false;
+    }
+
+    /**
+     * Function lines as the game reads them: a line ending in a backslash continues on the next (leading spaces of
+     * both are dropped, as {@code CommandFunction.fromLines} trims), so {@code "sto\\"}, {@code "p"} is one command, {@code stop}. Every check reads these.
+     */
+    public static List<String> logicalLines(List<String> lines) {
+        List<String> out = new ArrayList<>();
+        StringBuilder pending = null;
+        for (String raw : lines) {
+            String line = Forgery.trim(raw);
+            if (pending != null) line = pending + line;
+            if (line.endsWith("\\")) {
+                pending = new StringBuilder(line.substring(0, line.length() - 1));
+                continue;
+            }
+            pending = null;
+            out.add(line);
+        }
+        if (pending != null) out.add(pending.toString());
+        return out;
     }
 
     private static List<String> strings(JsonElement e) {

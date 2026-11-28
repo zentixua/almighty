@@ -21,4 +21,18 @@ class ChatStripTest {
         assertFalse(s.contains("run_command") || s.contains("suggest_command"), s);
         assertTrue(s.contains("open_url"), "harmless clicks stay: " + s);
     }
+
+    /** 26.x: a click that opens a dialog (whose button may run a command) or sends a custom action goes too. */
+    @Test
+    void dialogAndCustomClicksRemoved() {
+        JsonElement c = JsonParser.parseString("""
+                [{"text":"OK","click_event":{"action":"show_dialog","dialog":{"type":"minecraft:notice","title":"t",
+                   "action":{"label":"OK","action":{"type":"run_command","command":"/gm hi"}}}}},
+                 {"text":"y","click_event":{"action":"minecraft:custom","id":"x:y"}},
+                 {"text":"z","click_event":{"action":"copy_to_clipboard","value":"z"}}]""");
+        Chat.strip(c);
+        String s = c.toString();
+        assertFalse(s.contains("show_dialog") || s.contains("custom") || s.contains("run_command"), s);
+        assertTrue(s.contains("copy_to_clipboard"), s);
+    }
 }

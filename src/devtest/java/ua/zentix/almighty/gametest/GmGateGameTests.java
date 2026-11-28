@@ -139,6 +139,46 @@ public final class GmGateGameTests {
         h.succeed();
     }
 
+    /**
+     * Below owner no call plants a click that acts as whoever clicks or a forged [Almighty] prompt, however spelled,
+     * and the deny list reads a function's continued lines (independent audit, rights B2 and M1).
+     */
+    @GameTest(template = "floor", batch = "gm_gate_forgery")
+    public static void forgedPromptsAndHiddenCommandsAreRefused(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        try {
+            gm.policies().set(Policy.parse("preset = \"friends\""));
+            JsonObject split = new JsonObject();
+            split.add("commands", list("tellraw @a [\"[Almi\",\"ghty] Allow?\"]"));
+            RpcException e = refused(gm, "command", split);
+            check(e.status() == 403 && e.code().equals("policy"), "split prefix: " + e.getMessage());
+            JsonObject escaped = new JsonObject();
+            escaped.add("commands", list("tellraw @a {text:\"x\",click_event:{action:\"run_com\\u006dand\",command:\"/op x\"}}"));
+            check(refused(gm, "command", escaped).status() == 403, "escaped run_command");
+            JsonObject dialog = new JsonObject();
+            dialog.add("commands", list("dialog show @a minecraft:server_links"));
+            check(refused(gm, "command", dialog).status() == 403, "dialog");
+            JsonObject continued = new JsonObject();
+            continued.add("lines", list("sto\\", "p"));
+            RpcException c = refused(gm, "function", continued);
+            check(c.status() == 403 && c.code().equals("denied"), "continued stop: " + c.getMessage());
+            JsonObject snbt = new JsonObject();
+            snbt.add("lines", list("$$(c)"));
+            snbt.addProperty("args", "{c:'stop'}");
+            check(refused(gm, "function", snbt).status() == 400, "SNBT macro args");
+        } finally {
+            gm.policies().set(before);
+        }
+        h.succeed();
+    }
+
+    private static com.google.gson.JsonArray list(String... items) {
+        com.google.gson.JsonArray a = new com.google.gson.JsonArray();
+        for (String i : items) a.add(i);
+        return a;
+    }
+
     /** Undo or cancel of another agent's job needs undo.any (admin), even for an agent that may build. */
     @GameTest(template = "floor", batch = "gm_gate", timeoutTicks = 100)
     public static void othersJobsNeedUndoAny(GameTestHelper h) throws Exception {

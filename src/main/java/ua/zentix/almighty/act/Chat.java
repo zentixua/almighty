@@ -92,7 +92,7 @@ public final class Chat {
         } else {
             c = Component.literal(args.string("text"));
         }
-        if (!owner && c.getString().contains(RESERVED)) {
+        if (!owner && ua.zentix.almighty.policy.Forgery.prefix(c.getString())) {
             throw new RpcException(403, "policy", "Text may not contain " + RESERVED + " (reserved for the server's own messages)");
         }
         return c;
@@ -105,16 +105,20 @@ public final class Chat {
         return gm != null && gm.gate().rights(args.caller(), args.raw()).effective() == ua.zentix.almighty.policy.Role.OWNER;
     }
 
-    /** Remove {@code run_command}/{@code suggest_command} click events at any depth of a JSON text component. */
+    /** Click actions that never act as whoever clicks: everything else (run_command, suggest_command, show_dialog, custom) goes. */
+    static final java.util.Set<String> SAFE_CLICKS = java.util.Set.of("open_url", "copy_to_clipboard", "change_page");
+
+    /** Remove click events that act as whoever clicks, at any depth of a JSON text component (plan 4.8). */
     static void strip(JsonElement e) {
         if (e instanceof com.google.gson.JsonArray a) {
             for (JsonElement x : a) strip(x);
         } else if (e instanceof JsonObject o) {
             for (String key : new String[]{"clickEvent", "click_event"}) {
-                if (o.get(key) instanceof JsonObject click && click.get("action") != null && click.get("action").isJsonPrimitive()) {
-                    String action = click.get("action").getAsString();
-                    if (action.equals("run_command") || action.equals("suggest_command")) o.remove(key);
-                }
+                if (!o.has(key)) continue;
+                JsonElement action = o.get(key) instanceof JsonObject click ? click.get("action") : null;
+                String id = action != null && action.isJsonPrimitive() ? action.getAsString().toLowerCase(java.util.Locale.ROOT) : "";
+                if (id.startsWith("minecraft:")) id = id.substring("minecraft:".length());
+                if (!SAFE_CLICKS.contains(id)) o.remove(key);
             }
             for (var entry : o.entrySet()) strip(entry.getValue());
         }

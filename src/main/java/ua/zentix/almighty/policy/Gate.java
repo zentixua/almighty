@@ -187,10 +187,22 @@ public final class Gate implements Dispatch.Check {
         // (tellraw, title, signs, books, data): a forged "[Almighty] … [Allow]" would run as the admin who clicks it.
         if ((method.equals("command") || method.equals("function")) && r.effective() != Role.OWNER) {
             for (String c : Confirmations.commands(method, params)) {
-                String low = c.toLowerCase(java.util.Locale.ROOT);
-                if (low.contains("run_command") || low.contains("suggest_command") || c.contains(ua.zentix.almighty.act.Chat.RESERVED)) {
-                    throw new RpcException(403, "policy", "Below owner, commands may not carry run_command/suggest_command clicks or "
-                            + ua.zentix.almighty.act.Chat.RESERVED);
+                String why = Forgery.refusal(c);
+                if (why != null) throw new RpcException(403, "policy", why);
+            }
+        }
+        // A bot's chat and sign lines are text others read: the same rule below owner.
+        if (method.equals("bot.act") && r.effective() != Role.OWNER && params.get("actions") instanceof JsonArray actions) {
+            for (JsonElement a : actions) {
+                if (!(a instanceof JsonObject o)) continue;
+                java.util.List<String> texts = new java.util.ArrayList<>();
+                if (o.get("chat") instanceof com.google.gson.JsonPrimitive chat) texts.add(chat.getAsString());
+                for (String k : new String[] {"lines", "text"}) {
+                    if (o.has("sign") && o.get(k) instanceof JsonArray lines) for (JsonElement l : lines) if (l.isJsonPrimitive()) texts.add(l.getAsString());
+                }
+                for (String t : texts) {
+                    String why = Forgery.refusal(t);
+                    if (why != null) throw new RpcException(403, "policy", why);
                 }
             }
         }

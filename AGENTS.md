@@ -251,7 +251,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `lag_guard` in `status`. Idempotency: `/rpc` body `key` (≤ 128 characters): the same agent's repeat of a call
   with effects within 10 minutes returns the first result (joining it if still running); the same key for a
   different call → 409; read-only calls (`Api.readOnly`; `notes` with `text` writes) ignore keys (images are never kept); a failed call
-  forgets its key. Vanilla already caps `fill`/`clone` at 32 768 blocks: larger work uses `build`.
+  forgets its key. Vanilla caps one `fill`/`clone` at 32 768 blocks; one agent call may fill/clone/fillbiome at most 131 072
+  positions in all (`act/CommandVolume`, 400 "use build"): larger work uses `build`.
 - `act/`: commands and functions (`CommandRunner`), messages to players (`Chat`); `feed/`: event feed and a player's
   private channel to the GM: `/gm <text>` (any player) emits `gm` in the feed, invisible to others; reply with `say` and `to`.
   Who asked (step 3): player events carry `uuid`, `verified` (`policy/Identity`: v4 Mojang and Floodgate yes, v3
@@ -445,6 +446,11 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
   (Incoming's `StopDrain`); otherwise they would also wait on GM tickets. Limit: `work.max_chunks` (1500), including rings.
 - Read only through `getChunkNow` and `LevelChunk` itself: snapshots and `blocks` never load unloaded chunks
   (checkerboard, `?`); use `area.prepare` to load. Entities: `getEntities` by bounding box (loaded sections, list snapshot).
+- Undo, both kinds, is conflict-aware: a job's undo puts a position back only while it holds the block the job left
+  (any state of it), a journal revert only while it holds the exact state; neither empties a container someone
+  filled since (`jobUndoLeavesLaterWork`). The journal keeps a container's data from before it was emptied for the
+  write (`Journal.Change.cleared`: a build's own clear, `mixin/ClearableMixin` for 1.21.1's `/fill`, `/setblock`,
+  `/clone`; `changeUndoRestoresChestContents`).
 - Building places positions as `/fill` (`FillCommand`): first `getBlockEntity` (initializes a fresh chunk's pending
   block entity; otherwise its data would survive the new block, "DUMMY"), snapshot via `saveWithFullMetadata`,
   `Clearable.tryClear`, `BlockInput.place` with `UPDATE_CLIENTS`, then `blockUpdated` after the slice. Undo does not

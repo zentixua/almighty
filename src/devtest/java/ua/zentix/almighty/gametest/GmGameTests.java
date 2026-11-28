@@ -230,6 +230,85 @@ public final class GmGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * Undo never destroys what others did since (plan 4.9, critique S3): a job's undo leaves a block a player put
+     * there since, and a chest the build placed that someone filled since; the rest goes back.
+     */
+    @GameTest(template = "floor", batch = "gm_undo_conflicts", timeoutTicks = 400, skyAccess = true)
+    public static void jobUndoLeavesLaterWork(GameTestHelper h) {
+        BlockPos a = new BlockPos(2, 2, 2), b = new BlockPos(3, 2, 2), box = new BlockPos(4, 2, 2);
+        loadNow(h, 0, 0, 8, 8);
+        CompletableFuture<JsonElement> build = call(h, "build", params(
+                "{\"ops\":[{\"op\":\"set\",\"pos\":%s,\"block\":\"minecraft:stone\"},{\"op\":\"set\",\"pos\":%s,\"block\":\"minecraft:stone\"},"
+                        + "{\"op\":\"set\",\"pos\":%s,\"block\":\"minecraft:chest\"}],\"wait\":50}",
+                at(h, 2, 2, 2), at(h, 3, 2, 2), at(h, 4, 2, 2)));
+        AtomicReference<CompletableFuture<JsonElement>> undo = new AtomicReference<>();
+        h.startSequence()
+                .thenWaitUntil(() -> ready(build))
+                .thenExecute(() -> {
+                    JsonObject r = result(build);
+                    check(r.get("state").getAsString().equals("done"), "build: " + r);
+                    // A player's work afterwards: a block replaced, the chest filled.
+                    h.setBlock(b, Blocks.GOLD_BLOCK);
+                    Gt.blockEntity(h, box, ChestBlockEntity.class).setItem(0, new ItemStack(Items.EMERALD, 2));
+                    undo.set(call(h, "undo", params("{\"job\":%d,\"wait\":50}", r.get("id").getAsLong())));
+                })
+                .thenWaitUntil(() -> ready(undo.get()))
+                .thenExecute(() -> {
+                    JsonObject r = result(undo.get());
+                    check(r.get("state").getAsString().equals("done") && r.has("conflicts") && r.get("conflicts").getAsLong() == 2, "undo: " + r);
+                    h.assertBlockPresent(Blocks.AIR, a);
+                    h.assertBlockPresent(Blocks.GOLD_BLOCK, b);
+                    h.assertBlockPresent(Blocks.CHEST, box);
+                    ItemStack kept = Gt.blockEntity(h, box, ChestBlockEntity.class).getItem(0);
+                    check(kept.is(Items.EMERALD) && kept.getCount() == 2, "the filled chest stays: " + kept);
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * The journal keeps a chest's contents when a write empties it first (a build's own clear; /setblock on 1.21.1):
+     * undoing the change brings the chest back full.
+     */
+    @GameTest(template = "floor", batch = "gm_undo_chest", timeoutTicks = 400, skyAccess = true)
+    public static void changeUndoRestoresChestContents(GameTestHelper h) {
+        BlockPos byBuild = new BlockPos(2, 2, 6), byCommand = new BlockPos(4, 2, 6);
+        loadNow(h, 0, 0, 8, 8);
+        for (BlockPos c : new BlockPos[] {byBuild, byCommand}) {
+            h.setBlock(c, Blocks.CHEST);
+            Gt.blockEntity(h, c, ChestBlockEntity.class).setItem(0, new ItemStack(Items.DIAMOND, 4));
+        }
+        BlockPos cmd = h.absolutePos(byCommand);
+        CompletableFuture<JsonElement> build = call(h, "build", params(
+                "{\"ops\":[{\"op\":\"set\",\"pos\":%s,\"block\":\"minecraft:stone\"}],\"wait\":50}", at(h, 2, 2, 6)));
+        long[] changes = new long[2];
+        AtomicReference<CompletableFuture<JsonElement>> undoBuild = new AtomicReference<>(), undoCommand = new AtomicReference<>();
+        h.startSequence()
+                .thenWaitUntil(() -> ready(build))
+                .thenExecute(() -> {
+                    check(result(build).has("change"), "the build is a change: " + result(build));
+                    changes[0] = result(build).get("change").getAsLong();
+                    call(h, "command", params("{\"commands\":[\"setblock %d %d %d minecraft:stone\"]}", cmd.getX(), cmd.getY(), cmd.getZ())).join();
+                    changes[1] = gm(h).journal().list(1).get(0).getAsJsonObject().get("id").getAsLong();
+                    h.assertBlockPresent(Blocks.STONE, byBuild);
+                    h.assertBlockPresent(Blocks.STONE, byCommand);
+                    undoBuild.set(call(h, "undo", params("{\"change\":%d,\"wait\":50}", changes[0])));
+                    undoCommand.set(call(h, "undo", params("{\"change\":%d,\"wait\":50}", changes[1])));
+                })
+                .thenWaitUntil(() -> {
+                    ready(undoBuild.get());
+                    ready(undoCommand.get());
+                })
+                .thenWaitUntil(() -> {
+                    for (BlockPos c : new BlockPos[] {byBuild, byCommand}) {
+                        h.assertBlockPresent(Blocks.CHEST, c);
+                        ItemStack back = Gt.blockEntity(h, c, ChestBlockEntity.class).getItem(0);
+                        check(back.is(Items.DIAMOND) && back.getCount() == 4, "chest at " + c + " after undo: " + back);
+                    }
+                })
+                .thenSucceed();
+    }
+
     /** Unchanged positions (air over air) count toward a portion too: an empty 16×4×16 box cannot finish as one portion in one tick. */
     @GameTest(template = "floor", batch = "gm_build_air", timeoutTicks = 400, skyAccess = true)
     public static void unchangedPlacesCountTowardUnits(GameTestHelper h) {

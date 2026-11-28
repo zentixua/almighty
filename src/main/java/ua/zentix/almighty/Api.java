@@ -17,6 +17,7 @@ import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import ua.zentix.almighty.act.Chat;
 import ua.zentix.almighty.act.CommandRunner;
+import ua.zentix.almighty.act.CommandVolume;
 import ua.zentix.almighty.bot.Bot;
 import ua.zentix.almighty.bot.Bots;
 import ua.zentix.almighty.bot.Eye;
@@ -108,6 +109,7 @@ public final class Api {
         m.put("player", a -> gm.onMain(() -> Observe.player(server, a)));
         m.put("entities", a -> gm.onMain(() -> Observe.entities(server, a)));
         m.put("command", a -> {
+            if (a.caller().agent() != null) CommandVolume.check(ua.zentix.almighty.policy.Confirmations.commands("command", a.raw()));
             ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
             return gm.onMain(() -> {
                 CommandRunner.As as = gm.commandAs(r);
@@ -117,6 +119,7 @@ public final class Api {
             });
         });
         m.put("function", a -> {
+            if (a.caller().agent() != null) CommandVolume.check(ua.zentix.almighty.policy.Confirmations.commands("function", a.raw()));
             ua.zentix.almighty.policy.Gate.Rights r = a.caller().agent() == null ? null : gm.gate().rights(a.caller(), a.raw());
             return gm.onMain(() -> {
                 CommandRunner.As as = gm.commandAs(r);

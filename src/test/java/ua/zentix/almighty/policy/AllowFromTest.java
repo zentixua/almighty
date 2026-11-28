@@ -26,6 +26,7 @@ class AllowFromTest {
         assertThrows(IllegalArgumentException.class, () -> AddressRange.parse("10.0.0.0/33"));
         assertThrows(IllegalArgumentException.class, () -> AddressRange.parse("cafe.be"), "hex-letter names are names too");
         assertThrows(IllegalArgumentException.class, () -> AddressRange.parse("10.1"), "short IPv4 forms");
+        assertThrows(IllegalArgumentException.class, () -> AddressRange.parse("999.1.1.1"), "never resolved as a name");
     }
 
     @Test

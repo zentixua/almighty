@@ -220,7 +220,7 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   too long to show is refused); only that player may answer; at most 3 waiting per player and 20 per agent;
   2 minutes. A request above the player's rights (or the agent's own call above its floor, for methods; limited per agent
   the same way) whose kind is in `[safety] ask_admin` → 202 for an admin; the owners online are told every admin decision (for
-  commands: when the player's own source cannot parse it; the decider needs `almighty.approve`): merged with an
+  commands: when the player's own source cannot parse it; the decider needs `almighty.approve` and the call's own node): merged with an
   identical waiting one, 1 per player per 10 minutes, 20 per hour, one digest line at most every 10 minutes,
   `/almighty inbox`; it runs as the requester with the admin's rights for that one call (`Pending.decider`; no
   ticket is minted). Owners' requests apply at once. Below owner, commands may not carry
@@ -241,7 +241,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   call's box and denying its node refuses it (`Gate.zone`, called by `build` with the plan's bounds, `area.prepare`,
   `bot.spawn`, and commands at their source position); unasked above the floor, `build`/`area.prepare`/`bot.spawn`
   pass the gate only with an internal marker (`Gate.ZONE_ONLY`, dropped from incoming parameters) and must lie
-  wholly inside a zone whose `agent_may` lists the node. `[quotas] build_blocks, give_items` per player per hour
+  wholly inside a zone whose `agent_may` lists the node. A bot spawned below owner that stands in a zone
+  denying `bots` or `build` has its programs stopped (`Bots.zoneDenies`, checked every second while it is busy). `[quotas] build_blocks, give_items` per player per hour
   below owner (`policy/Quotas`; 429; a permission plugin's integer node `almighty.quota.build_blocks|give_items`, LuckPerms
   meta, sets one verified online player's own limit, `Nodes.quota`); a grant scoped by the dynamic context
   `almighty:zone=<zone>` (NeoForge's permission API; Fabric's has no contexts) lets a request beyond the player's rights
@@ -298,7 +299,7 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   per player in 5 minutes); no bridge (GameTest) → no away replies. `identity` in `policy.toml` (auto, mojang,
   proxy, offline) sets which UUIDs count as verified. `timezone` (unset: the machine's) dates audit files and the
   times `/almighty role` shows; `[safety] privacy_notice` (true) tells each joining player, not bots, that an AI reads
-  messages addressed to it (`almighty.gm.privacy_notice`); turning it off is a grant (`PolicyEdits`).
+  the public chat and acts on messages addressed to it (`almighty.gm.privacy_notice`); turning it off is a grant (`PolicyEdits`).
 - `script/`: Groovy scripts (`Scripts`: compilation with a deadline, execution), scripts' `gm` variable (`ScriptApi`),
   values ↔ JSON (`Json`: position `[x, y, z]`, block string as in `/setblock`, NBT as SNBT, event via its `getX()`).
 - `rules/`: rules (`Rules`), subscribing to any game-bus event, budgets, persistence with the world
@@ -411,7 +412,8 @@ Scripts and rules run Groovy on the server thread. Variables: `server`, `gm` (`c
 as an entity, `emit(data)` as an `emit` feed event, `fields(event)`, `player(name)`, `level(dim)`, `bot(name)` with
 `act(steps[, replace])`, `send(packet)`, `ship(name)`/`ships()` for Sable ships), `state` (shared map until server
 stop), plus `args` for scripts, `event` and `rule` for rules. Common game classes are imported (`Scripts.IMPORTS`).
-A rule without a script writes event properties to the feed; a rule script's return value is ignored; only
+A rule without a script writes event properties to the feed (below owner, that and `emit` need `observe.players`,
+checked at add and at each fire: the fields carry players' names and places); a rule script's return value is ignored; only
 `gm.emit` writes to the feed.
 
 Declarative rules (`rules/Declarative`, plan 4.12; node `almighty.rules`, builder): `when` (conditions on the

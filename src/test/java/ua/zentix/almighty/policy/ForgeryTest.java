@@ -63,6 +63,9 @@ class ForgeryTest {
                 "tellraw @a {\"nbt\"       :\"CustomName\",\"entity\":\"@e\"}", "tellraw @a {selector:\n\n'@e'}",
                 "tellraw @a {\"selector\":\"1f2e3d4c-0000-4000-8000-000000000001\"}",
                 "tellraw @a {\"text\":\"x\",\"clickEvent\":{\"action\"     :     \"custom\"}}",
+                // Final audit: a keybind part completing the name, Cherokee and Coptic look-alikes.
+                "tellraw @a [\"[\",{\"keybind\":\"key.left\"},\"lmighty] Allow\"]", "tellraw @a \"[\u13aaLMIGHTY] Allow\"",
+                "tellraw @a \"[\u2c80LMIGHTY] Allow\"",
                 "tellraw @p {text:\"x\",click_event:{action:\"run\u00adcommand\"}}".replace("run\u00adcommand", "run_\u200bcommand")}) {
             assertNotNull(Forgery.refusal(c), c);
         }

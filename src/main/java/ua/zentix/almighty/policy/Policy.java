@@ -96,7 +96,7 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
     public enum Preset {
         /** Only owners address the agents: the floor is the ceiling (the behaviour before policies existed). */
         PRIVATE,
-        /** Friends' server: anyone's text may reach the agent, so without a request it acts as a member. */
+        /** Friends' server: verified players' text reaches the agent, so without a request it acts as a member. */
         FRIENDS,
         /** Public server: without a request the agent acts as a guest. */
         PUBLIC;
@@ -426,7 +426,7 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 # refused with the exact error, and the previous policy stays.
 
                 # private: only owners talk to the agents; they may do everything their ceiling allows.
-                # friends: anyone's text may reach the agents; unasked, they act as a member would.
+                # friends: verified players' text reaches the agents (unverified names and guests do not); unasked, they act as a member would.
                 # public:  unasked, the agents act as a guest would; players' requests run with the player's rights.
                 preset = "%s"
 

@@ -433,11 +433,29 @@ public final class Bots {
                     continue;
                 }
             }
+            // Zones hold for a bot's whole life, not only where it spawned (final audit M2): a bot spawned below owner
+            // that stands in a zone denying bots or building there is stopped (programs removed, keys released).
+            if (bot.meter != null && bot.meteredTicks % 20 == 0 && bot.online() && bot.busy()) {
+                String denied = zoneDenies(bot.player());
+                if (denied != null) bot.stop(denied);
+            }
             if (!bot.tick()) {
                 bot.closed();
                 gone(bot);
             }
         }
+    }
+
+    /** Why a zone forbids this bot (spawned below owner) to work where it stands, or null. */
+    String zoneDenies(ServerPlayer p) {
+        net.minecraft.core.BlockPos at = p.blockPosition();
+        int[] pos = {at.getX(), at.getY(), at.getZ()};
+        String dim = ua.zentix.almighty.world.Dims.id(ua.zentix.almighty.platform.Mc.level(p));
+        for (ua.zentix.almighty.policy.Node n : new ua.zentix.almighty.policy.Node[] {ua.zentix.almighty.policy.Node.BOTS, ua.zentix.almighty.policy.Node.BUILD}) {
+            String d = gm.gate().zoneDenies(ua.zentix.almighty.policy.Role.ADMIN, n, dim, pos, pos);
+            if (d != null) return d + " (a bot spawned below the owner stops there)";
+        }
+        return null;
     }
 
     /** Login destinations loaded or timed out; continuations (login) run after iteration. */

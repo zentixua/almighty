@@ -795,73 +795,81 @@ public final class GmServer {
                 throw new RpcException(403, "policy", "Reverting an undo (a redo) needs the owner");
             }
         }
-        Journal.Records r;
+        // Claimed before the file is read (final audit: parallel undos of one large change each read it whole).
+        if (!reverting.add(id)) throw RpcException.conflict("Change " + id + " is being undone already");
+        final Journal.Records rec;
+        final List<Object[]> pieces;
         try {
-            var blocks = server.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.BLOCK);
-            r = journal.read(id, tag -> net.minecraft.nbt.NbtUtils.readBlockState(blocks, tag));
-        } catch (java.io.IOException e) {
-            throw RpcException.notFound("Change " + id + " cannot be read: " + e.getMessage());
-        }
-        if (r.size() == 0) throw RpcException.conflict("Change " + id + " changed no blocks");
-        Journal.Records rec = r;
-
-        // Pieces of consecutive writes, each within one dimension and 128×128 blocks: a change spread over the map is
-        // reverted piece by piece, each leasing only its own chunks; the pieces run one after another from the
-        // last writes back, so the whole change is undone in exact reverse write order (a block beside a piece edge,
-        // such as redstone wire, may rewrite itself when its neighbour changes).
-        List<List<Integer>> groups = new ArrayList<>();
-        List<Integer> piece = null;
-        int minX = 0, maxX = 0, minZ = 0, maxZ = 0, pieceDim = -1;
-        for (int i = 0; i < rec.size(); i++) {
-            long pp = rec.pos()[i];
-            int x = net.minecraft.core.BlockPos.getX(pp), z = net.minecraft.core.BlockPos.getZ(pp);
-            boolean fits = piece != null && rec.dim()[i] == pieceDim && Math.max(maxX, x) - Math.min(minX, x) < 128
-                    && Math.max(maxZ, z) - Math.min(minZ, z) < 128;
-            if (!fits) {
-                piece = new ArrayList<>();
-                groups.add(piece);
-                pieceDim = rec.dim()[i];
-                minX = maxX = x;
-                minZ = maxZ = z;
+            Journal.Records r;
+            try {
+                var blocks = server.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.BLOCK);
+                r = journal.read(id, tag -> net.minecraft.nbt.NbtUtils.readBlockState(blocks, tag));
+            } catch (java.io.IOException e) {
+                throw RpcException.notFound("Change " + id + " cannot be read: " + e.getMessage());
             }
-            piece.add(i);
-            minX = Math.min(minX, x);
-            maxX = Math.max(maxX, x);
-            minZ = Math.min(minZ, z);
-            maxZ = Math.max(maxZ, z);
-        }
-        if (groups.size() > REVERT_PIECES) {
-            // Writes alternating between far places (thousands of runs): bound the pieces by area instead, one per
-            // dimension and 128×128-block region, newest last write first. Exact order then holds within a region.
-            Map<String, List<Integer>> byRegion = new LinkedHashMap<>();
+            if (r.size() == 0) throw RpcException.conflict("Change " + id + " changed no blocks");
+            rec = r;
+
+            // Pieces of consecutive writes, each within one dimension and 128×128 blocks: a change spread over the map is
+            // reverted piece by piece, each leasing only its own chunks; the pieces run one after another from the
+            // last writes back, so the whole change is undone in exact reverse write order (a block beside a piece edge,
+            // such as redstone wire, may rewrite itself when its neighbour changes).
+            List<List<Integer>> groups = new ArrayList<>();
+            List<Integer> piece = null;
+            int minX = 0, maxX = 0, minZ = 0, maxZ = 0, pieceDim = -1;
             for (int i = 0; i < rec.size(); i++) {
                 long pp = rec.pos()[i];
-                String k = rec.dim()[i] + "/" + (net.minecraft.core.BlockPos.getX(pp) >> 7) + "/" + (net.minecraft.core.BlockPos.getZ(pp) >> 7);
-                byRegion.computeIfAbsent(k, x -> new ArrayList<>()).add(i);
+                int x = net.minecraft.core.BlockPos.getX(pp), z = net.minecraft.core.BlockPos.getZ(pp);
+                boolean fits = piece != null && rec.dim()[i] == pieceDim && Math.max(maxX, x) - Math.min(minX, x) < 128
+                        && Math.max(maxZ, z) - Math.min(minZ, z) < 128;
+                if (!fits) {
+                    piece = new ArrayList<>();
+                    groups.add(piece);
+                    pieceDim = rec.dim()[i];
+                    minX = maxX = x;
+                    minZ = maxZ = z;
+                }
+                piece.add(i);
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
+                minZ = Math.min(minZ, z);
+                maxZ = Math.max(maxZ, z);
             }
-            groups = new ArrayList<>(byRegion.values());
-            groups.sort(java.util.Comparator.comparingInt(g -> g.get(g.size() - 1)));
-        }
-        java.util.Collections.reverse(groups);
-        // The pieces' arrays too, here (a bridge thread, or a background one for /almighty undo), not on the server
-        // thread: a 2-million-position change is grouped without holding a tick (stability audit M2).
-        List<Object[]> pieces = new ArrayList<>();
-        for (List<Integer> idx : groups) {
-            int n = idx.size();
-            long[] pos = new long[n];
-            net.minecraft.world.level.block.state.BlockState[] before = new net.minecraft.world.level.block.state.BlockState[n], after =
-                    new net.minecraft.world.level.block.state.BlockState[n];
-            net.minecraft.nbt.CompoundTag[] tags = new net.minecraft.nbt.CompoundTag[n];
-            for (int k = 0; k < n; k++) {
-                int i = idx.get(k);
-                pos[k] = rec.pos()[i];
-                before[k] = rec.before()[i];
-                after[k] = rec.after()[i];
-                tags[k] = rec.tag()[i];
+            if (groups.size() > REVERT_PIECES) {
+                // Writes alternating between far places (thousands of runs): bound the pieces by area instead, one per
+                // dimension and 128×128-block region, newest last write first. Exact order then holds within a region.
+                Map<String, List<Integer>> byRegion = new LinkedHashMap<>();
+                for (int i = 0; i < rec.size(); i++) {
+                    long pp = rec.pos()[i];
+                    String k = rec.dim()[i] + "/" + (net.minecraft.core.BlockPos.getX(pp) >> 7) + "/" + (net.minecraft.core.BlockPos.getZ(pp) >> 7);
+                    byRegion.computeIfAbsent(k, x -> new ArrayList<>()).add(i);
+                }
+                groups = new ArrayList<>(byRegion.values());
+                groups.sort(java.util.Comparator.comparingInt(g -> g.get(g.size() - 1)));
             }
-            pieces.add(new Object[] {rec.dims().get(rec.dim()[idx.get(0)]), pos, before, after, tags, n});
+            java.util.Collections.reverse(groups);
+            // The pieces' arrays too, here (a bridge thread, or a background one for /almighty undo), not on the server
+            // thread: a 2-million-position change is grouped without holding a tick (stability audit M2).
+            pieces = new ArrayList<>();
+            for (List<Integer> idx : groups) {
+                int n = idx.size();
+                long[] pos = new long[n];
+                net.minecraft.world.level.block.state.BlockState[] before = new net.minecraft.world.level.block.state.BlockState[n], after =
+                        new net.minecraft.world.level.block.state.BlockState[n];
+                net.minecraft.nbt.CompoundTag[] tags = new net.minecraft.nbt.CompoundTag[n];
+                for (int k = 0; k < n; k++) {
+                    int i = idx.get(k);
+                    pos[k] = rec.pos()[i];
+                    before[k] = rec.before()[i];
+                    after[k] = rec.after()[i];
+                    tags[k] = rec.tag()[i];
+                }
+                pieces.add(new Object[] {rec.dims().get(rec.dim()[idx.get(0)]), pos, before, after, tags, n});
+            }
+        } catch (RpcException | RuntimeException e) {
+            reverting.remove(id);
+            throw e;
         }
-        if (!reverting.add(id)) throw RpcException.conflict("Change " + id + " is being undone already");
         // Checked again now that this revert holds the id: another may have finished while the file was read.
         JsonObject again = journal.describe(id);
         if (again == null || again.has("undone_by")) {

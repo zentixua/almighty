@@ -124,6 +124,8 @@ class ConfirmationsTest {
         assertEquals(Confirmations.PER_HOUR, c.waitingForAdmins().size());
         // Only a verified holder of the right decides.
         assertTrue(c.decide(first, UUID.randomUUID(), "Nobody", true, n -> false).contains("do not hold"));
+        // Holding the call's own node is not enough: deciding for others needs almighty.approve (final audit m2).
+        assertTrue(c.decide(first, verifiedAdmin, "Member", true, n -> n == Node.BUILD).contains("do not hold"));
         assertNull(c.decide(first, verifiedAdmin, "Admin", true, n -> true));
     }
 

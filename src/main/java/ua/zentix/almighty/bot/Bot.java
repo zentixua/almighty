@@ -231,6 +231,11 @@ public final class Bot {
         if (online()) controls.releaseAll(player());
     }
 
+    /** Whether a program runs or waits for this bot. */
+    boolean busy() {
+        return current != null || !programs.isEmpty();
+    }
+
     /** Bot tick at server tick end; false means the bot left (kicked, error, shutdown). */
     boolean tick() {
         if (!channel.isOpen()) return false;

@@ -132,7 +132,7 @@ public final class Decisions {
         Set<UUID> told = new HashSet<>();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             for (Confirmations.Pending p : waiting) {
-                if (Identity.verified(player.getUUID()) && Nodes.holds(player.getUUID(), p.node) && told.add(player.getUUID())) {
+                if (Identity.verified(player.getUUID()) && Nodes.holds(player.getUUID(), p.node) && (p.node == Node.ENGINE || Nodes.holds(player.getUUID(), Node.APPROVE)) && told.add(player.getUUID())) {
                     player.sendSystemMessage(Prompts.digest(waiting));
                 }
             }

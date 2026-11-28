@@ -81,7 +81,13 @@ final class FabricConfig {
         if (now == modified) return;
         modified = now;
         synchronized (file) {
-            file.load();
+            // A file with a mistake (or caught half-written) keeps the current values; never an exception in the tick.
+            try {
+                file.load();
+            } catch (RuntimeException e) {
+                LOG.error("config/almighty-common.toml cannot be read ({}); keeping the current settings until it is fixed", e.toString());
+                return;
+            }
             for (Bound b : BOUND) {
                 Object raw = file.get(b.path());
                 Object value = valid(b.setting(), raw);

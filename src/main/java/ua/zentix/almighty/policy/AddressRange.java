@@ -17,6 +17,11 @@ public record AddressRange(String text, byte[] network, int bits) {
         if (!(host.matches("\\d{1,3}(\\.\\d{1,3}){3}") || host.contains(":") && host.matches("[0-9a-fA-F:.]+"))) {
             throw new IllegalArgumentException("not an IP address or range: " + text + " (names are not looked up)");
         }
+        if (!host.contains(":")) {
+            for (String octet : host.split("\\.")) {
+                if (Integer.parseInt(octet) > 255) throw new IllegalArgumentException("not an IP address: " + text);
+            }
+        }
         byte[] addr;
         try {
             addr = InetAddress.getByName(host).getAddress();

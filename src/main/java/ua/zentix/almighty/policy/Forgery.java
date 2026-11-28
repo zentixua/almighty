@@ -40,6 +40,7 @@ public final class Forgery {
     private static final Pattern ROOT = Pattern.compile("^(minecraft:)?dialog\\b");
     /** A selector text part and its pattern (JSON or SNBT, any quoting). */
     private static final Pattern SELECTOR_PART = Pattern.compile("selector[\\s\"']*:[\\s\"']*(@[a-z](?:\\[[^\\]]*])?|[^\\s\"',}\\]]+)");
+    private static final Pattern KEYBIND_PART = Pattern.compile("(?<![a-z0-9_])\\W?keybind\\W*:");
     private static final Pattern NBT_PART = Pattern.compile("(?<![a-z0-9_])\\W?nbt\\W*:");
     private static final Pattern PLAYER_TYPE = Pattern.compile("type\\s*=\\s*(minecraft:)?player\\b");
     /** Component fields whose values are never shown as the text itself: removed, key and value, before reading letters. */
@@ -52,7 +53,10 @@ public final class Forgery {
     private static final Map<Character, Character> LOOKALIKE = lookalikes(
             "аa еe оo рp сc уy хx іi јj һh ԁd ӏl мm тt гr үy ӯy ԛq ԝw ѕs ꙇi "
             + "αa οo ιi τt νv κk ρp εe ηn υu χx "
-            + "ɑa ɡg ıi ℓl ɩi ʜh ɢg ʟl ʀr ʏy ɴn ɪi ᴀa ʙb ᴄc ᴅd ᴇe ғf ᴊj ᴋk ᴍm ᴏo ᴘp ǫq ꜱs ᴛt ᴜu ᴠv ᴡw ᴢz ցg");
+            + "ɑa ɡg ıi ℓl ɩi ʜh ɢg ʟl ʀr ʏy ɴn ɪi ᴀa ʙb ᴄc ᴅd ᴇe ғf ᴊj ᴋk ᴍm ᴏo ᴘp ǫq ꜱs ᴛt ᴜu ᴠv ᴡw ᴢz ցg "
+            // Cherokee, Coptic and Lisu capitals that read as Latin (final audit m1).
+            + "Ꭺa Ꮪs Ꭹy Ꮋh Ꮇm Ꮐg Ꭵi Ꮃw Ꮮl Ꭲt Ꭼe Ꮤw Ꮯc Ꮲp Ꮩv Ꮶk Ꭻj Ꭱr Ᏼb ⲁa ⲅr ⲉe ⲓi ⲕk ⲙm ⲛn ⲟo ⲣp ⲥc ⲧt ⲩy ⲭx ⲏh ⲗl "
+            + "ꓮa ꓐb ꓚc ꓓd ꓰe ꓝf ꓖg ꓧh ꓲi ꓙj ꓗk ꓡl ꓟm ꓠn ꓳo ꓑp ꓣr ꓢs ꓔt ꓴu ꓦv ꓪw ꓫx ꓬy ꓜz");
 
     private Forgery() {}
 
@@ -78,6 +82,8 @@ public final class Forgery {
 
     /** Why a text part would show what the world holds (a mob's name, stored nbt), or null. */
     private static String worldText(String flat) {
+        // A keybind part shows the reader's own key ("A" for key.left by default): "[" + keybind + "lmighty]" (final audit m1).
+        if (KEYBIND_PART.matcher(flat).find()) return "Below owner, text may not show key bindings (a key's name can complete [Almighty]); write the text itself";
         if (NBT_PART.matcher(flat).find()) {
             return "Below owner, text may not show stored nbt (an entity's, block's or storage's data can spell [Almighty]); write the text itself";
         }
@@ -131,6 +137,8 @@ public final class Forgery {
             int type = Character.getType(c);
             if (type == Character.FORMAT || type == Character.NON_SPACING_MARK || type == Character.ENCLOSING_MARK) continue;
             Character latin = LOOKALIKE.get(c);
+            // Cherokee capitals lower-case to their small forms: the table names the capitals.
+            if (latin == null) latin = LOOKALIKE.get(plain.charAt(i));
             out.append(latin != null ? latin : c);
         }
         return out.toString();

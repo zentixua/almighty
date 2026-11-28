@@ -280,7 +280,8 @@ public final class AlmightyCommand {
         java.util.UUID id = source.getEntity() instanceof net.minecraft.server.level.ServerPlayer p ? p.getUUID() : null;
         int n = 0;
         for (var p : gm.decisions().confirmations().waitingForAdmins()) {
-            if (id == null ? !Mc.has(source, 4) : !(ua.zentix.almighty.policy.Identity.verified(id) && ua.zentix.almighty.policy.Nodes.holds(id, p.node))) continue;
+            if (id == null ? !Mc.has(source, 4) : !(ua.zentix.almighty.policy.Identity.verified(id) && ua.zentix.almighty.policy.Nodes.holds(id, p.node)
+                    && (p.node == ua.zentix.almighty.policy.Node.ENGINE || ua.zentix.almighty.policy.Nodes.holds(id, ua.zentix.almighty.policy.Node.APPROVE)))) continue;
             Component line = ua.zentix.almighty.policy.Prompts.inboxLine(p);
             source.sendSuccess(() -> line, false);
             n++;

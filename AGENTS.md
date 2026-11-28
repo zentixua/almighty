@@ -340,8 +340,9 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `policy.toml` has a schema `version` (absent = 1, `Policy.VERSION`): a newer one is refused with the reason and the
   last good policy stays; migrations of older schemas go in `Policy.parse` (none yet). Roles by asking: `role`
   (`GmServer.role`, `policy/RoleCalls`; node `policy`): the console at once; a request with that player's rights
-  (admin or owner, roles below their own); the agent's own initiative applies only lowering or clearing (owners
-  told), a grant (higher role, or the same for longer) waits for an `almighty.engine` holder. Friction follows origin: the owner (the console, an internal caller, or a request
+  (admin or owner, roles below their own); the agent's own initiative applies only clearing or narrowing an existing
+  grant (a role no higher, ending no later; owners told), since a stored grant outlives op levels and presets;
+  anything else waits for an `almighty.engine` holder, bound to the player's UUID. The name lookup runs on the bridge thread. Friction follows origin: the owner (the console, an internal caller, or a request
   whose player is an owner) applies at once; a player's request is refused (403); the agent's own initiative, on
   any preset (private too, where its floor is owner), applies at once only if `PolicyEdits.grants` finds nothing
   (preset more open or leaving private, identity verifying more people, owners added or removed, ceilings or

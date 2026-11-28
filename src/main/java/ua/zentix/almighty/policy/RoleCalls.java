@@ -30,13 +30,15 @@ public final class RoleCalls {
     }
 
     /**
-     * Whether giving {@code neu} (null clears) ending at {@code until} (0: never) grants anything: a role above the
-     * player's current one, or the same granted role for longer.
+     * Whether the agent, acting on its own, would grant something by setting {@code neu} (null clears) ending at
+     * {@code until} (0: never) over the stored grant {@code granted} (null: none). A stored grant outlives op levels,
+     * the preset and the old grant's end (the ladder takes the highest), so only clearing, or narrowing an existing
+     * grant (a role no higher, ending no later), restricts; anything else waits for the owner.
      */
-    public static boolean grants(Role current, Roles.Grant granted, Role neu, long until) {
+    public static boolean grants(Roles.Grant granted, Role neu, long until) {
         if (neu == null) return false;
-        if (neu.compareTo(current) > 0) return true;
-        if (granted == null || granted.role() != neu) return false;
+        if (granted == null) return true;
+        if (neu.compareTo(granted.role()) > 0) return true;
         return granted.until() != 0 && (until == 0 || until > granted.until());
     }
 }

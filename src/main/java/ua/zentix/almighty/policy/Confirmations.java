@@ -408,7 +408,7 @@ public final class Confirmations {
             return "expired";
         }
         // A requester question is that player's alone (it runs as them); the console may answer admin requests.
-        if (p.kind == Kind.REQUESTER && (byUuid == null || !byUuid.equals(p.confirmer))) return "only " + p.requesterName + " can answer this";
+        if (p.kind == Kind.REQUESTER && (byUuid == null || !byUuid.equals(p.confirmer))) return p.confirmer != null && !p.confirmer.equals(p.requester) ? "only the player it concerns can answer this" : "only " + p.requesterName + " can answer this";
         if (byUuid != null) {
             if (p.kind == Kind.ADMIN && !(Identity.verified(byUuid) && holds.test(p.node))) return "you do not hold " + p.node.key();
         }

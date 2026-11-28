@@ -26,15 +26,19 @@ class RoleCallsTest {
         assertThrows(RpcException.class, () -> RoleCalls.until("11pm", WARSAW, evening));
     }
 
+    /** Review of #97: a stored grant outlives op levels, presets and the old grant's end; only narrowing restricts. */
     @Test
-    void grantsAreRaisesOrLongerGrants() {
-        assertTrue(RoleCalls.grants(Role.MEMBER, null, Role.BUILDER, 0));
-        assertFalse(RoleCalls.grants(Role.BUILDER, null, Role.MEMBER, 0), "lower: restricts");
-        assertFalse(RoleCalls.grants(Role.BUILDER, null, null, 0), "clear: restricts");
+    void onItsOwnTheAgentOnlyClearsOrNarrows() {
+        assertFalse(RoleCalls.grants(null, null, 0), "clear restricts");
+        assertTrue(RoleCalls.grants(null, Role.BUILDER, 0), "no grant yet: any grant grants (it outlives a deop)");
+        assertTrue(RoleCalls.grants(null, Role.MEMBER, 10_000), "even a member grant (it outlives a preset change)");
         Roles.Grant until10 = new Roles.Grant(Role.BUILDER, 10_000, "Bob", "x");
-        assertTrue(RoleCalls.grants(Role.BUILDER, until10, Role.BUILDER, 20_000), "the same role for longer");
-        assertTrue(RoleCalls.grants(Role.BUILDER, until10, Role.BUILDER, 0), "the same role for good");
-        assertFalse(RoleCalls.grants(Role.BUILDER, until10, Role.BUILDER, 5_000), "shorter: restricts");
-        assertFalse(RoleCalls.grants(Role.ADMIN, null, Role.BUILDER, 0), "an op admin given builder gains nothing");
+        assertTrue(RoleCalls.grants(until10, Role.MEMBER, 0), "lower but for good outlives the old end");
+        assertTrue(RoleCalls.grants(until10, Role.BUILDER, 20_000), "the same role for longer");
+        assertTrue(RoleCalls.grants(until10, Role.ADMIN, 5_000), "a higher role");
+        assertFalse(RoleCalls.grants(until10, Role.MEMBER, 5_000), "lower and sooner: restricts");
+        assertFalse(RoleCalls.grants(until10, Role.BUILDER, 10_000), "the same, ending as before");
+        Roles.Grant forGood = new Roles.Grant(Role.ADMIN, 0, "Bob", "x");
+        assertFalse(RoleCalls.grants(forGood, Role.BUILDER, 0), "lowering a permanent grant restricts");
     }
 }

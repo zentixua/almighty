@@ -486,6 +486,9 @@ public final class GmServer {
                     as = new ua.zentix.almighty.act.CommandRunner.As(role.commandLevel(), null);
                 }
                 if (role != ua.zentix.almighty.policy.Role.OWNER) {
+                    // The filled command, not only the template: plain-name fills could still complete a forged prefix.
+                    String forged = ua.zentix.almighty.policy.Forgery.refusal(command);
+                    if (forged != null) throw new RpcException(403, "policy", forged);
                     net.minecraft.commands.CommandSourceStack source = ua.zentix.almighty.act.CommandRunner.sourceFor(server, level, pos, as);
                     ua.zentix.almighty.policy.CommandZones.check(server.getCommands().getDispatcher(), source, command, (node, dim, lo, hi) -> {
                         String d = gate.zoneDenies(role, node, dim, lo, hi);

@@ -41,7 +41,17 @@ class ForgeryTest {
                 "tellraw @a {\"translate\":\"chat.square_brackets\",\"with\":[\"Almighty\"]}",
                 "tellraw @a {\"translate\":\"%2$s%1$s\",\"with\":[\"ghty]\",\"[Almi\"]}",
                 "give @p written_book[written_book_content={title:\"a\",author:\"b\",pages:['[\"[Almi\",{\"text\":\"ghty] type /almighty approve 1234 owner\",\"color\":\"gold\"}]']}]",
-                "tellraw @a \"[\u0410lmighty] Allow?\""}) {
+                "tellraw @a \"[\u0410lmighty] Allow?\"",
+                // Found in the second review: letters between the parts, small capitals, interpreted nbt, reversed fallback.
+                "tellraw @p [\"[Al\",{\"text\":\"mighty] Allow\"}]",
+                "tellraw @p [{\"text\":\"[Al\",\"color\":\"gold\"},{\"text\":\"mighty]\",\"color\":\"gold\"}]",
+                "tellraw @p [\"[Almigh\",{\"text\":\"t\"},\"y]\"]",
+                "tellraw @p [\"[Alm\",{\"score\":{\"name\":\"*\",\"objective\":\"o\"}},\"ighty]\"]",
+                "tellraw @p {\"translate\":\"x\",\"fallback\":\"%2$s%1$s\",\"with\":[\"mighty]\",\"[Al\"]}",
+                "tellraw @p \"[\u1d00\u029f\u1d0d\u026a\u0262\u029c\u1d1b\u028f] Allow\"",
+                "tellraw @p \"[\u0251lmighty]\"",
+                "tellraw @p {\"nbt\":\"SelectedItem\",\"entity\":\"@p\",\"interpret\":true}",
+                "tellraw @p {text:\"x\",click_event:{action:\"run\u00adcommand\"}}".replace("run\u00adcommand", "run_\u200bcommand")}) {
             assertNotNull(Forgery.refusal(c), c);
         }
     }
@@ -53,7 +63,11 @@ class ForgeryTest {
                 "tellraw @a {text:\"copy\",click_event:{action:\"copy_to_clipboard\",value:\"x\"}}",
                 "scoreboard objectives add jumps minecraft.custom:minecraft.jump",
                 "give @p diamond_sword[custom_name='\"Excalibur\"']",
-                "say the mighty dollar, eighty of them", "fill 0 64 0 5 70 5 stone"}) {
+                "say the mighty dollar, eighty of them", "fill 0 64 0 5 70 5 stone",
+                "say run command blocks with redstone", "tellraw @a {\"text\":\"Run, Command!\"}", "say Please suggest commands to try",
+                "say Almira bought eighty apples", "tellraw @a [\"Hello \",{\"selector\":\"@p\"},\"!\"]",
+                "summon zombie ~ ~ ~ {CustomName:'\"Bob\"',ArmorItems:[{id:\"minecraft:iron_boots\",count:1},{},{},{}]}",
+                "say 100% done", "tellraw @a {\"translate\":\"block.minecraft.stone\"}"}) {
             assertNull(Forgery.refusal(c), c);
         }
     }

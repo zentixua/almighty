@@ -13,14 +13,16 @@ import java.util.regex.Pattern;
  *
  * <p>Text components can spell the same thing many ways (JSON and SNBT escapes, nested quoting, parts split by
  * selectors, scores, translation keys or colours), so the check does not try to render them. It reads the command's
- * letters after undoing every escape ({@code \}u, {@code \}U, {@code \}x, {@code \}N{…}, at any depth), folding case,
+ * text after undoing every escape ({@code \}u, {@code \}U, {@code \}x, {@code \}N{…}, at any depth), folding case,
  * accents and look-alike letters, and refuses below owner:
  * <ul>
- * <li>click actions other than {@code open_url}, {@code copy_to_clipboard} and {@code change_page}: the letters
- * {@code runcommand}, {@code suggestcommand}, {@code showdialog}, a {@code custom} action, dialog action types;</li>
+ * <li>click actions other than {@code open_url}, {@code copy_to_clipboard} and {@code change_page}
+ * ({@code run_command}, {@code suggest_command}, {@code show_dialog}, a {@code custom} action, dialog action types);</li>
+ * <li>nbt text with {@code interpret}: it renders clicks stored in the world (a book a player wrote);</li>
  * <li>the {@code dialog} command;</li>
- * <li>translation keys with format codes ({@code "translate":"%2$s%1$s"}): they reorder parts unseen;</li>
- * <li>the name {@code almighty}, whole or as {@code almi} … {@code ghty} anywhere in the command.</li>
+ * <li>translation keys and fallbacks with format codes ({@code "translate":"%2$s%1$s"}): they reorder parts unseen;</li>
+ * <li>the name {@code almighty} in the command's letters, or in the letters its text parts show once keys and the
+ * values of fields never shown (colour, selector, score, nbt …) are taken out.</li>
  * </ul>
  * An accident and forgery guard on text the agent sends, deliberately strict: ordinary building, give and chat
  * commands never spell these. Pure.
@@ -28,44 +30,74 @@ import java.util.regex.Pattern;
 public final class Forgery {
     public static final String PREFIX = "[almighty]";
     private static final Pattern ESCAPE = Pattern.compile("\\\\+(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8})|x([0-9a-fA-F]{2})|N\\{([^}]{1,64})})");
-    private static final Pattern TRANSLATE_FORMAT = Pattern.compile("translate\\W{0,4}:\\W{0,4}[^,}\\]]*%");
+    private static final Pattern TRANSLATE_FORMAT = Pattern.compile("(translate|fallback)\\W{0,4}:\\W{0,4}[^,}\\]]*%");
     private static final Pattern CUSTOM = Pattern.compile("(action|type)\\W{0,4}:\\W{0,4}(minecraft:)?custom\\b");
+    private static final Pattern INTERPRET = Pattern.compile("interpret\\W{0,4}:\\W{0,4}(true|1b?\\b)");
     private static final Pattern ROOT = Pattern.compile("^(minecraft:)?dialog\\b");
-    /** Letters that look like Latin ones in chat fonts (Cyrillic, Greek): folded before the name check. */
-    private static final Map<Character, Character> LOOKALIKE = Map.ofEntries(
-            Map.entry('а', 'a'), Map.entry('е', 'e'), Map.entry('о', 'o'), Map.entry('р', 'p'), Map.entry('с', 'c'),
-            Map.entry('у', 'y'), Map.entry('х', 'x'), Map.entry('і', 'i'), Map.entry('ј', 'j'), Map.entry('һ', 'h'),
-            Map.entry('ԁ', 'd'), Map.entry('ӏ', 'l'), Map.entry('м', 'm'), Map.entry('т', 't'), Map.entry('г', 'r'),
-            Map.entry('α', 'a'), Map.entry('ο', 'o'), Map.entry('ι', 'i'), Map.entry('τ', 't'), Map.entry('ɡ', 'g'),
-            Map.entry('ı', 'i'), Map.entry('ℓ', 'l'), Map.entry('ӎ', 'm'), Map.entry('ɩ', 'i'), Map.entry('ʜ', 'h'));
+    /** Component fields whose values are never shown as the text itself: removed, key and value, before reading letters. */
+    private static final Pattern HIDDEN_PAIR = Pattern.compile("(?<![a-z0-9_])[\"']?(color|font|shadow_color|insertion|selector|separator|keybind|objective|"
+            + "name|nbt|entity|block|storage|source|sprite|atlas|action|type|id|url|value|command|dialog|hover_event|hoverevent)[\"']?\\s*:\\s*"
+            + "(\"(?:[^\"]|\"\")*\"|'(?:[^']|'')*'|\\{[^{}]*}|[^,}\\]\\s]*)");
+    /** Any key: removed (its name is not shown text), its value stays. */
+    private static final Pattern KEY = Pattern.compile("[\"']?[a-z_][a-z0-9_]*[\"']?\\s*:");
+    /** Letters that look like Latin ones in chat fonts (Cyrillic, Greek, IPA, small capitals): folded first. */
+    private static final Map<Character, Character> LOOKALIKE = lookalikes(
+            "аa еe оo рp сc уy хx іi јj һh ԁd ӏl мm тt гr үy ӯy ԛq ԝw ѕs ꙇi "
+            + "αa οo ιi τt νv κk ρp εe ηn υu χx "
+            + "ɑa ɡg ıi ℓl ɩi ʜh ɢg ʟl ʀr ʏy ɴn ɪi ᴀa ʙb ᴄc ᴅd ᴇe ғf ᴊj ᴋk ᴍm ᴏo ᴘp ǫq ꜱs ᴛt ᴜu ᴠv ᴡw ᴢz ցg");
 
     private Forgery() {}
 
     /** Why {@code command} may not run below owner, or null. */
     public static String refusal(String command) {
-        String text = decode(command).toLowerCase(Locale.ROOT);
+        String text = fold(decode(command));
         for (String seg : DenyList.segments(text)) {
             if (ROOT.matcher(trim(seg)).find()) return "Below owner, commands may not show dialogs (dialog)";
         }
         String flat = text.replace("\\", "");
-        String letters = letters(flat);
-        if (letters.contains("runcommand") || letters.contains("suggestcommand") || letters.contains("showdialog")
+        if (flat.contains("run_command") || flat.contains("suggest_command") || flat.contains("show_dialog")
                 || flat.contains("dynamic/") || CUSTOM.matcher(flat).find()) {
             return "Below owner, commands may not carry clicks that act as whoever clicks (run_command, suggest_command, show_dialog,"
                     + " custom); open_url, copy_to_clipboard and change_page are fine";
         }
+        if (INTERPRET.matcher(flat).find()) return "Below owner, nbt text may not be interpreted (interpret: true renders stored clicks)";
         if (TRANSLATE_FORMAT.matcher(flat).find()) return "Below owner, translation keys may not carry format codes (%)";
-        if (names(letters)) return "Below owner, commands may not carry [Almighty] (reserved for the server's own messages)";
+        if (names(flat)) return "Below owner, commands may not carry [Almighty] (reserved for the server's own messages)";
         return null;
     }
 
     /** Whether shown text (a say line, a rule's say) passes for the server's prefix, folded as {@link #refusal} does. */
     public static boolean prefix(String shown) {
-        return names(letters(decode(shown).toLowerCase(Locale.ROOT)));
+        return letters(fold(decode(shown))).contains("almighty");
     }
 
-    private static boolean names(String letters) {
-        return letters.contains("almighty") || (letters.contains("almi") && letters.contains("ghty"));
+    /** The name, in all the letters, or in the letters a component shows (keys and their hidden values taken out). */
+    private static boolean names(String flat) {
+        if (letters(flat).contains("almighty")) return true;
+        String shown = KEY.matcher(HIDDEN_PAIR.matcher(flat).replaceAll(" ")).replaceAll(" ");
+        return letters(shown).contains("almighty");
+    }
+
+    private static Map<Character, Character> lookalikes(String pairs) {
+        Map<Character, Character> m = new java.util.HashMap<>();
+        for (String p : pairs.trim().split("\\s+")) {
+            for (int i = 0; i + 1 < p.length(); i += 2) m.put(p.charAt(i), p.charAt(i + 1));
+        }
+        return Map.copyOf(m);
+    }
+
+    /** Lower case, accents dropped, invisible format characters (soft hyphen, zero-width) removed, look-alikes made Latin. */
+    static String fold(String s) {
+        String plain = Normalizer.normalize(s, Normalizer.Form.NFKD);
+        StringBuilder out = new StringBuilder(plain.length());
+        for (int i = 0; i < plain.length(); i++) {
+            char c = Character.toLowerCase(plain.charAt(i));
+            int type = Character.getType(c);
+            if (type == Character.FORMAT || type == Character.NON_SPACING_MARK || type == Character.ENCLOSING_MARK) continue;
+            Character latin = LOOKALIKE.get(c);
+            out.append(latin != null ? latin : c);
+        }
+        return out.toString();
     }
 
     /** Every escape undone, however many backslashes quote it (text inside SNBT inside JSON). */
@@ -92,15 +124,12 @@ public final class Forgery {
         return out;
     }
 
-    /** Only letters, folded: accents dropped, look-alikes made Latin, everything between them gone. */
-    private static String letters(String s) {
-        String plain = Normalizer.normalize(s, Normalizer.Form.NFKD);
-        StringBuilder out = new StringBuilder(plain.length());
-        for (int i = 0; i < plain.length(); i++) {
-            char c = Character.toLowerCase(plain.charAt(i));
-            Character latin = LOOKALIKE.get(c);
-            if (latin != null) out.append(latin);
-            else if (c < 128 && Character.isLetter(c)) out.append(c);
+    /** Only the Latin letters of folded text: everything between them gone. */
+    private static String letters(String folded) {
+        StringBuilder out = new StringBuilder(folded.length());
+        for (int i = 0; i < folded.length(); i++) {
+            char c = folded.charAt(i);
+            if (c >= 'a' && c <= 'z') out.append(c);
         }
         return out.toString();
     }

@@ -112,7 +112,28 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
     }
 
     /** One agent: its ceiling (the most it may ever do) and, if set, an explicit floor (what it may do unasked). */
-    public record AgentRules(Role ceiling, Role floor) {}
+    /**
+     * {@code [agents.<name>]}: {@code ceiling}, {@code floor}, and the MCP defaults for that agent's connections
+     * ({@code profile} full or compact, {@code images}); null: unset (the URL's {@code ?profile=}, {@code ?images=} or
+     * the defaults decide).
+     */
+    public record AgentRules(Role ceiling, Role floor, String profile, Boolean images) {
+        public AgentRules(Role ceiling, Role floor) {
+            this(ceiling, floor, null, null);
+        }
+    }
+
+    /** The agent's MCP profile from the policy, or null when unset. */
+    public String profile(String agent) {
+        AgentRules r = agents.get(agent);
+        return r == null ? null : r.profile();
+    }
+
+    /** Whether the agent's MCP connections get images, from the policy; null when unset. */
+    public Boolean images(String agent) {
+        AgentRules r = agents.get(agent);
+        return r == null ? null : r.images();
+    }
 
     /** Ceiling of an agent the file does not list: the default agent may do everything an owner may, others less. */
     public static Role defaultCeiling(String agent) {
@@ -215,7 +236,17 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 if (ceiling != null && floor != null && floor.compareTo(ceiling) > 0) {
                     errors.add("agents." + name + ".floor: above its ceiling " + ceiling.id());
                 }
-                agents.put(name, new AgentRules(ceiling, floor));
+                String profile = null;
+                if (t.get("profile") != null) {
+                    profile = String.valueOf((Object) t.get("profile")).strip().toLowerCase(Locale.ROOT);
+                    if (!profile.equals("full") && !profile.equals("compact")) errors.add("agents." + name + ".profile: full or compact, not " + (Object) t.get("profile"));
+                }
+                Boolean images = null;
+                if (t.get("images") != null) {
+                    if ((Object) t.get("images") instanceof Boolean b) images = b;
+                    else errors.add("agents." + name + ".images: true or false");
+                }
+                agents.put(name, new AgentRules(ceiling, floor, profile, images));
             }
         } else if (a != null) {
             errors.add("agents: tables such as [agents.gm]");
@@ -366,6 +397,8 @@ public record Policy(Preset preset, Set<UUID> owners, Identity.Mode identity, Ma
                 # do unasked (derived from the preset unless set, never above the ceiling).
                 [agents.gm]
                 ceiling = "owner"
+                # profile = "compact"   # MCP tools for this agent: full (14) or compact (6, small local models)
+                # images = false        # views as text only; a connection URL's ?profile= and ?images= still override
 
                 [safety]
                 # The only kinds of request that may reach an admin when the player lacks the right (command names such as

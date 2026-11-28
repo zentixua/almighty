@@ -66,7 +66,19 @@ public final class Mcp {
         }, System::currentTimeMillis);
         int port = bridge.address().getPort();
         SignInEndpoints endpoints = new SignInEndpoints(signIn, publicUrl, host, port, bridge.tls(), allowedOrigins, p -> notifyOwners(server, p));
-        bridge.context("/mcp", new McpEndpoint(bridge, Api.LONG, Almighty.version(), endpoints::challenge));
+        McpEndpoint endpoint = new McpEndpoint(bridge, Api.LONG, Almighty.version(), endpoints::challenge);
+        endpoint.defaults(new McpEndpoint.Defaults() {
+            public String profile(String agent) {
+                ua.zentix.almighty.GmServer gm = ua.zentix.almighty.GmServer.of(server);
+                return gm == null ? null : gm.policies().current().profile(agent);
+            }
+
+            public Boolean images(String agent) {
+                ua.zentix.almighty.GmServer gm = ua.zentix.almighty.GmServer.of(server);
+                return gm == null ? null : gm.policies().current().images(agent);
+            }
+        });
+        bridge.context("/mcp", endpoint);
         bridge.context("/.well-known/", endpoints);
         bridge.context("/oauth/", endpoints);
         String base = publicUrl != null && !publicUrl.isBlank() ? stripSlash(publicUrl.strip())

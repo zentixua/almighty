@@ -66,6 +66,19 @@ public final class McpEndpoint implements HttpHandler {
      * @param challenge what to add to a 401 (the {@code WWW-Authenticate} header pointing to the login, set by the
      *                  sign-in step); may return null
      */
+    /** The agent's own defaults from policy.toml ({@code [agents.<name>] profile, images}); the URL overrides them. */
+    public interface Defaults {
+        String profile(String agent);
+
+        Boolean images(String agent);
+    }
+
+    private volatile Defaults defaults;
+
+    public void defaults(Defaults d) {
+        this.defaults = d;
+    }
+
     public McpEndpoint(Bridge bridge, Set<String> longMethods, String version, Function<HttpExchange, String> challenge) {
         this.bridge = bridge;
         this.longMethods = Set.copyOf(longMethods);
@@ -95,7 +108,7 @@ public final class McpEndpoint implements HttpHandler {
             }
             McpProtocol.Settings settings;
             try {
-                settings = settings(exchange);
+                settings = settings(exchange, caller.name());
             } catch (IllegalArgumentException e) {
                 send(exchange, 400, McpProtocol.error(null, McpProtocol.INVALID_REQUEST, e.getMessage(), null));
                 return;
@@ -168,11 +181,14 @@ public final class McpEndpoint implements HttpHandler {
         return extra != null ? extra : "Bearer realm=\"almighty\"";
     }
 
-    private McpProtocol.Settings settings(HttpExchange exchange) {
+    private McpProtocol.Settings settings(HttpExchange exchange, String agent) {
         Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
-        String images = query.getOrDefault("images", "true");
+        Defaults d = defaults;
+        Boolean own = d == null ? null : d.images(agent);
+        String images = query.getOrDefault("images", own == null ? "true" : own.toString());
         if (!images.equals("true") && !images.equals("false")) throw new IllegalArgumentException("images is true or false");
-        return new McpProtocol.Settings(Profile.parse(query.get("profile")), images.equals("true"), "almighty", version);
+        String profile = query.containsKey("profile") ? query.get("profile") : d == null ? null : d.profile(agent);
+        return new McpProtocol.Settings(Profile.parse(profile), images.equals("true"), "almighty", version);
     }
 
     public static Map<String, String> query(String raw) {

@@ -44,7 +44,18 @@ class McpEndpointTest {
                         "{\"notes\":[{\"id\":\"almighty:game_master\",\"description\":\"How to run the server\"}]}")));
         bridge = new Bridge(new InetSocketAddress("127.0.0.1", 0), Agents.of(Map.of("gm", "secret-gm", "codex", "secret-codex")),
                 new Dispatch(methods), Set.of("events"), Set.of());
-        bridge.context("/mcp", new McpEndpoint(bridge, Set.of("events"), "test", null));
+        McpEndpoint endpoint = new McpEndpoint(bridge, Set.of("events"), "test", null);
+        // policy.toml [agents.codex] profile = "compact": its own default, the URL still overrides it.
+        endpoint.defaults(new McpEndpoint.Defaults() {
+            public String profile(String agent) {
+                return agent.equals("codex") ? "compact" : null;
+            }
+
+            public Boolean images(String agent) {
+                return agent.equals("codex") ? Boolean.FALSE : null;
+            }
+        });
+        bridge.context("/mcp", endpoint);
         bridge.start();
     }
 
@@ -116,6 +127,12 @@ class McpEndpointTest {
         assertEquals(14, full);
         assertEquals(6, compact);
         assertEquals(400, post("/mcp?profile=huge", "secret-gm", legacy, list).statusCode());
+        int codex = JsonParser.parseString(post("/mcp", "secret-codex", legacy, list).body()).getAsJsonObject()
+                .getAsJsonObject("result").getAsJsonArray("tools").size();
+        int codexFull = JsonParser.parseString(post("/mcp?profile=full", "secret-codex", legacy, list).body()).getAsJsonObject()
+                .getAsJsonObject("result").getAsJsonArray("tools").size();
+        assertEquals(6, codex, "the agent's policy profile");
+        assertEquals(14, codexFull, "the URL overrides it");
         HttpResponse<String> events = post("/mcp", "secret-gm", legacy,
                 "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"events\",\"arguments\":{\"after\":5}}}");
         assertTrue(events.body().contains("\\\"after\\\": 5"), events.body());

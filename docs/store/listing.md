@@ -157,7 +157,7 @@ Real game-client screenshots that would show what text cannot. Do not mock them 
 1. **Confirmation in chat:** a player asks the game master for something that affects others, and the chat shows
    the exact command with **[Allow]** / **[Deny]**.
 2. **Receipt with undo:** "[Almighty] Done for you: … [Undo]" after a build, then the build gone after the click.
-3. **Sign-in:** the browser page with the four-digit code next to the console line `/almighty approve 4821 … owner`.
+3. **Sign-in:** the browser page with the four-digit code next to the chat line `/almighty approve 4821 … owner` typed in game.
 4. **Bots in the tab list:** `[bot]` names among players, and a bot flying an Immersive Aircraft plane in
    third person.
 5. **A build in progress** seen from a player, with the agent's map view of the same place beside it.

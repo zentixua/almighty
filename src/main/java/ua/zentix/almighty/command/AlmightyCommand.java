@@ -304,16 +304,23 @@ public final class AlmightyCommand {
             source.sendFailure(Component.literal("Change " + id + " was not made for you"));
             return 0;
         }
-        try {
-            gm.revert(id, null, new com.google.gson.JsonObject(), 0);
-            gm.audit().owner(source.getTextName(), "undo", "change " + id);
-            source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("Undoing change " + id
-                    + " (positions changed since are left as they are)"), false);
-            return 1;
-        } catch (ua.zentix.almighty.bridge.RpcException e) {
-            source.sendFailure(Component.literal(e.getMessage()));
-            return 0;
-        }
+        // Told when the revert ends (stability audit M3): it can fail after it started (chunk budget, a missing
+        // dimension, a timeout), and "Undoing" alone would then be untrue.
+        // Read and grouped off the server thread (a large change would hold the tick), started on it.
+        java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            try {
+                return gm.revert(id, null, new com.google.gson.JsonObject(), 0);
+            } catch (ua.zentix.almighty.bridge.RpcException e) {
+                throw new java.util.concurrent.CompletionException(e);
+            }
+        }).thenCompose(f -> f).whenComplete((done, e) -> source.getServer().execute(() -> {
+            Throwable cause = e instanceof java.util.concurrent.CompletionException c && c.getCause() != null ? c.getCause() : e;
+            if (cause != null) source.sendFailure(Component.literal("Change " + id + " was not undone: " + cause.getMessage()));
+        }));
+        gm.audit().owner(source.getTextName(), "undo", "change " + id);
+        source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line("Undoing change " + id
+                + " (positions changed since are left as they are)"), false);
+        return 1;
     }
 
     /** A player by name: online, else the server's profile cache (players who joined before). */

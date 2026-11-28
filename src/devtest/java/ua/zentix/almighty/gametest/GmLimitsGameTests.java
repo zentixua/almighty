@@ -43,9 +43,13 @@ public final class GmLimitsGameTests {
 
     /** A refusal (at once, or a future already failed): never joins a call that would need another tick. */
     private static RpcException refused(GmServer gm, String method, JsonObject p) {
+        return refused(GM, gm, method, p);
+    }
+
+    private static RpcException refused(Caller caller, GmServer gm, String method, JsonObject p) {
         java.util.concurrent.CompletableFuture<?> f;
         try {
-            f = gm.dispatch().invoke(GM, method, p);
+            f = gm.dispatch().invoke(caller, method, p);
         } catch (RpcException e) {
             return e;
         }
@@ -181,6 +185,22 @@ public final class GmLimitsGameTests {
             check(over.status() == 429, "calls a minute: " + over.getMessage());
             // Another agent is not limited by the first one's calls.
             gm.dispatch().invoke(new Caller(Agents.of(Map.of("ratetest2", "s".repeat(32))).get("ratetest2"), "test"), "jobs", new JsonObject()).join();
+
+            // At most 16 prepared areas per agent (stability audit M5): a loop of area.prepare is refused, not piled up.
+            Caller areas = new Caller(Agents.of(Map.of("areatest", "a".repeat(32))).get("areatest"), "test");
+            gm.policies().set(Policy.parse("preset = \"private\"\n[agents.areatest]\nceiling = \"owner\""));
+            java.util.List<Long> held = new java.util.ArrayList<>();
+            BlockPos base = h.absolutePos(new BlockPos(1, 2, 1));
+            try {
+                for (int i = 0; i < 16; i++) {
+                    held.add(gm.dispatch().invoke(areas, "area.prepare", params("{\"from\":[%d,%d],\"to\":[%d,%d],\"wait\":0}",
+                            base.getX(), base.getZ(), base.getX(), base.getZ())).join().getAsJsonObject().get("id").getAsLong());
+                }
+                check(refused(areas, gm, "area.prepare", params("{\"from\":[%d,%d],\"to\":[%d,%d],\"wait\":0}",
+                        base.getX(), base.getZ(), base.getX(), base.getZ())).status() == 429, "a 17th prepared area");
+            } finally {
+                for (long id : held) gm.dispatch().invoke(areas, "area.release", params("{\"id\":%d}", id)).join();
+            }
 
             gm.policies().set(Policy.parse("preset = \"private\"\n[agents.gm]\nceiling = \"admin\"\n[quotas]\nbot_minutes = 0"));
             BlockPos at = h.absolutePos(new BlockPos(1, 2, 1));

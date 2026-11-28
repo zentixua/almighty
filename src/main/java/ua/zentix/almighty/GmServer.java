@@ -608,6 +608,9 @@ public final class GmServer {
      * owner (console); otherwise another agent's or requester's change needs {@code undo.any}, and reverting a revert
      * (a redo) needs the owner. Called on the bridge thread (reads the change file), jobs submitted on the server thread.
      */
+    /** Changes whose revert is running: a second revert of one is refused until the first ends. */
+    private final java.util.Set<Long> reverting = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     public CompletableFuture<JsonElement> revert(long id, ua.zentix.almighty.bridge.Caller caller, JsonObject params, int waitSeconds)
             throws RpcException {
         JsonObject meta = journal.describe(id);
@@ -634,66 +637,76 @@ public final class GmServer {
         }
         if (r.size() == 0) throw RpcException.conflict("Change " + id + " changed no blocks");
         Journal.Records rec = r;
-        return onMain(() -> {
-            // Pieces of consecutive writes, each within one dimension and 128×128 blocks: a change spread over the map is
-            // reverted piece by piece, each leasing only its own chunks; the pieces run one after another from the
-            // last writes back, so the whole change is undone in exact reverse write order (a block beside a piece edge,
-            // such as redstone wire, may rewrite itself when its neighbour changes).
-            List<List<Integer>> groups = new ArrayList<>();
-            List<Integer> piece = null;
-            int minX = 0, maxX = 0, minZ = 0, maxZ = 0, pieceDim = -1;
+
+        // Pieces of consecutive writes, each within one dimension and 128×128 blocks: a change spread over the map is
+        // reverted piece by piece, each leasing only its own chunks; the pieces run one after another from the
+        // last writes back, so the whole change is undone in exact reverse write order (a block beside a piece edge,
+        // such as redstone wire, may rewrite itself when its neighbour changes).
+        List<List<Integer>> groups = new ArrayList<>();
+        List<Integer> piece = null;
+        int minX = 0, maxX = 0, minZ = 0, maxZ = 0, pieceDim = -1;
+        for (int i = 0; i < rec.size(); i++) {
+            long pp = rec.pos()[i];
+            int x = net.minecraft.core.BlockPos.getX(pp), z = net.minecraft.core.BlockPos.getZ(pp);
+            boolean fits = piece != null && rec.dim()[i] == pieceDim && Math.max(maxX, x) - Math.min(minX, x) < 128
+                    && Math.max(maxZ, z) - Math.min(minZ, z) < 128;
+            if (!fits) {
+                piece = new ArrayList<>();
+                groups.add(piece);
+                pieceDim = rec.dim()[i];
+                minX = maxX = x;
+                minZ = maxZ = z;
+            }
+            piece.add(i);
+            minX = Math.min(minX, x);
+            maxX = Math.max(maxX, x);
+            minZ = Math.min(minZ, z);
+            maxZ = Math.max(maxZ, z);
+        }
+        if (groups.size() > REVERT_PIECES) {
+            // Writes alternating between far places (thousands of runs): bound the pieces by area instead, one per
+            // dimension and 128×128-block region, newest last write first. Exact order then holds within a region.
+            Map<String, List<Integer>> byRegion = new LinkedHashMap<>();
             for (int i = 0; i < rec.size(); i++) {
                 long pp = rec.pos()[i];
-                int x = net.minecraft.core.BlockPos.getX(pp), z = net.minecraft.core.BlockPos.getZ(pp);
-                boolean fits = piece != null && rec.dim()[i] == pieceDim && Math.max(maxX, x) - Math.min(minX, x) < 128
-                        && Math.max(maxZ, z) - Math.min(minZ, z) < 128;
-                if (!fits) {
-                    piece = new ArrayList<>();
-                    groups.add(piece);
-                    pieceDim = rec.dim()[i];
-                    minX = maxX = x;
-                    minZ = maxZ = z;
-                }
-                piece.add(i);
-                minX = Math.min(minX, x);
-                maxX = Math.max(maxX, x);
-                minZ = Math.min(minZ, z);
-                maxZ = Math.max(maxZ, z);
+                String k = rec.dim()[i] + "/" + (net.minecraft.core.BlockPos.getX(pp) >> 7) + "/" + (net.minecraft.core.BlockPos.getZ(pp) >> 7);
+                byRegion.computeIfAbsent(k, x -> new ArrayList<>()).add(i);
             }
-            if (groups.size() > REVERT_PIECES) {
-                // Writes alternating between far places (thousands of runs): bound the pieces by area instead, one per
-                // dimension and 128×128-block region, newest last write first. Exact order then holds within a region.
-                Map<String, List<Integer>> byRegion = new LinkedHashMap<>();
-                for (int i = 0; i < rec.size(); i++) {
-                    long pp = rec.pos()[i];
-                    String k = rec.dim()[i] + "/" + (net.minecraft.core.BlockPos.getX(pp) >> 7) + "/" + (net.minecraft.core.BlockPos.getZ(pp) >> 7);
-                    byRegion.computeIfAbsent(k, x -> new ArrayList<>()).add(i);
-                }
-                groups = new ArrayList<>(byRegion.values());
-                groups.sort(java.util.Comparator.comparingInt(g -> g.get(g.size() - 1)));
+            groups = new ArrayList<>(byRegion.values());
+            groups.sort(java.util.Comparator.comparingInt(g -> g.get(g.size() - 1)));
+        }
+        java.util.Collections.reverse(groups);
+        // The pieces' arrays too, here (a bridge thread, or a background one for /almighty undo), not on the server
+        // thread: a 2-million-position change is grouped without holding a tick (stability audit M2).
+        List<Object[]> pieces = new ArrayList<>();
+        for (List<Integer> idx : groups) {
+            int n = idx.size();
+            long[] pos = new long[n];
+            net.minecraft.world.level.block.state.BlockState[] before = new net.minecraft.world.level.block.state.BlockState[n], after =
+                    new net.minecraft.world.level.block.state.BlockState[n];
+            net.minecraft.nbt.CompoundTag[] tags = new net.minecraft.nbt.CompoundTag[n];
+            for (int k = 0; k < n; k++) {
+                int i = idx.get(k);
+                pos[k] = rec.pos()[i];
+                before[k] = rec.before()[i];
+                after[k] = rec.after()[i];
+                tags[k] = rec.tag()[i];
             }
-            java.util.Collections.reverse(groups);
+            pieces.add(new Object[] {rec.dims().get(rec.dim()[idx.get(0)]), pos, before, after, tags, n});
+        }
+        if (!reverting.add(id)) throw RpcException.conflict("Change " + id + " is being undone already");
+        CompletableFuture<JsonObject> result = onMain(() -> {
             List<Job> started = new ArrayList<>();
             try {
-                for (List<Integer> idx : groups) {
-                    int n = idx.size();
-                    long[] pos = new long[n];
-                    net.minecraft.world.level.block.state.BlockState[] before = new net.minecraft.world.level.block.state.BlockState[n], after =
-                            new net.minecraft.world.level.block.state.BlockState[n];
-                    net.minecraft.nbt.CompoundTag[] tags = new net.minecraft.nbt.CompoundTag[n];
-                    for (int k = 0; k < n; k++) {
-                        int i = idx.get(k);
-                        pos[k] = rec.pos()[i];
-                        before[k] = rec.before()[i];
-                        after[k] = rec.after()[i];
-                        tags[k] = rec.tag()[i];
-                    }
-                    String dim = rec.dims().get(rec.dim()[idx.get(0)]);
+                for (Object[] part : pieces) {
+                    String dim = (String) part[0];
                     var key = net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION,
                             net.minecraft.resources.ResourceLocation.parse(dim));
                     net.minecraft.server.level.ServerLevel level = server.getLevel(key);
                     if (level == null) throw RpcException.notFound("Change " + id + " touched dimension " + dim + ", which is not loaded");
-                    ua.zentix.almighty.building.BuildJob job = ua.zentix.almighty.building.BuildJob.revert(level, areas, id, pos, before, after, tags, n, 2400);
+                    ua.zentix.almighty.building.BuildJob job = ua.zentix.almighty.building.BuildJob.revert(level, areas, id, (long[]) part[1],
+                            (net.minecraft.world.level.block.state.BlockState[]) part[2], (net.minecraft.world.level.block.state.BlockState[]) part[3],
+                            (net.minecraft.nbt.CompoundTag[]) part[4], (int) part[5], 2400);
                     if (!started.isEmpty()) job.after(started.get(started.size() - 1));
                     started.add(jobs().submit(job));
                 }
@@ -707,6 +720,7 @@ public final class GmServer {
             // Marked undone only when every piece has finished; a failed piece leaves the change revertible again.
             CompletableFuture.allOf(started.stream().map(Job::done).toArray(CompletableFuture[]::new)).thenRun(() -> server.execute(() -> {
                 if (started.stream().allMatch(j -> j.state() == Job.State.DONE)) journal.undone(id, by);
+                reverting.remove(id);
             }));
             JsonArray jobs = new JsonArray();
             for (Job j : started) jobs.add(j.id());
@@ -716,7 +730,12 @@ public final class GmServer {
             out.addProperty("positions", rec.size());
             out.addProperty("note", "positions changed since are left and counted as conflicts in each job; entities and inventories are not undone");
             return out;
-        }).thenCompose(o -> {
+        });
+        // A revert that never started its pieces (refused) is no longer running.
+        result.whenComplete((o, e) -> {
+            if (e != null) reverting.remove(id);
+        });
+        return result.thenCompose(o -> {
             JsonArray jobs = o.getAsJsonArray("jobs");
             if (jobs.isEmpty() || waitSeconds == 0) return CompletableFuture.completedFuture((JsonElement) o);
             return onMain(() -> jobs().get(jobs.get(0).getAsLong())).thenCompose(j -> await(j, waitSeconds)).thenApply(d -> {
@@ -827,7 +846,10 @@ public final class GmServer {
      * its current description (the job continues and remains visible in {@code jobs}).
      */
     public CompletableFuture<JsonElement> submit(MainCall<? extends Job> factory, int waitSeconds) {
-        return onMain(() -> jobs.submit(factory.run())).thenCompose(job -> await(job, waitSeconds));
+        return onMain(() -> {
+            jobs.admit();
+            return jobs.submit(factory.run());
+        }).thenCompose(job -> await(job, waitSeconds));
     }
 
     /** Wait up to {@code waitSeconds} for job completion. */

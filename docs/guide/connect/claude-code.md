@@ -15,8 +15,8 @@ claude mcp add --transport http --scope user almighty http://127.0.0.1:25650/mcp
 ```
 
 **Sign in:** in a session, `/mcp`, choose `almighty`, Authenticate (or `claude mcp login almighty` in a terminal).
-The browser shows a code; type `/almighty approve <code> claude-code owner` on the server if it is your own app
-([who may approve](../getting-started.md#3-approve-the-sign-in-with-its-code)). Claude Code keeps and refreshes the login
+The browser shows a code; type `/almighty approve <code>` on the server, as the page says ([who may approve, and what
+the app gets](../getting-started.md#3-approve-the-sign-in-with-its-code)). Claude Code keeps and refreshes the login
 itself. It connects as agent `claude-code` (or the name you gave).
 
 Keep the name `almighty`: the optional chat channel and hooks match tools named `mcp__almighty__*`.

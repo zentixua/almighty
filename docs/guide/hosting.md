@@ -56,8 +56,9 @@ fix. On a network only the server machine reaches (a container's private address
 
 The sign-in code is approved where you can type on the server: in game, or in the server console (the panel's console
 or the server's terminal over SSH; RCON counts as the console). On a fresh server the first level-4 operator who
-approves in game becomes the owner. From the console, name yourself as the owner while approving your own app:
-`/almighty approve <code> <name> owner <your player name>`. Once the server has an owner, only the console and owners
+approves in game becomes the owner, and that first app becomes the owner's own. From the console, the same
+`/almighty approve <code>` makes the first app the owner's own; add yourself with
+`/almighty owner add <your player name>`. Once the server has an owner, only the console and owners
 who are also level-4 operators approve sign-ins ([Getting
 started](getting-started.md#3-approve-the-sign-in-with-its-code)).
 

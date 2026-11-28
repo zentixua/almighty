@@ -27,7 +27,10 @@ server verified players, on a public server everyone ([Who an agent hears](permi
 The server, not the agent, decides what is addressed. Each player may address the game master 20 times an hour
 (`feed.gm_messages`); more get "Too many messages to the game master; try again later." from the server. If the agent
 has not read a `/gm` message or a line with its name within 30 seconds (`feed.away_seconds`), or made no call for a
-minute, the server tells the player the game master is away; the message is kept. While you pause it
+minute, the server tells the player the game master is away; the message is kept. If that agent stays away for over a
+minute and players are now routed to another app (for example your own app while `gm` is stopped), that app gets the
+kept messages, for up to 10 minutes, unless a message named its agent with `/gm @<agent>` or the player may not
+reach the new app. While you pause it
 (`/almighty pause`), the server answers "The game master is paused by the server owner; your message is kept." These
 lines follow the player's game language: Russian for `ru_ru`, English otherwise.
 

@@ -168,18 +168,19 @@ public final class GmLimitsGameTests {
         ServerPlayer alex = player(h, "limits-sam", UUID.randomUUID());
         Caller rate = new Caller(Agents.of(Map.of("ratetest", "r".repeat(32))).get("ratetest"), "test");
         try {
+            // jobs, not status: the audit test reads recent refusals for status, and GameTest batches share the audit.
             gm.policies().set(Policy.parse("preset = \"private\"\n[agents.ratetest]\nceiling = \"owner\"\n[quotas]\ncalls_per_minute = 3"));
-            for (int i = 0; i < 3; i++) gm.dispatch().invoke(rate, "status", new JsonObject()).join();
+            for (int i = 0; i < 3; i++) gm.dispatch().invoke(rate, "jobs", new JsonObject()).join();
             RpcException over;
             try {
-                gm.dispatch().invoke(rate, "status", new JsonObject());
+                gm.dispatch().invoke(rate, "jobs", new JsonObject());
                 throw new GameTestAssertException("a fourth call in a minute was allowed");
             } catch (RpcException e) {
                 over = e;
             }
             check(over.status() == 429, "calls a minute: " + over.getMessage());
             // Another agent is not limited by the first one's calls.
-            gm.dispatch().invoke(new Caller(Agents.of(Map.of("ratetest2", "s".repeat(32))).get("ratetest2"), "test"), "status", new JsonObject()).join();
+            gm.dispatch().invoke(new Caller(Agents.of(Map.of("ratetest2", "s".repeat(32))).get("ratetest2"), "test"), "jobs", new JsonObject()).join();
 
             gm.policies().set(Policy.parse("preset = \"private\"\n[agents.gm]\nceiling = \"admin\"\n[quotas]\nbot_minutes = 0"));
             BlockPos at = h.absolutePos(new BlockPos(1, 2, 1));

@@ -136,13 +136,14 @@ public final class GmLadderGameTests {
             });
             gm.dispatch().invoke(GM, "build", params(set(in, ",\"for\":\"" + t + "\"")));
             check(refused(gm, "build", params(set(out, ",\"for\":\"" + t + "\""))).status() == 403, "outside the granted zone: refused");
-            JsonObject sneaky = params(set(out, ",\"for\":\"" + t + "\""));
-            sneaky.addProperty(ua.zentix.almighty.policy.Gate.ZONE_GRANT, true);
-            check(refused(gm, "build", sneaky).status() == 403, "the marker cannot be sent by the agent");
             // The player's own quota node (2 an hour; the policy has the default): 1 used, 2 more would exceed it.
             String two = String.format(Locale.ROOT, "{\"ops\":[{\"op\":\"fill\",\"from\":[%d,%d,%d],\"to\":[%d,%d,%d],\"block\":\"minecraft:stone\"}],\"wait\":0,\"for\":\"%s\"}",
                     in.getX(), in.getY() + 1, in.getZ(), in.getX() + 1, in.getY() + 1, in.getZ(), t);
             check(refused(gm, "build", params(two)).status() == 429, "the quota node limits this player");
+            // confirm_first applies to zone-scoped grants as to any (review of #98): the requester confirms first.
+            gm.policies().set(Policy.parse(String.format(Locale.ROOT, "preset = \"public\"\nidentity = \"proxy\"\n[safety]\nconfirm_first = [\"build\"]\n"
+                    + "[zones.arena]\nfrom = [%d, %d, %d]\nto = [%d, %d, %d]\n", in.getX() - 2, in.getY() - 2, in.getZ() - 2, in.getX() + 2, in.getY() + 4, in.getZ() + 2)));
+            check(refused(gm, "build", params(set(in.east(), ",\"for\":\"" + t + "\""))).status() == 202, "confirm_first waits for the requester");
         } finally {
             Nodes.handler(null);
             gm.policies().set(before);

@@ -24,6 +24,8 @@ class AllowFromTest {
         assertFalse(AddressRange.parse("192.168.1.0/20").contains("192.168.16.0"));
         assertThrows(IllegalArgumentException.class, () -> AddressRange.parse("example.org"), "names are never looked up");
         assertThrows(IllegalArgumentException.class, () -> AddressRange.parse("10.0.0.0/33"));
+        assertThrows(IllegalArgumentException.class, () -> AddressRange.parse("cafe.be"), "hex-letter names are names too");
+        assertThrows(IllegalArgumentException.class, () -> AddressRange.parse("10.1"), "short IPv4 forms");
     }
 
     @Test

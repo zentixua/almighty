@@ -121,6 +121,17 @@ public final class Gate implements Dispatch.Check {
         };
     }
 
+    /** Allowed, but irreversible for others (or listed in confirm_first): the requester confirms the exact call. */
+    private void requesterConfirms(Caller caller, String method, JsonObject params, Rights r, Node node, boolean decided) throws RpcException {
+        if (!decided && confirmations != null && r.ticket != null && Nodes.role(r.ticket.player()) != Role.OWNER
+                && Confirmations.needsRequester(method, params, r.ticket.name(), r.ticket.player(), policies.current().safety().confirmFirst())) {
+            Confirmations.Pending p = confirmations.ask(Confirmations.Kind.REQUESTER, caller, method, params,
+                    r.ticket.player(), node, r.ticket.player(), r.ticket.name());
+            prompter.prompt(p);
+            throw Confirmations.waiting(p, r.ticket.name());
+        }
+    }
+
     /** A private reply to the requester alone (chat or actionbar): the only {@code say} below {@code speak.all}. */
     static boolean replyToRequester(JsonObject p, Tickets.Ticket t) throws RpcException {
         if (t == null || !has(p, "to")) return false;
@@ -208,14 +219,7 @@ public final class Gate implements Dispatch.Check {
             }
         }
         if (r.holds(node, holder)) {
-            // Allowed, but irreversible for others (or listed in confirm_first): the requester confirms the exact call.
-            if (!decided && confirmations != null && r.ticket != null && Nodes.role(r.ticket.player()) != Role.OWNER
-                    && Confirmations.needsRequester(method, params, r.ticket.name(), r.ticket.player(), policies.current().safety().confirmFirst())) {
-                Confirmations.Pending p = confirmations.ask(Confirmations.Kind.REQUESTER, caller, method, params,
-                        r.ticket.player(), node, r.ticket.player(), r.ticket.name());
-                prompter.prompt(p);
-                throw Confirmations.waiting(p, r.ticket.name());
-            }
+            requesterConfirms(caller, method, params, r, node, decided);
             return;
         }
         // A request beyond the player's rights, where a permission plugin grants the node in some zone (the dynamic
@@ -223,6 +227,8 @@ public final class Gate implements Dispatch.Check {
         if (r.ticket != null && r.ceiling.atLeast(node.defaultRole()) && ZONED.contains(method)) {
             for (Policy.Zone z : policies.current().zones().values()) {
                 if (Nodes.holdsIn(r.ticket.player(), node, z.name())) {
+                    // The same confirmations as a grant everywhere (confirm_first; review of #98).
+                    requesterConfirms(caller, method, params, r, node, decided);
                     params.addProperty(ZONE_GRANT, true);
                     return;
                 }

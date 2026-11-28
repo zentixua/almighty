@@ -13,7 +13,8 @@ public record AddressRange(String text, byte[] network, int bits) {
         String t = text.strip();
         int slash = t.indexOf('/');
         String host = slash < 0 ? t : t.substring(0, slash);
-        if (!host.matches("[0-9a-fA-F:.]+") || !(host.contains(".") || host.contains(":"))) {
+        // Literals only, so nothing is ever resolved: a dotted quad, or IPv6 (which always holds a colon).
+        if (!(host.matches("\\d{1,3}(\\.\\d{1,3}){3}") || host.contains(":") && host.matches("[0-9a-fA-F:.]+"))) {
             throw new IllegalArgumentException("not an IP address or range: " + text + " (names are not looked up)");
         }
         byte[] addr;

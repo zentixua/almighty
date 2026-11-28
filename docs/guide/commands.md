@@ -9,10 +9,11 @@ player's game language.
 
 | Command | What it does |
 |---|---|
-| `/gm <text>` | A private message to the game master. Other players and operators do not see it. |
+| `/gm <text>` | A private message to the game master. Other players and operators do not see it; you see it echoed as "To Almighty: <text>" in your game language. |
 | `/gm @<agent> <text>` | The same, to one agent when several are connected. |
 | `/almighty whoami` | Your UUID, whether the server counts it as verified, and your role. |
 | `/almighty confirm <id>`, `/almighty deny <id>` | Answer a confirmation the server asked you for. Clicking `[Allow]` or `[Deny]` in chat types these for you; only the player asked can answer. |
+| `/almighty show <id>` | The exact call behind a question you were asked (the same as `[Details]`). Admins who may decide it and the console can use it too. |
 | `/almighty undo <change>` | Undo a change the game master made at your request. Clicking `[Undo]` in the receipt runs it. |
 
 Players can also address the game master in public chat by its name (`feed.names`); see

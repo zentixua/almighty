@@ -99,6 +99,52 @@ public final class GmConfirmGameTests {
         h.succeed();
     }
 
+    /**
+     * Owner setup in one step (lead, "setup must be simple"): while policy.toml lists no owner, the verified level-4
+     * operator who approves a sign-in becomes the first owner; nobody below level 4, nobody unverified, and nobody once
+     * an owner exists.
+     */
+    @GameTest(template = "floor", batch = "gm_first_owner")
+    public static void aFirstOwnerInOneStep(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        java.nio.file.Path file = gm.policies().file();
+        String saved = file != null && java.nio.file.Files.exists(file) ? java.nio.file.Files.readString(file) : null;
+        ServerPlayer op = player(h, "first_owner", UUID.randomUUID()), other = player(h, "second_op", UUID.randomUUID());
+        try {
+            if (file == null) throw new GameTestAssertException("no policy file in GameTest");
+            java.nio.file.Files.writeString(file, "preset = \"friends\"\nidentity = \"proxy\"\n");
+            check(gm.policies().reload() == null, "policy loads");
+            op(h, op, 3);
+            check(!ua.zentix.almighty.mcp.signin.SignInCommand.ownerOrFirst(op.createCommandSourceStack()), "a level-3 operator becomes owner");
+            op(h, op, 4);
+            op(h, other, 4);
+            // The file, not only the loaded policy: an owner written by hand but not reloaded, or a broken file, stays.
+            java.nio.file.Files.writeString(file, "preset = \"friends\"\nidentity = \"proxy\"\nowners = [\"" + UUID.randomUUID() + "\"]\n");
+            check(ua.zentix.almighty.mcp.signin.SignInCommand.claimFirstOwner(op.createCommandSourceStack()) != null, "an unreloaded owner was overwritten");
+            java.nio.file.Files.writeString(file, "owners = [\"Artem\"]\n");
+            check(ua.zentix.almighty.mcp.signin.SignInCommand.claimFirstOwner(op.createCommandSourceStack()) != null, "a broken file was overwritten");
+            java.nio.file.Files.writeString(file, "preset = \"friends\"\nidentity = \"proxy\"\n");
+            check(ua.zentix.almighty.mcp.signin.SignInCommand.ownerOrFirst(op.createCommandSourceStack()), "the first level-4 operator may approve");
+            check(ua.zentix.almighty.mcp.signin.SignInCommand.claimFirstOwner(op.createCommandSourceStack()) == null, "became the first owner");
+            check(gm.policies().current().owners().contains(op.getUUID()), "listed in policy.toml: " + gm.policies().current().owners());
+            check(java.nio.file.Files.readString(file).contains(op.getUUID().toString()), "written to the file");
+            // Now there is an owner: another level-4 operator is not one, and cannot become one this way.
+            check(!ua.zentix.almighty.mcp.signin.SignInCommand.ownerOrFirst(other.createCommandSourceStack()), "a second operator became owner");
+            check(ua.zentix.almighty.mcp.signin.SignInCommand.claimFirstOwner(other.createCommandSourceStack()) != null, "a second first owner");
+            check(ua.zentix.almighty.mcp.signin.SignInCommand.ownerOrFirst(op.createCommandSourceStack()), "the owner still approves");
+        } finally {
+            deop(h, op);
+            deop(h, other);
+            if (saved != null) java.nio.file.Files.writeString(file, saved);
+            gm.policies().reload();
+            gm.policies().set(before);
+            h.getLevel().getServer().getPlayerList().remove(op);
+            h.getLevel().getServer().getPlayerList().remove(other);
+        }
+        h.succeed();
+    }
+
     /** Scenario P10: a teleport to a friend waits for the friend's yes, not the asker's. */
     @GameTest(template = "floor", batch = "gm_confirm_tp")
     public static void aTeleportToAFriendAsksTheFriend(GameTestHelper h) throws Exception {
@@ -165,7 +211,8 @@ public final class GmConfirmGameTests {
             }
             server.getCommands().performPrefixedCommand(alex.createCommandSourceStack(), "almighty confirm " + p.nonce());
             // A level-4 operator who is not an owner lists waiting sign-ins but approves none: approving mints an agent,
-            // as `agent add` does (rights audit m8).
+            // as `agent add` does (rights audit m8). (With no owners at all, the first one may: aFirstOwnerInOneStep.)
+            gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\nowners = [\"" + UUID.randomUUID() + "\"]"));
             op(h, alex, 4);
             check(runs(dispatcher, "almighty approve", alex), "a level-4 operator cannot list waiting sign-ins");
             check(!runs(dispatcher, "almighty approve 1234 app", alex), "a level-4 operator who is not an owner can approve a sign-in");

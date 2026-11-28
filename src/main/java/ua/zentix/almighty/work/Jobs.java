@@ -40,32 +40,75 @@ public final class Jobs {
 
     public <J extends Job> J submit(J job) {
         ua.zentix.almighty.bridge.Caller by = ua.zentix.almighty.bridge.Dispatch.current();
-        job.assign(nextId++, by.name(), by.requester());
+        return submit(job, by.name(), by.requester());
+    }
+
+    <J extends Job> J submit(J job, String agent, java.util.UUID requester) {
+        job.assign(nextId++, agent, requester);
         ua.zentix.almighty.audit.Journal.Change c = ua.zentix.almighty.audit.Journal.current();
         if (c != null && job.effects()) job.change = c.retain();
         active.add(job);
         return job;
     }
 
-    /** Work for no more than {@code nanos} this tick. */
+    /** Which agent's jobs go first this tick when several agents have work (rotates every tick). */
+    private long turn;
+
+    /**
+     * Work for no more than {@code nanos} this tick. One agent: its jobs in submission order, the first at least one
+     * unit. Several agents (plan S6, F2): each gets an equal share and at least one unit for its first job, the first
+     * turn rotating every tick, so one agent's huge build never starves another's; time a share leaves unused goes to
+     * the jobs in order.
+     */
     public void tick(long nanos) {
         if (active.isEmpty()) return;
-        Budget budget = new Budget(clock, nanos);
-        boolean first = true;
+        List<Job> runnable = new ArrayList<>();
+        java.util.LinkedHashSet<String> agents = new java.util.LinkedHashSet<>();
         for (Job job : active) {
             // A paused agent's builds and undos are frozen in place (resume continues them, cancel ends them); views
             // and area preparation go on, so the paused agent can still look.
             if (job.effects() && paused.test(job.agent())) continue;
-            if (first || budget.left()) ua.zentix.almighty.audit.Journal.with(job.change, () -> {
-                job.run(budget);
-                return null;
-            });
-            first = false;
+            runnable.add(job);
+            agents.add(job.agent());
+        }
+        if (agents.size() <= 1) {
+            Budget budget = new Budget(clock, nanos);
+            boolean first = true;
+            for (Job job : runnable) {
+                if (first || budget.left()) run(job, budget);
+                first = false;
+            }
+        } else {
+            Budget all = new Budget(clock, nanos);
+            List<String> order = new ArrayList<>(agents);
+            java.util.Collections.rotate(order, -(int) (turn++ % order.size()));
+            long share = nanos / order.size();
+            for (String agent : order) {
+                Budget mine = new Budget(clock, share);
+                boolean first = true;
+                for (Job job : runnable) {
+                    if (!job.agent().equals(agent)) continue;
+                    if (first || mine.left()) run(job, mine);
+                    first = false;
+                }
+            }
+            for (Job job : runnable) {
+                if (!all.left()) break;
+                // Only jobs already running: a waiting job counts its wait per step, so a second step would halve its timeout.
+                if (job.state() == Job.State.RUNNING) run(job, all);
+            }
         }
         active.removeIf(job -> {
             if (!job.state().finished()) return false;
             ended(job);
             return true;
+        });
+    }
+
+    private static void run(Job job, Budget budget) {
+        ua.zentix.almighty.audit.Journal.with(job.change, () -> {
+            job.run(budget);
+            return null;
         });
     }
 

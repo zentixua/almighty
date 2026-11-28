@@ -15,6 +15,8 @@ import ua.zentix.almighty.GmServer;
 import ua.zentix.almighty.bridge.Agents;
 import ua.zentix.almighty.bridge.Caller;
 import ua.zentix.almighty.bridge.RpcException;
+import ua.zentix.almighty.policy.Node;
+import ua.zentix.almighty.policy.Nodes;
 import ua.zentix.almighty.policy.Policy;
 
 import java.util.Map;
@@ -149,6 +151,59 @@ public final class GmLimitsGameTests {
             gm.dispatch().invoke(GM, "give", params("{\"item\":\"minecraft:dirt\",\"count\":61,\"for\":\"%s\"}", t)).join();
             check(refused(gm, "give", params("{\"item\":\"minecraft:dirt\",\"for\":\"%s\"}", t)).status() == 429, "item quota");
         } finally {
+            gm.policies().set(before);
+            h.getLevel().getServer().getPlayerList().remove(alex);
+        }
+        h.succeed();
+    }
+
+    /**
+     * Per-agent limits (plan 4.11, S6, F2, F12): calls a minute, bot minutes for bots spawned below owner, and a
+     * script run below owner capped at 50 ms whatever it asks.
+     */
+    @GameTest(template = "floor", batch = "gm_limits_agent", timeoutTicks = 200)
+    public static void agentLimitsHoldBelowOwner(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        ServerPlayer alex = player(h, "limits-sam", UUID.randomUUID());
+        Caller rate = new Caller(Agents.of(Map.of("ratetest", "r".repeat(32))).get("ratetest"), "test");
+        try {
+            // jobs, not status: the audit test reads recent refusals for status, and GameTest batches share the audit.
+            gm.policies().set(Policy.parse("preset = \"private\"\n[agents.ratetest]\nceiling = \"owner\"\n[quotas]\ncalls_per_minute = 3"));
+            for (int i = 0; i < 3; i++) gm.dispatch().invoke(rate, "jobs", new JsonObject()).join();
+            RpcException over;
+            try {
+                gm.dispatch().invoke(rate, "jobs", new JsonObject());
+                throw new GameTestAssertException("a fourth call in a minute was allowed");
+            } catch (RpcException e) {
+                over = e;
+            }
+            check(over.status() == 429, "calls a minute: " + over.getMessage());
+            // Another agent is not limited by the first one's calls.
+            gm.dispatch().invoke(new Caller(Agents.of(Map.of("ratetest2", "s".repeat(32))).get("ratetest2"), "test"), "jobs", new JsonObject()).join();
+
+            gm.policies().set(Policy.parse("preset = \"private\"\n[agents.gm]\nceiling = \"admin\"\n[quotas]\nbot_minutes = 0"));
+            BlockPos at = h.absolutePos(new BlockPos(1, 2, 1));
+            check(refused(gm, "bot.spawn", params("{\"name\":\"MinutesBot\",\"pos\":[%d,%d,%d]}", at.getX(), at.getY(), at.getZ()))
+                    .status() == 429, "bot minutes used up");
+            check(gm.bots().find("MinutesBot") == null, "no bot spawned");
+
+            // A player granted engine (the LuckPerms path) asks for a script: it runs below owner, so 50 ms at most.
+            gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\n[agents.gm]\nceiling = \"owner\""));
+            Nodes.handler((player, node) -> player.equals(alex.getUUID()) && node == Node.ENGINE ? Boolean.TRUE : null);
+            long after = gm.feed().read(0, 4096, 0).get("next").getAsLong();
+            h.getLevel().getServer().getCommands().performPrefixedCommand(alex.createCommandSourceStack(), "gm count forever please");
+            String t = null;
+            for (JsonElement e : gm.feed().read(after, 100, 0).getAsJsonArray("events")) {
+                if (e.getAsJsonObject().get("type").getAsString().equals("gm")) t = e.getAsJsonObject().get("ticket").getAsString();
+            }
+            long start = System.nanoTime();
+            JsonObject out = gm.dispatch().invoke(GM, "script", params("{\"code\":\"long n = 0; while (true) { n++ }\",\"timeout_ms\":5000,\"for\":\"%s\"}", t))
+                    .join().getAsJsonObject();
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            check(!out.get("ok").getAsBoolean() && out.get("timeout_ms").getAsInt() == 50 && ms < 2000, "script capped: " + out + " in " + ms + " ms");
+        } finally {
+            Nodes.handler(null);
             gm.policies().set(before);
             h.getLevel().getServer().getPlayerList().remove(alex);
         }

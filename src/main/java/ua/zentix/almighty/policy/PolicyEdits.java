@@ -67,7 +67,7 @@ public final class PolicyEdits {
         if (!old.safety().askAdmin().containsAll(neu.safety().askAdmin())) out.add("more kinds may reach admins (ask_admin)");
         if (!neu.safety().confirmFirst().containsAll(old.safety().confirmFirst())) out.add("fewer kinds need confirmation (confirm_first)");
         if (old.safety().privacyNotice() && !neu.safety().privacyNotice()) out.add("joining players no longer told an AI reads their messages (privacy_notice)");
-        if (neu.limits().buildBlocks() > old.limits().buildBlocks() || neu.limits().giveItems() > old.limits().giveItems()) out.add("larger quotas");
+        if (neu.limits().wider(old.limits())) out.add("larger quotas");
         return out.isEmpty() ? null : String.join("; ", out);
     }
 

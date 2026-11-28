@@ -58,8 +58,14 @@ class LadderTest {
         Policy.Zone bots = Policy.parse("[zones.b]\nfrom = [0,0,0]\nto = [1,1,1]\ndeny = [\"bots\"]").zones().get("b");
         assertTrue(bots.denies(Node.BOTS) && bots.denies(Node.BOTS_ADMIN) && !bots.denies(Node.BUILD), "bots covers bots.admin");
         assertEquals(Policy.Limits.DEFAULT.giveItems(), p.limits().giveItems());
+        Policy.Limits agent = Policy.parse("[quotas]\ncalls_per_minute = 30\nbot_minutes = 0").limits();
+        assertEquals(30, agent.callsPerMinute());
+        assertEquals(0, agent.botMinutes());
+        assertEquals(Policy.Limits.DEFAULT.callsPerMinute(), p.limits().callsPerMinute());
+        assertTrue(Policy.parse("[quotas]\ncalls_per_minute = 0").limits().wider(Policy.Limits.DEFAULT), "0 is no limit: wider");
+        assertTrue(!agent.wider(Policy.Limits.DEFAULT));
         for (String bad : new String[]{"[zones.x]\nfrom = [1, 2]\nto = [1, 2, 3]", "[zones.x]\nfrom = [0,0,0]\nto = [1,1,1]\ndeny = [\"fly\"]",
-                "[quotas]\nbuild_blocks = -1", "[quotas]\nbots = 3",
+                "[quotas]\nbuild_blocks = -1", "[quotas]\nbots = 3", "[quotas]\nbot_minutes = -5",
                 // Nodes no zone check enforces are refused, not silently ignored; a dimension must be an id.
                 "[zones.x]\nfrom = [0,0,0]\nto = [1,1,1]\ndeny = [\"give.self\"]", "[zones.x]\nfrom = [0,0,0]\nto = [1,1,1]\nagent_may = [\"command\"]",
                 "[zones.x]\ndim = \"Over World\"\nfrom = [0,0,0]\nto = [1,1,1]"}) {

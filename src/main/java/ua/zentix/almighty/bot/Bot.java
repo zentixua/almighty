@@ -88,6 +88,9 @@ public final class Bot {
     private long programIds;
     private final ArrayDeque<JsonObject> inbox = new ArrayDeque<>();
     private volatile String controller = "internal";
+    /** The agent charged for this bot's online minutes (spawned below owner), or null; server thread. */
+    String meter;
+    long meteredTicks;
     private long inboxSeq;
     private final ArrayDeque<Heard> heard = new ArrayDeque<>();
     private int chatAcks, deadTicks;

@@ -20,7 +20,7 @@ public final class Summary {
 
     /** Lang keys whose text is the server's own voice in a prompt or receipt; a summary may not spell them. */
     private static final List<String> RESERVED_KEYS = List.of("almighty.prompt.what_runs", "almighty.prompt.its_words",
-            "almighty.prompt.irreversible", "almighty.prompt.asked_by", "almighty.prompt.for_admin", "almighty.prompt.for_admin_agent");
+            "almighty.prompt.irreversible", "almighty.prompt.undoable", "almighty.prompt.asked_by", "almighty.prompt.for_admin", "almighty.prompt.for_admin_agent");
 
     private Summary() {}
 

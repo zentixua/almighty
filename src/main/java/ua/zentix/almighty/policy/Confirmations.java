@@ -69,6 +69,8 @@ public final class Confirmations {
         public final String id;
         final String nonce;
         public final Kind kind;
+        /** What the question says of undoing it ({@link #undo}). */
+        public final Undo undo;
         public final Caller caller;
         public final String method;
         public final JsonObject params;
@@ -101,6 +103,7 @@ public final class Confirmations {
             this.id = hex(6);
             this.nonce = hex(12);
             this.kind = kind;
+            this.undo = Confirmations.undo(method, params, requesterName, requester);
             this.caller = caller;
             this.method = method;
             this.params = params.deepCopy();
@@ -232,6 +235,49 @@ public final class Confirmations {
             if ((selfOnly || executes) && !onlySelf(c, requesterName, requester)) return true;
         }
         return false;
+    }
+
+    /** What a question may truthfully say of undoing a call afterwards. */
+    public enum Undo {
+        /** Only block writes the change journal records and the requester's [Undo] reverts: "You can undo it." */
+        REVERTIBLE,
+        /** Asked because it is irreversible for others (kills, items, effects …), which no undo covers: "It cannot be undone." */
+        PERMANENT,
+        /** Neither claim is true: asked only through {@code confirm_first}, or a teleport (nothing is lost, nothing reverts it). */
+        UNSTATED
+    }
+
+    /** Commands whose every effect is block writes the change journal records and reverts ({@code audit/Journal}). */
+    static final Set<String> JOURNALED = Set.of("setblock", "fill", "clone");
+
+    /**
+     * What undo covers for a call: {@link Undo#REVERTIBLE} for {@code build} and for commands that only set, fill or
+     * clone blocks (under {@code execute} without {@code store}, which writes scores or data the journal does not
+     * keep); {@link Undo#PERMANENT} when the call is asked for being irreversible for others (as
+     * {@link #needsRequester} without {@code confirm_first}) and is not a teleport; else {@link Undo#UNSTATED}.
+     */
+    public static Undo undo(String method, JsonObject p, String requesterName, UUID requester) {
+        if (method.equals("build")) return Undo.REVERTIBLE;
+        if (!method.equals("command") && !method.equals("function")) return Undo.UNSTATED;
+        List<String> commands = commands(method, p);
+        if (commands.isEmpty()) return Undo.UNSTATED;
+        boolean journaled = true, teleports = true;
+        for (String c : commands) {
+            List<String> segs = segments(c);
+            if (root(segs.get(0)).equals("execute") && segs.get(0).matches("(?is).*\\bstore\\b.*")) journaled = false;
+            boolean acts = false;
+            for (String seg : segs) {
+                String root = root(seg);
+                if (root.equals("execute") || root.equals("return")) continue;
+                acts = true;
+                if (!JOURNALED.contains(root)) journaled = false;
+                if (!root.equals("tp") && !root.equals("teleport")) teleports = false;
+            }
+            if (!acts) journaled = teleports = false;
+        }
+        if (journaled) return Undo.REVERTIBLE;
+        if (teleports) return Undo.UNSTATED;
+        return needsRequester(method, p, requesterName, requester, Set.of()) ? Undo.PERMANENT : Undo.UNSTATED;
     }
 
     /**

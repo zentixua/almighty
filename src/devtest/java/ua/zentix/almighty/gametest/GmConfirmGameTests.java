@@ -234,6 +234,25 @@ public final class GmConfirmGameTests {
                 alex, "Alex"), "en_us", false).getString();
         check(plain.contains("wants to kill — target: every player. It cannot be undone.") && !plain.contains("nothing"),
                 "a forged summary is dropped and the facts read alone: " + plain);
+        // The last line is true in both languages: undo for journaled block writes, nothing for a confirm_first teleport.
+        UUID sam = UUID.randomUUID();
+        Confirmations.Pending fill = c.ask(Confirmations.Kind.REQUESTER, GM, "command", params("{\"commands\": \"fill 0 64 0 9 64 9 stone\"}"),
+                sam, null, sam, "Sam");
+        Confirmations.Pending tp = c.ask(Confirmations.Kind.REQUESTER, GM, "command", params("{\"commands\": \"tp @s 0 80 0\"}"),
+                sam, null, sam, "Sam");
+        for (String lang : new String[]{"en_us", "ru_ru"}) {
+            boolean en = lang.equals("en_us");
+            String never = en ? "cannot be undone" : "нельзя отменить", can = en ? "You can undo it." : "Это можно отменить.";
+            String f = fallbacks(ua.zentix.almighty.policy.Prompts.question(fill, lang, false));
+            check(f.contains(can) && !f.contains(never), lang + " a fill can be undone: " + f);
+            String t = fallbacks(ua.zentix.almighty.policy.Prompts.question(tp, lang, false));
+            check(!t.contains(never) && !t.contains(can) && t.contains(". ["), lang + " a teleport claims neither: " + t);
+            String k = fallbacks(ua.zentix.almighty.policy.Prompts.question(honest, lang, false));
+            check(k.contains(en ? ". It cannot be undone. [" : ". Это нельзя отменить. ["), lang + " a kill cannot be undone: " + k);
+            String d = fallbacks(ua.zentix.almighty.policy.Prompts.dialogBody(fill, lang));
+            check(d.contains(can) && !d.contains(never), lang + " dialog: " + d);
+            check(!fallbacks(ua.zentix.almighty.policy.Prompts.dialogBody(tp, lang)).contains(never), lang + " teleport dialog");
+        }
         // A receipt reads as a sentence too, with the exact call on hover.
         JsonObject build = params("{\"ops\": [{\"op\": \"fill\", \"from\": [0, 64, 0], \"to\": [9, 70, 9], \"block\": \"snow\"}]}");
         net.minecraft.network.chat.Component r = ua.zentix.almighty.policy.Prompts.receipt("snow over your base",

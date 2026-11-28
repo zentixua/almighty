@@ -58,15 +58,30 @@ public final class Prompts {
         return GmConfig.NAME.get();
     }
 
-    /** The dialog's text: who asks, the summary and facts, the exact call in full, and that it cannot be undone. */
-    static Component dialogBody(Confirmations.Pending p, String lang) {
+    /** The dialog's text: who asks, the summary and facts, the exact call in full, and whether it can be undone where that is known. */
+    public static Component dialogBody(Confirmations.Pending p, String lang) {
         MutableComponent body = t("almighty.prompt.dialog_body", lang, name()).copy().withStyle(ChatFormatting.WHITE);
         if (p.confirmer != null && !p.confirmer.equals(p.requester)) {
             body.append(" ").append(t("almighty.prompt.asked_by", lang, p.requesterName).copy().withStyle(ChatFormatting.WHITE));
         }
-        return body.append("\n").append(what(p.summary, p.facts, p.text, lang, true)).append("\n\n")
-                .append(t("almighty.prompt.exact", lang, p.text).copy().withStyle(ChatFormatting.GRAY)).append("\n\n")
-                .append(t("almighty.prompt.dialog_irreversible", lang).copy().withStyle(ChatFormatting.GRAY));
+        body.append("\n").append(what(p.summary, p.facts, p.text, lang, true)).append("\n\n")
+                .append(t("almighty.prompt.exact", lang, p.text).copy().withStyle(ChatFormatting.GRAY));
+        String undo = switch (p.undo) {
+            case REVERTIBLE -> "almighty.prompt.dialog_undoable";
+            case PERMANENT -> "almighty.prompt.dialog_irreversible";
+            case UNSTATED -> null;
+        };
+        if (undo != null) body.append("\n\n").append(t(undo, lang).copy().withStyle(ChatFormatting.GRAY));
+        return body;
+    }
+
+    /** The question's end after the facts: whether it can be undone, only where that is true ({@link Confirmations#undo}). */
+    static String ending(Confirmations.Undo undo) {
+        return switch (undo) {
+            case REVERTIBLE -> "almighty.prompt.undoable";
+            case PERMANENT -> "almighty.prompt.irreversible";
+            case UNSTATED -> "almighty.prompt.end";
+        };
     }
 
     /** The agent's words in the language's quotes (a summary holds no quote characters, so it cannot close them). */
@@ -103,7 +118,7 @@ public final class Prompts {
             c.append(t("almighty.prompt.asked_by", lang, p.requesterName).copy().withStyle(ChatFormatting.WHITE)).append(" ");
         }
         c.append(what(p.summary, p.facts, p.text, lang, true))
-                .append(t("almighty.prompt.irreversible", lang).copy().withStyle(ChatFormatting.GRAY));
+                .append(t(ending(p.undo), lang).copy().withStyle(ChatFormatting.GRAY));
         buttons(c, p, lang);
         if (bedrock) c.append(" ").append(t("almighty.prompt.exact", lang, p.text).copy().withStyle(ChatFormatting.GRAY));
         return c;

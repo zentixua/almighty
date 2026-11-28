@@ -223,15 +223,18 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   line of at most 80 characters, no formatting, brackets or quotes, dropped when it spells the mod's name or its own
   labels in either language) in quotes, marked as the agent's words, then always the server's own facts
   (`policy/Facts`: the action in plain words and its target, from the parsed call; under `execute` the chain is shown,
-  not resolved), `[Allow]`/`[Deny]`/`[Details]` and the typed `/almighty confirm|deny|show <nonce>`; the exact call on
-  hover, behind `show` and written out for Bedrock players; on 26.x also a vanilla confirmation dialog with the same
+  not resolved), `[Allow]`/`[Deny]`/`[Details]` (the line ends there for clients that click; the typed `/almighty confirm|deny|show
+  <nonce>`, 8 hex characters, five unknown ones in 10 minutes lock that player's lookups, and the exact call written
+  out only without clicks: Bedrock, the console); the exact call on hover and behind `show`; the requester's question
+  ends with "You can undo it." for journaled block writes (`build`, setblock/fill/clone), "It cannot be undone." for
+  what is asked as irreversible for others, nothing for a `confirm_first` kind or a teleport (`Confirmations.undo`); on 26.x also a vanilla confirmation dialog with the same
   buttons and the exact call, `Mc.confirmDialog`, except for Bedrock players; never clipped: a call too long to show
   is refused). Outcomes name the call the same way; a receipt shows the summary alone ("Done for you: <summary>
   [Undo]", lead's note) with the facts and exact call on hover, or the facts when there is no summary (`FactsTest`, `SummaryTest`,
   `GmConfirmGameTests.aQuestionShowsTheServersFactsBesideTheSummary`); only that player may answer; at most 3 waiting per player and 20 per agent;
   2 minutes. A request above the player's rights (or the agent's own call above its floor, for methods; limited per agent
   the same way) whose kind is in `[safety] ask_admin` → 202 for an admin; the owners online are told every admin decision (for
-  commands: when the player's own source cannot parse it; the decider needs `almighty.approve` and the call's own node): merged with an
+  commands: when the player's own source cannot parse it, which then skips the requester's own question; the decider needs `almighty.approve` and the call's own node): merged with an
   identical waiting one, 1 per player per 10 minutes, 20 per hour; put straight to the deciders online as a chat
   question with the facts and the exact call (`Decisions.direct`: at most 3 per admin and 1 per requester or agent
   every 10 minutes, never for a merged repeat; an admin joining later finds it in the inbox), the rest in one digest line at most every 10 minutes and

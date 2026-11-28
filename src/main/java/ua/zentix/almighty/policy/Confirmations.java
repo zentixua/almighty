@@ -100,8 +100,13 @@ public final class Confirmations {
 
         Pending(Kind kind, Caller caller, String method, JsonObject params, String text, UUID confirmer, Node node,
                 UUID requester, String requesterName, long expires) {
+            this(kind, caller, method, params, text, confirmer, node, requester, requesterName, expires, hex(NONCE_BYTES));
+        }
+
+        Pending(Kind kind, Caller caller, String method, JsonObject params, String text, UUID confirmer, Node node,
+                UUID requester, String requesterName, long expires, String nonce) {
             this.id = hex(6);
-            this.nonce = hex(12);
+            this.nonce = nonce;
             this.kind = kind;
             this.undo = Confirmations.undo(method, params, requesterName, requester);
             this.caller = caller;
@@ -154,6 +159,11 @@ public final class Confirmations {
     private final Map<String, Pending> byId = new LinkedHashMap<>();
     private final Map<UUID, Long> lastAsk = new LinkedHashMap<>();
     private final Deque<Long> asks = new ArrayDeque<>();
+    /** Unknown nonces typed per player (wrong guesses), for {@link #guessLocked}. */
+    private final Map<UUID, Deque<Long>> wrong = new LinkedHashMap<>();
+    /** A nonce is 8 hex characters: short to type, and with expiry, binding and the guess limit enough. */
+    static final int NONCE_BYTES = 4;
+    static final int WRONG_GUESSES = 5;
     /** Set while a confirmed call runs again: the confirmation check lets it through. */
     private static final ThreadLocal<Pending> RUNNING = new ThreadLocal<>();
 
@@ -418,8 +428,10 @@ public final class Confirmations {
         }
         if (byId.size() >= MAX) byId.values().removeIf(p -> p.state != State.WAITING);
         if (byId.size() >= MAX) throw new RpcException(429, "ask_limit", "Too many questions waiting");
+        String nonce;
+        do nonce = hex(NONCE_BYTES); while (byNonce(nonce) != null);
         Pending p = new Pending(kind, caller, method, params, text, confirmer, node, requester, requesterName,
-                now + (kind == Kind.ADMIN ? ADMIN_TTL_MS : REQUESTER_TTL_MS));
+                now + (kind == Kind.ADMIN ? ADMIN_TTL_MS : REQUESTER_TTL_MS), nonce);
         byId.put(p.id, p);
         return p;
     }
@@ -431,6 +443,30 @@ public final class Confirmations {
     public synchronized Pending byNonce(String nonce) {
         for (Pending p : byId.values()) if (p.nonce.equals(nonce)) return p;
         return null;
+    }
+
+    /**
+     * A typed nonce from player {@code by} (null: the console, never limited): null when unknown, and after
+     * {@value #WRONG_GUESSES} unknown ones in 10 minutes nothing is looked up for that player until the window passes
+     * ({@link #guessLocked}). With 8 hex characters (2^32), a waiting question's few minutes and its binding to the
+     * players who may decide it, guessing cannot find one in practice.
+     */
+    public synchronized Pending byNonce(String nonce, UUID by) {
+        if (by == null) return byNonce(nonce);
+        if (guessLocked(by)) return null;
+        Pending p = byNonce(nonce);
+        if (p == null) wrong.computeIfAbsent(by, k -> new ArrayDeque<>()).addLast(clockMillis.getAsLong());
+        return p;
+    }
+
+    /** Whether player {@code by} typed {@value #WRONG_GUESSES} unknown nonces in the last 10 minutes. */
+    public synchronized boolean guessLocked(UUID by) {
+        Deque<Long> d = by == null ? null : wrong.get(by);
+        if (d == null) return false;
+        long now = clockMillis.getAsLong();
+        while (!d.isEmpty() && now - d.peekFirst() >= PER_PLAYER_MS) d.pollFirst();
+        if (d.isEmpty()) wrong.remove(by);
+        return d.size() >= WRONG_GUESSES;
     }
 
     /** Waiting admin requests (for the digest and {@code /almighty inbox}). */

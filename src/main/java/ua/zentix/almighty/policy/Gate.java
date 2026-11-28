@@ -133,12 +133,27 @@ public final class Gate implements Dispatch.Check {
         this.levelCheck = check;
     }
 
+    /** Whether {@code ask_admin} takes a request's commands to an admin when they run (server's check; false in tests). */
+    public interface AdminCheck {
+        boolean asks(Caller caller, String method, JsonObject params, Rights r) throws RpcException;
+    }
+
+    private AdminCheck adminCheck = (c, m, p, r) -> false;
+
+    public void adminCheck(AdminCheck check) {
+        this.adminCheck = check;
+    }
+
     private void requesterConfirms(Caller caller, String method, JsonObject params, Rights r, Node node, boolean decided) throws RpcException {
         if (!decided && confirmations != null && r.ticket != null && Nodes.role(r.ticket.player()) != Role.OWNER
                 && Confirmations.needsRequester(method, params, r.ticket.name(), r.ticket.player(), policies.current().safety().confirmFirst())) {
             // Lead's F1: a command the requester could not run anyway is not put to them (it would fail after Allow).
             if (method.equals("command")) {
                 int needs = levelCheck.needed(caller, method, params, r);
+                // Above the requester's level but listed in ask_admin: not theirs to allow (Allow would fail), an
+                // admin's, who reads the facts and the exact call and decides with their own rights (the command
+                // method waits for them when it runs, GmServer.askAdmin), as a method above their rights does.
+                if (needs > 0 && adminCheck.asks(caller, method, params, r)) return;
                 if (needs > 0) {
                     RpcException e = new RpcException(403, "policy", "Not asked: this command needs permission level " + needs
                             + ", above what " + r.ticket.name() + " may run");

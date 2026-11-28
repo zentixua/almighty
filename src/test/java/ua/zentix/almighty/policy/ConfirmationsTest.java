@@ -95,6 +95,22 @@ class ConfirmationsTest {
         assertEquals(Confirmations.Undo.UNSTATED, Confirmations.undo("give", new JsonObject(), "Alex", me));
     }
 
+    /** Short nonces stay unguessable in practice: five unknown ones in 10 minutes and that player's lookups stop. */
+    @Test
+    void wrongNoncesAreLimited() throws Exception {
+        Confirmations.Pending p = c.ask(Confirmations.Kind.REQUESTER, gm, "command", cmd("kill @a"), alex, Node.COMMAND, alex, "Alex");
+        assertTrue(p.nonce().matches("[0-9a-f]{8}"), p.nonce());
+        UUID guesser = UUID.randomUUID();
+        for (int i = 0; i < Confirmations.WRONG_GUESSES; i++) assertNull(c.byNonce(String.format("x%07d", i), guesser));
+        assertTrue(c.guessLocked(guesser));
+        assertNull(c.byNonce(p.nonce(), guesser), "locked: not even the right one is looked up");
+        assertSame(p, c.byNonce(p.nonce(), alex), "others are not locked");
+        assertSame(p, c.byNonce(p.nonce(), null), "the console is never locked");
+        now.addAndGet(Confirmations.PER_PLAYER_MS);
+        assertFalse(c.guessLocked(guesser));
+        assertSame(p, c.byNonce(p.nonce(), guesser), "after 10 minutes");
+    }
+
     @Test
     void requesterQuestionsAreLimited() throws Exception {
         for (int i = 0; i < Confirmations.PER_REQUESTER; i++) c.ask(Confirmations.Kind.REQUESTER, gm, "command", cmd("kill @e" + i), alex, Node.COMMAND, alex, "Alex");

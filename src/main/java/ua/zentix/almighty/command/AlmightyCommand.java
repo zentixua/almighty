@@ -267,7 +267,7 @@ public final class AlmightyCommand {
             source.sendFailure(Component.literal("Only a player or the console can answer"));
             return 0;
         }
-        // One deny node for both: a sign-in code is 4 digits, a confirmation nonce 24 hex characters.
+        // One deny node for both: a sign-in code is 4 digits, a confirmation nonce 8 hex characters.
         if (!allow && SignInCommand.isCode(nonce) && Mc.has(source, 4)) return SignInCommand.deny(source, nonce);
         String answer = gm.decisions().decide(nonce, by, allow);
         gm.audit().owner(source.getTextName(), allow ? "confirm" : "deny", answer);
@@ -286,9 +286,9 @@ public final class AlmightyCommand {
     private static int show(CommandSourceStack source, String nonce) {
         GmServer gm = GmServer.of(source.getServer());
         if (gm == null) return 0;
-        var p = gm.decisions().confirmations().byNonce(nonce);
         net.minecraft.server.level.ServerPlayer by = Mc.typedBy(source);
         java.util.UUID id = by == null ? null : by.getUUID();
+        var p = gm.decisions().confirmations().byNonce(nonce, id);
         boolean may = p != null && (id == null ? source.getEntity() == null && Mc.has(source, 4)
                 : p.kind == ua.zentix.almighty.policy.Confirmations.Kind.REQUESTER ? id.equals(p.confirmer)
                 : ua.zentix.almighty.policy.Identity.verified(id) && ua.zentix.almighty.policy.Nodes.holds(id, p.node)
@@ -312,7 +312,8 @@ public final class AlmightyCommand {
         for (var p : gm.decisions().confirmations().waitingForAdmins()) {
             if (id == null ? !Mc.has(source, 4) : !(ua.zentix.almighty.policy.Identity.verified(id) && ua.zentix.almighty.policy.Nodes.holds(id, p.node)
                     && (p.node == ua.zentix.almighty.policy.Node.ENGINE || ua.zentix.almighty.policy.Nodes.holds(id, ua.zentix.almighty.policy.Node.APPROVE)))) continue;
-            Component line = ua.zentix.almighty.policy.Prompts.inboxLine(p, lang);
+            // The console and Bedrock players cannot click: the typed commands and the exact call written out.
+            Component line = ua.zentix.almighty.policy.Prompts.inboxLine(p, lang, id == null || ua.zentix.almighty.policy.Identity.bedrock(id));
             source.sendSuccess(() -> line, false);
             n++;
         }

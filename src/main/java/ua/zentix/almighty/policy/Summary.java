@@ -61,6 +61,8 @@ public final class Summary {
                 if (i < raw.length()) i += Character.charCount(raw.codePointAt(i));
                 continue;
             }
+            // A straight apostrophe (ZentixUA's) reads as the typographic one: it closes none of the quotes around a summary.
+            if (cp == '\'') cp = '\u2019';
             if (type == Character.FORMAT || type == Character.PRIVATE_USE || type == Character.SURROGATE
                     || type == Character.UNASSIGNED || "[]{}<>\"'`“”„‟«»‹›＂＇［］｛｝＜＞〈〉《》「」『』【】".indexOf(cp) >= 0) continue;
             if (Character.isWhitespace(cp) || Character.isISOControl(cp) || Character.isSpaceChar(cp)) {

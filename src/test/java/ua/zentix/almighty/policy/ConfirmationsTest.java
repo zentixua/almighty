@@ -83,6 +83,10 @@ class ConfirmationsTest {
         assertEquals(Confirmations.Undo.PERMANENT, Confirmations.undo("command", cmd("kill @a"), "Alex", me));
         assertEquals(Confirmations.Undo.PERMANENT, Confirmations.undo("command", cmd("give Bob diamond 64"), "Alex", me));
         assertEquals(Confirmations.Undo.PERMANENT, Confirmations.undo("command", both, "Alex", me));
+        // Blocks at another player: the blocks revert, what they did to that player does not.
+        assertEquals(Confirmations.Undo.PERMANENT, Confirmations.undo("command", cmd("execute at Bob run fill ~-1 ~-1 ~-1 ~1 ~1 ~1 lava"), "Alex", me));
+        // destroy drops items the undo leaves behind: no claim.
+        assertEquals(Confirmations.Undo.UNSTATED, Confirmations.undo("command", cmd("fill 0 64 0 9 64 9 air destroy"), "Alex", me));
         // execute store writes a score or data the journal does not keep.
         assertEquals(Confirmations.Undo.PERMANENT,
                 Confirmations.undo("command", cmd("execute as Bob store result score Bob x run setblock ~ ~ ~ air"), "Alex", me));

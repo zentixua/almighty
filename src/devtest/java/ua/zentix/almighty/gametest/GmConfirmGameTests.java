@@ -291,6 +291,7 @@ public final class GmConfirmGameTests {
         GmServer gm = gm(h);
         Policy before = gm.policies().current();
         ServerPlayer alex = player(h, "level_alex", UUID.randomUUID());
+        ServerPlayer admin = null;
         try {
             gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\""));
             String t = ticket(h, gm, alex, "summon a zombie");
@@ -300,8 +301,11 @@ public final class GmConfirmGameTests {
             } catch (RpcException e) {
                 check(e.status() == 403 && e.details() != null && e.details().has("needs_level"), "refused with needs_level: " + e.status() + " " + e.getMessage());
             }
-            // Listed in ask_admin, the same command goes to an admin instead (the requester could not allow it).
+            // Listed in ask_admin, the same command goes to an admin instead (the requester could not allow it). An
+            // admin online gets it directly (otherwise the server-wide digest would be left due for later tests).
             gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\n[safety]\nask_admin = [\"summon\"]"));
+            admin = player(h, "level_admin", UUID.randomUUID());
+            op(h, admin, 3);
             String t2 = ticket(h, gm, alex, "summon a zombie please");
             try {
                 gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"summon zombie ~ ~ ~\"],\"for\":\"%s\"}", t2)).join();
@@ -316,6 +320,10 @@ public final class GmConfirmGameTests {
         } finally {
             gm.policies().set(before);
             h.getLevel().getServer().getPlayerList().remove(alex);
+            if (admin != null) {
+                deop(h, admin);
+                h.getLevel().getServer().getPlayerList().remove(admin);
+            }
         }
         h.succeed();
     }

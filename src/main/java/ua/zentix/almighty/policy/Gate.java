@@ -153,7 +153,12 @@ public final class Gate implements Dispatch.Check {
                 // Above the requester's level but listed in ask_admin: not theirs to allow (Allow would fail), an
                 // admin's, who reads the facts and the exact call and decides with their own rights (the command
                 // method waits for them when it runs, GmServer.askAdmin), as a method above their rights does.
-                if (needs > 0 && adminCheck.asks(caller, method, params, r)) return;
+                if (needs > 0 && adminCheck.asks(caller, method, params, r)) {
+                    // Bound to the run: if ask_admin no longer takes it then (policy reload, the player's level rose),
+                    // the command is refused instead of running unconfirmed (GmServer.askAdmin).
+                    params.addProperty(ADMIN_ONLY, true);
+                    return;
+                }
                 if (needs > 0) {
                     RpcException e = new RpcException(403, "policy", "Not asked: this command needs permission level " + needs
                             + ", above what " + r.ticket.name() + " may run");
@@ -234,6 +239,7 @@ public final class Gate implements Dispatch.Check {
         // Only the gate sets this marker: whatever the agent sent under the name is dropped.
         params.remove(ZONE_ONLY);
         params.remove(ZONE_GRANT);
+        params.remove(ADMIN_ONLY);
         Node node = node(method, params, isBot);
         if (node == null) throw new RpcException(403, "policy", "No permission node for " + method + ": refused by default");
         Rights r = rights(caller, params);
@@ -318,6 +324,8 @@ public final class Gate implements Dispatch.Check {
     public static final String ZONE_ONLY = "\u0000zone_only";
     /** Set by the gate when only a zone-scoped grant of the requester's allows the call (dropped from incoming parameters). */
     public static final String ZONE_GRANT = "\u0000zone_grant";
+    /** Set by the gate when it skipped the requester's question because an admin must decide (dropped from incoming parameters). */
+    public static final String ADMIN_ONLY = "\u0000admin_only";
     /** Methods whose box is known to the method (and checked there): the only ones an agent_may zone can allow. */
     static final Set<String> ZONED = Set.of("build", "area.prepare", "bot.spawn");
 

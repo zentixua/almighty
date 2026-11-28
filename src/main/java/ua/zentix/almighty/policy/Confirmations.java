@@ -261,10 +261,11 @@ public final class Confirmations {
     static final Set<String> JOURNALED = Set.of("setblock", "fill", "clone");
 
     /**
-     * What undo covers for a call: {@link Undo#REVERTIBLE} for {@code build} and for commands that only set, fill or
-     * clone blocks (under {@code execute} without {@code store}, which writes scores or data the journal does not
-     * keep); {@link Undo#PERMANENT} when the call is asked for being irreversible for others (as
-     * {@link #needsRequester} without {@code confirm_first}) and is not a teleport; else {@link Undo#UNSTATED}.
+     * What undo covers for a call: {@link Undo#PERMANENT} when the call is asked for being irreversible for others (as
+     * {@link #needsRequester} without {@code confirm_first}: lava under another player is a fill, and their death is
+     * not undone) and is not a teleport; else {@link Undo#REVERTIBLE} for {@code build} and for commands that only set,
+     * fill or clone blocks (no {@code destroy} mode, whose drops stay; under {@code execute} without {@code store},
+     * which writes scores or data the journal does not keep); else {@link Undo#UNSTATED}.
      */
     public static Undo undo(String method, JsonObject p, String requesterName, UUID requester) {
         if (method.equals("build")) return Undo.REVERTIBLE;
@@ -275,6 +276,7 @@ public final class Confirmations {
         for (String c : commands) {
             List<String> segs = segments(c);
             if (root(segs.get(0)).equals("execute") && segs.get(0).matches("(?is).*\\bstore\\b.*")) journaled = false;
+            if (segs.get(segs.size() - 1).matches("(?is).*\\sdestroy\\b.*")) journaled = false;
             boolean acts = false;
             for (String seg : segs) {
                 String root = root(seg);
@@ -285,9 +287,9 @@ public final class Confirmations {
             }
             if (!acts) journaled = teleports = false;
         }
-        if (journaled) return Undo.REVERTIBLE;
         if (teleports) return Undo.UNSTATED;
-        return needsRequester(method, p, requesterName, requester, Set.of()) ? Undo.PERMANENT : Undo.UNSTATED;
+        if (needsRequester(method, p, requesterName, requester, Set.of())) return Undo.PERMANENT;
+        return journaled ? Undo.REVERTIBLE : Undo.UNSTATED;
     }
 
     /**

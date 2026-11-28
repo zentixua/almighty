@@ -767,7 +767,12 @@ public final class GmServer {
      */
     public void askAdmin(ua.zentix.almighty.bridge.Caller caller, Gate.Rights r, String method, JsonObject params,
                          ua.zentix.almighty.act.CommandRunner.As as) throws RpcException {
-        if (Confirmations.running() != null || !adminAsks(r, method, params, as)) return;
+        if (Confirmations.running() != null) return;
+        if (!adminAsks(r, method, params, as)) {
+            // The gate skipped the requester's question for an admin's; never run it with neither.
+            if (params.has(Gate.ADMIN_ONLY)) throw RpcException.conflict("Not run: this request no longer goes to an admin; ask again");
+            return;
+        }
         Confirmations.Pending p = decisions.confirmations().ask(Confirmations.Kind.ADMIN, caller, method, params, null,
                 ua.zentix.almighty.policy.Node.APPROVE, r.ticket().player(), r.ticket().name());
         if (p.count() == 1) decisions.prompt(p);

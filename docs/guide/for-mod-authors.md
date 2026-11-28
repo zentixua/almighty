@@ -3,8 +3,9 @@
 English · [Русский](for-mod-authors.ru.md)
 
 Agents learn any modpack from the running server: `notes {query: "<your mod id>"}` returns your blocks with their
-states, items, entities, recipes, commands with their usage, game events and, on NeoForge, your config values (keys that
-look like secrets are hidden). You do not need to do anything for that.
+states, items, entities, recipes and recipe types, loot tables, advancements with their titles, commands with their
+usage, game events and, on NeoForge, your config values (keys that look like secrets are hidden). You do not need to
+do anything for that.
 
 ## Leave the agent a note
 

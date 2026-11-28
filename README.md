@@ -65,9 +65,10 @@ plus notes that mods, datapacks and you leave for it.
    folder and start the server. The console says:
    `Almighty ready - tell your AI agent: "connect to my Minecraft server at http://127.0.0.1:25650/mcp"`.
 2. Tell your agent exactly that, on the same machine as the server. It adds the server to its own settings.
-3. The agent opens a sign-in page with a four-digit code. In the server console type
-   `/almighty approve <code> <name> owner` (`owner` because it is your own app).
-4. Join the server once and make yourself an owner in the console: `/almighty owner add <your name>`.
+3. The agent opens a sign-in page with a four-digit code. Join the server as a verified level-4 operator and type
+   `/almighty approve <code> <name> owner` (`owner` because it is your own app). On a server without an owner, the
+   first level-4 operator who approves a sign-in becomes its owner. From the console instead:
+   `/almighty approve <code> <name> owner <your player name>` (you must have joined the server once).
 
 Then ask it something: "show me a map of spawn", "who is online", "what mods does this server have". The full
 walkthrough, other machines and other apps: [Getting started](docs/guide/getting-started.md).
@@ -97,7 +98,8 @@ VS Code, opencode, Gemini CLI, Antigravity, a local model app, or your own scrip
   with its maker (Anthropic, OpenAI, or a model on your own computer); its usage and terms are yours.
 - **What the agent reads goes to its model provider.** The agent can read the world, player names, UUIDs, positions
   and inventories, public chat, commands players type, and `/gm` messages; private messages between players are not
-  in the feed. Tell your players that an AI game master is on the server.
+  in the feed. The server tells each joining player that an AI game master reads the public chat and acts on
+  messages addressed to it.
 - **Bots are marked** `[bot]` unless you allow disguise in the config; even then a bot has its own UUID and gives a
   name up when the player who owns it joins.
 - **Almighty itself contacts nothing on the internet**, except an app's public sign-in description during sign-in

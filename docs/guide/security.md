@@ -12,8 +12,10 @@ English · [Русский](security.ru.md)
   type, and `/gm` messages. Private messages between players (`/msg`, `/tell`, `/w`, `/teammsg`) are not in the
   feed, though an agent with scripts (owner rights) can read anything the server holds. A local model keeps
   everything on your machine.
-- Tell your players that an AI game master is on the server and that it reads chat. Bots are marked `[bot]` in the
-  tab list and chat unless you allow disguise (`bots.allow_disguise`).
+- The server tells each joining player: "An AI game master (<its name>) runs on this server: it reads the public
+  chat, and acts on messages addressed to it (/gm, or its name in chat). Server owners can see what it did."
+  (`[safety] privacy_notice` in `policy.toml`). Bots are marked `[bot]` in the tab list and chat unless you allow
+  disguise (`bots.allow_disguise`).
 - Almighty itself connects to the internet only to fetch an app's public sign-in description during sign-in (for
   example Claude Code's or Codex's, over HTTPS) and, when the agent asks for a bot with an account's skin, through the
   server's own Mojang profile lookup. It sends no telemetry.
@@ -31,14 +33,17 @@ level. Scripts and rules with scripts need the owner.
 ## What protects the server
 
 - **The bridge listens on loopback** (`127.0.0.1`) by default. Nothing outside the machine reaches it. When it must
-  listen elsewhere, give it your certificate (`bridge.tls_cert`, `bridge.tls_key`) so it speaks only HTTPS.
-- **Every app signs in with a code.** The owner types, in the console or in game as a level-4 operator, the
-  four-digit code shown on the sign-in page. Approving an app with owner rights (`owner`) takes the console or an
-  owner from `policy.toml`. The notice in game never shows the code, so approving something you did
-  not start would mean typing a code you never saw. Waiting sign-ins expire after 10 minutes; at most 5 wait at once.
+  listen elsewhere, give it your certificate (`bridge.tls_cert`, `bridge.tls_key`) so it speaks only HTTPS; without
+  one it does not start off loopback unless you set `bridge.allow_plain_http_off_loopback` ([Hosting](hosting.md)).
+- **Every app signs in with a code.** The owner types the four-digit code shown on the sign-in page, in the console
+  or in game as an owner who is also a level-4 operator. On a server without an owner, the first verified level-4
+  operator who approves becomes the owner. The notice in game never shows the code, so approving something you did
+  not start would mean typing a code you never saw. Waiting sign-ins expire after 10 minutes; at most 16 wait at
+  once, 2 from one address and 2 for one app. An app whose sign-in you deny cannot start another from the same
+  address for 10 minutes, or until an owner approves any sign-in.
 - **One identity per app.** Each approved app is its own agent with its own token: `/almighty agents` shows who
   called last and from where; `/almighty agent remove <name>` ends one at once; `/almighty revoke <name>` replaces its
-  token.
+  token. `allow_from` in `policy.toml` limits an agent's token to the addresses you list.
 - **Tokens stay secret.** They live in files only the server's owner can read (on Windows the folder's own
   permissions apply), are never printed or logged, and sign-in links carry no secret. Five wrong tokens within a
   minute lock the address out, for 5 seconds at first and up to 5 minutes.
@@ -60,22 +65,26 @@ level. Scripts and rules with scripts need the owner.
 
 - **Change journal.** Every block the game master writes is recorded on disk with what was there before, so a change
   can be undone even after a crash. An undo puts back only positions that still hold what the change put there;
-  anything changed since stays. Edits that change only a block entity's contents (a chest's items without replacing the chest),
-  entities and inventories are not recorded.
-- **Receipts.** After a request with an effect, the player who asked gets a line in chat with `[Undo]`.
+  anything changed since stays. Edits that change only a block entity's contents (a chest's items without replacing
+  the chest), entities and inventories are not recorded. A build or undo that breaks an attached block (a door half,
+  a torch) drops no item.
+- **Receipts.** After a request with an effect, the player who asked gets a line in chat with `[Undo]`; clicking it
+  undoes the change.
 - **Audit log.** Every call with an effect and every refusal is a line in `logs/almighty/audit-<date>.jsonl` (kept
   30 days, `audit.days`); `/almighty log [agent | player] [count]` shows the latest, of one
-  agent or made for one player.
+  agent or made for one player, at the server's local time (`timezone` in `policy.toml`).
 - **Pause.** `/almighty pause [agent]`: that agent, or every agent, may only look and clean up until
-  `/almighty resume`. Its builds wait and its bots stop. With a name every rule that agent made stops too; without a
+  `/almighty resume`. Its builds wait and its bots stop, and players' `/gm` to it are answered that the game master is
+  paused. With a name every rule that agent made stops too; without a
   name every rule with a script and every rule made below the owner.
 - **Off switches.** `scripts.enabled = false` refuses scripts and rules with a script; `bridge.enabled = false` turns
   the bridge off. Both in `config/almighty-common.toml`.
 
 ## Before opening the server to strangers
 
-- Set `preset = "public"` in `config/almighty/policy.toml` and add yourself as an owner
-  (`/almighty owner add <name>`). Check `identity` matches how players join ([verified players](permissions.md#verified-players)).
+- Set `preset = "public"` in `config/almighty/policy.toml` and make sure you are an owner (`/almighty whoami`; the
+  first level-4 operator who approves a sign-in becomes one, or `/almighty owner add <name>` in the console). Check
+  `identity` matches how players join ([verified players](permissions.md#verified-players)).
 - Keep the bridge on loopback; reach it through an SSH tunnel or a reverse proxy with HTTPS ([Hosting](hosting.md)).
 - Protect spawn and builds with zones, and keep quotas ([Permissions](permissions.md#zones)).
 - Turn scripts off if you do not need them: `scripts.enabled = false`.

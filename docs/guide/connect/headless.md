@@ -28,6 +28,9 @@ bearer_token_env_var = "ALMIGHTY_TOKEN"
 Checked: `claude -p` with only this entry read the server status, ran commands and read a map picture. A run that
 already signed in with a code (on the same computer) needs no token: the stored login works headless too.
 
+To accept the token only from the CI machine, add `allow_from = ["203.0.113.7"]` under `[agents.ci]` in
+`policy.toml` and run `/almighty reload` ([Hosting](../hosting.md#approving-sign-ins-on-a-remote-server)).
+
 `/almighty revoke ci` replaces the token (the old one stops at once); `/almighty agent remove ci` ends the agent.
 
 The command line `uv run mcp/almighty.py call status` (and `follow` for the event feed) uses the same token, in

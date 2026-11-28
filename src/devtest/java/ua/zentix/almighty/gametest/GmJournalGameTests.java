@@ -194,6 +194,76 @@ public final class GmJournalGameTests {
     }
 
     /**
+     * Lead's N7 and N8: a receipt's [Undo] answers in the player's language, says "Undoing" only once it started, and a
+     * second click on the same link says once, plainly, that it is already undone (never "by change 0").
+     */
+    @GameTest(template = "floor", batch = "gm_journal_undo_words", timeoutTicks = 300)
+    public static void undoRepliesInThePlayersLanguageAndOnce(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        BlockPos a = h.absolutePos(new BlockPos(2, 2, 2));
+        gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"setblock %d %d %d minecraft:stone\"]}", a.getX(), a.getY(), a.getZ())).join();
+        long id = newest(gm);
+        java.util.List<String> said = new java.util.concurrent.CopyOnWriteArrayList<>();
+        net.minecraft.commands.CommandSource out = new net.minecraft.commands.CommandSource() {
+            @Override
+            public void sendSystemMessage(net.minecraft.network.chat.Component message) {
+                said.add(GmConfirmGameTests.fallbacks(message));
+            }
+
+            @Override
+            public boolean acceptsSuccess() {
+                return true;
+            }
+
+            @Override
+            public boolean acceptsFailure() {
+                return true;
+            }
+
+            @Override
+            public boolean shouldInformAdmins() {
+                return false;
+            }
+        };
+        var source = ua.zentix.almighty.platform.Mc.source(out, net.minecraft.world.phys.Vec3.atCenterOf(a), net.minecraft.world.phys.Vec2.ZERO,
+                h.getLevel(), 4, "Owner", net.minecraft.network.chat.Component.literal("Owner"), h.getLevel().getServer(), null);
+        ua.zentix.almighty.command.AlmightyCommand.undo(source, (int) id, "ru_ru");
+        h.startSequence()
+                .thenWaitUntil(() -> check(gm.journal().describe(id).has("undone_by") && h.getLevel().getBlockState(a).isAir(), "undone"))
+                .thenExecute(() -> {
+                    check(said.size() == 1 && said.get(0).contains("Отменяю изменение " + id), "one Russian line once it started: " + said);
+                    said.clear();
+                    ua.zentix.almighty.command.AlmightyCommand.undo(source, (int) id, "ru_ru");
+                })
+                .thenWaitUntil(() -> check(!said.isEmpty(), "the second click answers"))
+                .thenExecute(() -> check(said.size() == 1 && said.get(0).contains("Изменение " + id + " уже отменено.") && !said.get(0).contains(" 0"),
+                        "the second click says once that it is already undone: " + said))
+                .thenSucceed();
+    }
+
+    /**
+     * Lead's N9: a lantern hanging from a ceiling an undo removes breaks without dropping an item (as a door's other
+     * half does, F4): attached blocks never become free items on undo.
+     */
+    @GameTest(template = "floor", batch = "gm_journal_hanging", timeoutTicks = 300)
+    public static void aHangingLanternDropsNothingOnUndo(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        BlockPos ceiling = h.absolutePos(new BlockPos(4, 5, 4)), lantern = ceiling.below();
+        gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"setblock %d %d %d minecraft:stone\"]}",
+                ceiling.getX(), ceiling.getY(), ceiling.getZ())).join();
+        long id = newest(gm);
+        // Hung there later, by someone else: not part of the change, so the undo leaves it and only removes the ceiling.
+        h.getLevel().setBlockAndUpdate(lantern, Blocks.LANTERN.defaultBlockState().setValue(net.minecraft.world.level.block.LanternBlock.HANGING, true));
+        gm.dispatch().invoke(GM, "undo", params("{\"change\":%d,\"wait\":0}", id));
+        net.minecraft.world.phys.AABB box = new net.minecraft.world.phys.AABB(lantern).inflate(3);
+        h.succeedWhen(() -> {
+            check(gm.journal().describe(id).has("undone_by") && h.getLevel().getBlockState(ceiling).isAir(), "the ceiling is undone");
+            check(!h.getLevel().getBlockState(lantern).is(Blocks.LANTERN), "the lantern lost its ceiling");
+            check(h.getLevel().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box).isEmpty(), "no lantern item dropped");
+        });
+    }
+
+    /**
      * A crash mid-build leaves an undoable journal: while a slow build still runs, what it wrote is already on disk,
      * and a journal opened afresh on the same directory (a restart) lists the change as interrupted and reads it.
      */

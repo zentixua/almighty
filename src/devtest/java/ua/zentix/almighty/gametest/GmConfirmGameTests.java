@@ -244,7 +244,7 @@ public final class GmConfirmGameTests {
     }
 
     /** The text a client without the mod sees: every translation's fallback, its arguments filled in, and siblings. */
-    private static String fallbacks(net.minecraft.network.chat.Component c) {
+    static String fallbacks(net.minecraft.network.chat.Component c) {
         StringBuilder out = new StringBuilder();
         if (c.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents t && t.getFallback() != null) {
             Object[] args = new Object[t.getArgs().length];

@@ -33,7 +33,9 @@ import java.util.Arrays;
  * {@code updateNeighboursOnBlockSet} with the old state, which also runs the old block's removal updates).
  * The snapshot of all changed positions enables undo ({@code undo}), which is itself the same kind
  * of job with its own snapshot. Writes carry {@code UPDATE_SUPPRESS_DROPS}: a neighbour a write breaks (a door's
- * other half, a torch on a removed wall) drops no item (lead's F4). Undo does not restore entities.
+ * other half, a torch on a removed wall) drops no item (lead's F4); a block broken by the knock-on shape update of a
+ * write (a lantern under a removed ceiling, where vanilla clears that flag) drops nothing either ({@link #writing},
+ * lead's N9). Undo does not restore entities.
  */
 public final class BuildJob extends Job {
     /** Placement flags, as {@code /fill}. */
@@ -237,6 +239,24 @@ public final class BuildJob extends Job {
             }
             running();
         }
+        // Lead's N9: a block an undone (or built) block held up — a lantern under a removed ceiling, a torch on a removed
+        // wall — breaks in the knock-on shape update, where vanilla drops it; with this job writing, it drops no item.
+        WRITING.set(Boolean.TRUE);
+        try {
+            slices(budget);
+        } finally {
+            WRITING.remove();
+        }
+    }
+
+    private static final ThreadLocal<Boolean> WRITING = new ThreadLocal<>();
+
+    /** Whether a build, undo or revert is writing on this thread: blocks broken by its updates drop nothing ({@code mixin/LevelMixin}). */
+    public static boolean writing() {
+        return WRITING.get() != null;
+    }
+
+    private void slices(Budget budget) {
         long[] updated = new long[UNIT];
         //? if >=26.1
         /*BlockState[] before = new BlockState[UNIT];*/

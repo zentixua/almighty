@@ -150,8 +150,8 @@ public final class Prompts {
     }
 
     /** A translated server line to a player ({@code key} from the lang files, {@code arg} shown as is). */
-    public static Component line(String key, String lang, String arg) {
-        return prefix().append(t(key, lang, arg).copy().withStyle(ChatFormatting.GRAY));
+    public static Component line(String key, String lang, String... args) {
+        return prefix().append(t(key, lang, (Object[]) args).copy().withStyle(ChatFormatting.GRAY));
     }
 
     /** An outcome of a confirmation ("Not allowed: …"), naming the call as the question did. */

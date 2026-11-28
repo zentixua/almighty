@@ -108,5 +108,11 @@
   "almighty.fact.exec_other": "with other conditions",
   "almighty.fact.exec_nothing": "nothing after run",
   "almighty.fact.function": "run the function %s",
-  "almighty.fact.function_later": "schedule the function %s"
+  "almighty.fact.function_later": "schedule the function %s",
+  "almighty.undo.started": "Undoing change %s. Blocks changed since then stay as they are.",
+  "almighty.undo.already": "Change %s is already undone.",
+  "almighty.undo.failed": "Change %s was not undone: %s",
+  "almighty.undo.partial": "Change %s: part of the undo did not finish (%s).",
+  "almighty.undo.none": "There is no change %s.",
+  "almighty.undo.not_yours": "Change %s was not made for you."
 }

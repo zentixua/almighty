@@ -210,7 +210,7 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `needs_level` and a `hint` in its result (`CommandRunner.levelNeeded`: the lowest level at which it parses).
   `Caller.requester` (from a valid `for`, set in `Dispatch`) travels with the call: jobs record `requester`, and a
   receipt ("[Almighty] Done for you: … [Undo]") reaches that player after any call with effects; `/almighty undo
-  <job>` works for that player or level 4. `policy/Confirmations` + `Decisions` + `Prompts`: a request's command
+  <job>` works for that player or level 4, answering in their language, once (N7, N8). `policy/Confirmations` + `Decisions` + `Prompts`: a request's command
   waits for that player's confirmation unless every command in it is in the allowlist `SAFE` (time, weather, say,
   msg, setblock, fill, clone, place …) or `SELF_ONLY` (tp, give, effect, clear, gamemode, kill …) aimed only at
   the requester (`@s`, their name or UUID; no other selector, name, quoted name, short or Floodgate name, UUID in any
@@ -512,7 +512,9 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
 - Building places positions as `/fill` (`FillCommand`): first `getBlockEntity` (initializes a fresh chunk's pending
   block entity; otherwise its data would survive the new block, "DUMMY"), snapshot via `saveWithFullMetadata`,
   `Clearable.tryClear`, `BlockInput.place` with `UPDATE_CLIENTS`, then `blockUpdated` after the slice. Writes suppress drops (`UPDATE_SUPPRESS_DROPS`):
-  a door half or a torch that a write breaks drops no free item (lead's F4). Undo does not restore entities.
+  a door half or a torch that a write breaks drops no free item (lead's F4); a block broken by a write's knock-on
+  shape update (a lantern under a ceiling an undo removed), where vanilla clears that flag, drops nothing either
+  (`BuildJob.writing`, `mixin/LevelMixin`, lead's N9; `aHangingLanternDropsNothingOnUndo`). Undo does not restore entities.
 - A completed job's description in its future is shared by all waiters: copy responses (`GmServer.await`), or a
   snapshot would append the image to the shared object, retaining it in history and returning it again.
 - A method called on the server thread (GameTest) runs immediately (`server.execute` does not enqueue on that

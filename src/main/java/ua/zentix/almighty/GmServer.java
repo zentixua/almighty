@@ -803,7 +803,11 @@ public final class GmServer {
             throws RpcException {
         JsonObject meta = journal.describe(id);
         if (meta == null) throw RpcException.notFound("No change " + id + " (old changes are dropped beyond 4 million positions)");
-        if (meta.has("undone_by")) throw RpcException.conflict("Change " + id + " was already undone by change " + meta.get("undone_by").getAsLong());
+        // Undone by an owner's /almighty undo, outside any call, the change id is 0 (lead's N8): no "by change 0".
+        if (meta.has("undone_by")) {
+            long by = meta.get("undone_by").getAsLong();
+            throw RpcException.conflict("Change " + id + " was already undone" + (by > 0 ? " by change " + by : ""));
+        }
         if (meta.has("open")) {
             throw RpcException.conflict(meta.get("method").getAsString().startsWith("rule ")
                     ? "Change " + id + " still collects its rule's writes (up to a minute after it opened); retry then"
@@ -949,6 +953,11 @@ public final class GmServer {
                 return (JsonElement) o;
             });
         });
+    }
+
+    /** Whether an undo of this change is running now (its pieces are queued or working). */
+    public boolean reverting(long id) {
+        return reverting.contains(id);
     }
 
     public Journal journal() {

@@ -108,5 +108,11 @@
   "almighty.fact.exec_other": "с другими условиями",
   "almighty.fact.exec_nothing": "после run ничего нет",
   "almighty.fact.function": "выполнить функцию %s",
-  "almighty.fact.function_later": "запланировать функцию %s"
+  "almighty.fact.function_later": "запланировать функцию %s",
+  "almighty.undo.started": "Отменяю изменение %s. Блоки, изменённые после него, остаются как есть.",
+  "almighty.undo.already": "Изменение %s уже отменено.",
+  "almighty.undo.failed": "Изменение %s не отменено: %s",
+  "almighty.undo.partial": "Изменение %s: часть отмены не завершилась (%s).",
+  "almighty.undo.none": "Изменения %s нет.",
+  "almighty.undo.not_yours": "Изменение %s сделано не для вас."
 }

@@ -193,6 +193,7 @@ public final class GmConfirmGameTests {
         ServerPlayer guest = player(h, "confirm-guest", UUID.randomUUID());
         ServerPlayer admin = player(h, "confirm-admin", UUID.randomUUID());
         ServerPlayer second = player(h, "confirm-guest2", UUID.randomUUID());
+        ServerPlayer third = player(h, "confirm-guest3", UUID.randomUUID());
         try {
             gm.policies().set(Policy.parse("preset = \"public\"\nidentity = \"proxy\"\n[safety]\nask_admin = [\"area.prepare\", \"time\"]"));
             op(h, admin, 3);
@@ -228,6 +229,20 @@ public final class GmConfirmGameTests {
             }
             Confirmations.Pending p2 = gm.decisions().confirmations().get(id2);
             check(gm.decisions().decide(p2.nonce(), admin, true).startsWith("Allowed"), "the admin approves the command");
+            // The console denies a third one by typing /almighty deny <id> (the same node as sign-in codes' deny).
+            String t3 = ticket(h, gm, third, "load the other arena");
+            String id3;
+            try {
+                gm.dispatch().invoke(GM, "area.prepare", params("{\"from\":[64,64],\"to\":[65,65],\"for\":\"%s\"}", t3));
+                throw new GameTestAssertException("a guest prepared an area");
+            } catch (RpcException e) {
+                check(e.status() == 202, "third request waits for an admin: " + e.status() + " " + e.getMessage());
+                id3 = e.details().get("id").getAsString();
+            }
+            Confirmations.Pending p3 = gm.decisions().confirmations().get(id3);
+            var server = h.getLevel().getServer();
+            server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), "almighty deny " + p3.nonce());
+            check(p3.describe().get("state").getAsString().equals("denied"), "the console's typed deny: " + p3.describe());
             h.succeedWhen(() -> {
                 String state = p.describe().get("state").getAsString();
                 check(state.equals("done"), "ran with the admin's rights: " + p.describe());
@@ -241,6 +256,7 @@ public final class GmConfirmGameTests {
             h.getLevel().getServer().getPlayerList().remove(guest);
             h.getLevel().getServer().getPlayerList().remove(admin);
             h.getLevel().getServer().getPlayerList().remove(second);
+            h.getLevel().getServer().getPlayerList().remove(third);
         }
     }
 }

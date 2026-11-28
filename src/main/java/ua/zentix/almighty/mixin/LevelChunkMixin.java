@@ -37,8 +37,8 @@ abstract class LevelChunkMixin {
             BlockState before = self.getBlockState(pos);
             if (before == state) return;
             BlockEntity be = self.getBlockEntity(pos, LevelChunk.EntityCreationType.CHECK);
-            c.record(Mc.id(self.getLevel().dimension()).toString(), pos, before, state,
-                    be == null ? null : be.saveWithFullMetadata(self.getLevel().registryAccess()));
+            String dim = Mc.id(self.getLevel().dimension()).toString();
+            c.record(dim, pos, before, state, c.before(dim, pos, be == null ? null : be.saveWithFullMetadata(self.getLevel().registryAccess())));
         } catch (RuntimeException e) {
             LogUtils.getLogger().warn("Almighty journal: could not record a write at {}: {}", pos, e.toString());
         }

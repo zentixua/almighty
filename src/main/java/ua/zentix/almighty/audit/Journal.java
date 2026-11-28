@@ -92,6 +92,12 @@ public final class Journal {
         private boolean closed;
         /** A write to disk failed: nothing more is recorded, but the change still closes normally. */
         private boolean failed;
+        /**
+         * Block entity data saved just before its contents were cleared for a write at that position ({@link #cleared}):
+         * the write's record takes it instead of the emptied entity, so an undo brings the chest back full.
+         */
+        private final Map<Long, CompoundTag> clearedTags = new java.util.HashMap<>();
+        private final Map<Long, String> clearedDims = new java.util.HashMap<>();
         Change(long id, String agent, String method, UUID requester) {
             this.id = id;
             this.agent = agent;
@@ -122,6 +128,30 @@ public final class Journal {
             }
             out = null;
             ended(this);
+        }
+
+        /**
+         * A container at {@code pos} is about to be emptied before a write there ({@code Clearable.tryClear} in
+         * {@code /fill}, {@code /setblock}, {@code /clone} on 1.21.1; a build's own clear): keep its full data for that
+         * write's record. Bounded: one entry per position, consumed by the write.
+         */
+        public void cleared(String dim, BlockPos pos, CompoundTag tag) {
+            if (closed || failed || tag == null) return;
+            long key = pos.asLong();
+            if (clearedTags.containsKey(key) && dim.equals(clearedDims.get(key))) return;
+            if (clearedTags.size() >= 65_536) return;
+            clearedTags.put(key, tag);
+            clearedDims.put(key, dim);
+        }
+
+        /** The data to record for a write at {@code pos}: what {@link #cleared} kept, else the entity as it is. */
+        public CompoundTag before(String dim, BlockPos pos, CompoundTag now) {
+            if (clearedTags.isEmpty()) return now;
+            long key = pos.asLong();
+            if (!dim.equals(clearedDims.get(key))) return now;
+            clearedDims.remove(key);
+            CompoundTag kept = clearedTags.remove(key);
+            return kept != null ? kept : now;
         }
 
         /** The hook: one block write of this change. */

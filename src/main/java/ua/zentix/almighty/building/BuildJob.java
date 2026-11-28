@@ -59,13 +59,25 @@ public final class BuildJob extends Job {
         private int[] expect;
         private int size;
 
-        void add(BlockPos p, BlockState s, CompoundTag tag) {
+        /**
+         * A job's own undo snapshot: a position goes back only while it still holds the block the job put there (any
+         * state of it: wire power, a door opened); a journal revert compares the exact state.
+         */
+        private boolean blockOnly;
+        /** A job's snapshot: the contents (hash) each write left in a container, by index; absent: left none. */
+        private final it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap contents = new it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap();
+
+        /** {@code s} and {@code tag}: what the position held before; {@code now}: the state id the write left there. */
+        void add(BlockPos p, BlockState s, CompoundTag tag, int now) {
             if (size == pos.length) {
                 pos = Arrays.copyOf(pos, size * 2);
                 state = Arrays.copyOf(state, size * 2);
             }
+            if (expect == null) expect = new int[pos.length];
+            else if (expect.length < pos.length) expect = Arrays.copyOf(expect, pos.length);
             pos[size] = p.asLong();
             state[size] = Block.getId(s);
+            expect[size] = now;
             if (tag != null) nbt.put(size, tag);
             size++;
         }
@@ -85,6 +97,9 @@ public final class BuildJob extends Job {
     private final BuildPlan.Placement<BlockInput> cursor = new BuildPlan.Placement<>();
     private Areas.Lease lease;
     private Snapshot snapshot = new Snapshot();
+    {
+        snapshot.blockOnly = true;
+    }
     private boolean undone;
     private long waited, placed, unchanged, kept, done, conflicts;
     /** The journal change this job reverts (0: none). */
@@ -130,14 +145,11 @@ public final class BuildJob extends Job {
     public static BuildJob revert(ServerLevel level, Areas areas, long change, long[] pos, BlockState[] before, BlockState[] after,
                                   CompoundTag[] tags, int n, long timeoutTicks) throws RpcException {
         Snapshot s = new Snapshot();
-        s.expect = new int[Math.max(n, 1)];
         int[] b = {Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE};
         BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
         for (int i = 0; i < n; i++) {
             p.set(pos[i]);
-            if (s.size == s.expect.length) s.expect = Arrays.copyOf(s.expect, s.size * 2);
-            s.expect[s.size] = Block.getId(after[i]);
-            s.add(p, before[i], tags[i]);
+            s.add(p, before[i], tags[i], Block.getId(after[i]));
             int[] c = {p.getX(), p.getY(), p.getZ()};
             for (int a = 0; a < 3; a++) {
                 b[a] = Math.min(b[a], c[a]);
@@ -261,7 +273,8 @@ public final class BuildJob extends Job {
         }
         // Conflict-aware (journal revert): a position someone changed since is reported and left, before anything
         // about it (its container) is touched.
-        if (plan == null && restore.expect != null && Block.getId(old) != restore.expect[restoreAt]) {
+        // A job's undo too (plan 4.9, critique S3): a player's block built there since stays, and so do its contents.
+        if (plan == null && restore.expect != null && !holds(old, restore.expect[restoreAt], restore.blockOnly)) {
             // Already as it was before (the world lost the write in a crash, or someone restored it): nothing to do.
             if (Block.getId(old) == restore.state[restoreAt]) unchanged++;
             else conflicts++;
@@ -269,8 +282,21 @@ public final class BuildJob extends Job {
         }
         // Initialize the fresh chunk's pending block entity so its data does not survive under the new block.
         BlockEntity be = level.getBlockEntity(pos);
+        // An undo never empties a container someone filled since (a player's items in a chest the build placed): a
+        // conflict, left as it is, unless the undo puts the same block back (its contents then are the snapshot's).
+        if (plan == null && be instanceof net.minecraft.world.Container box && !box.isEmpty()
+                && Block.stateById(restore.state[restoreAt]).getBlock() != old.getBlock()
+                && !(restore.contents.containsKey(restoreAt) && restore.contents.get(restoreAt) == contents(box))) {
+            conflicts++;
+            return false;
+        }
         CompoundTag oldTag = be != null ? be.saveWithFullMetadata(level.registryAccess()) : null;
-        if (be instanceof Clearable container) container.clearContent();
+        if (be instanceof Clearable container) {
+            // The journal records this write after the clear: give it the full contents, so its undo restores them.
+            ua.zentix.almighty.audit.Journal.Change change = ua.zentix.almighty.audit.Journal.current();
+            if (change != null && ua.zentix.almighty.audit.Journal.recording()) change.cleared(Mc.id(level.dimension()).toString(), pos, oldTag);
+            container.clearContent();
+        }
         boolean changed;
         if (plan != null) {
             changed = cursor.block.place(level, pos, FLAGS);
@@ -287,12 +313,30 @@ public final class BuildJob extends Job {
             }
         }
         if (changed || oldTag != null) {
-            snapshot.add(pos, old, oldTag);
+            // What this write left in a container (an undo of it brought a chest back full, an owner's chest with
+            // items): undoing it later is not "someone filled it since".
+            if (level.getBlockEntity(pos) instanceof net.minecraft.world.Container left && !left.isEmpty()) {
+                snapshot.contents.put(snapshot.size, contents(left));
+            }
+            snapshot.add(pos, old, oldTag, Block.getId(level.getBlockState(pos)));
             placed++;
         } else {
             unchanged++;
         }
         return changed;
+    }
+
+    private static int contents(net.minecraft.world.Container box) {
+        int h = 1;
+        for (int i = 0; i < box.getContainerSize(); i++) {
+            net.minecraft.world.item.ItemStack stack = box.getItem(i);
+            h = 31 * h + (stack.isEmpty() ? 0 : net.minecraft.world.item.ItemStack.hashItemAndComponents(stack) * 31 + stack.getCount());
+        }
+        return h;
+    }
+
+    private static boolean holds(BlockState now, int expected, boolean blockOnly) {
+        return blockOnly ? now.getBlock() == Block.stateById(expected).getBlock() : Block.getId(now) == expected;
     }
 
     @Override

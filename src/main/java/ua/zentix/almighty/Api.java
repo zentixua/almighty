@@ -65,6 +65,8 @@ public final class Api {
     static final int MAX_SCRIPT_MS = 10_000;
     /** Plan 4.11: the longest a script may run below owner. */
     static final int SCRIPT_MS_BELOW_OWNER = 50;
+    /** The most areas one agent may hold prepared at once. */
+    static final int MAX_AREAS_PER_AGENT = 16;
     private static final Logger LOG = LogUtils.getLogger();
     /** Methods that may wait for seconds (feed long poll, job waits): served by the bridge's long-poll pool. */
     public static final java.util.Set<String> LONG = java.util.Set.of(
@@ -232,6 +234,11 @@ public final class Api {
                     new int[]{Math.min(from[0], to[0]) & ~15, Mc.minBuildHeight(al), Math.min(from[1], to[1]) & ~15},
                     new int[]{(Math.max(from[0], to[0]) & ~15) + 15, Mc.maxBuildHeight(al) - 1, (Math.max(from[1], to[1]) & ~15) + 15});
             return gm.onMain(() -> {
+                // Stability audit M5: a loop of area.prepare piled up leases the tick walks.
+                if (a.caller().agent() != null && gm.areas().preparedBy(a.caller().name()) >= MAX_AREAS_PER_AGENT) {
+                    throw new RpcException(429, "areas", "Agent " + a.caller().name() + " holds " + MAX_AREAS_PER_AGENT
+                            + " prepared areas: release some (area.release) or let them expire");
+                }
                 Areas.Lease lease = gm.areas().acquire(Dims.level(server, a), "area", from[0], from[1], to[0], to[1], ttl * 20L);
                 lease.owner("area #" + lease.id());
                 lease.agent(a.caller().name());
@@ -565,7 +572,10 @@ public final class Api {
     /** Snapshot job; the image is encoded as PNG off the server thread. */
     private static CompletableFuture<JsonElement> view(GmServer gm, Args a, GmServer.MainCall<View> factory) throws RpcException {
         int wait = waitSeconds(a);
-        CompletableFuture<View> started = gm.onMain(() -> gm.jobs().submit(factory.run()));
+        CompletableFuture<View> started = gm.onMain(() -> {
+            gm.jobs().admit();
+            return gm.jobs().submit(factory.run());
+        });
         return started.thenCompose(view -> gm.await(view, wait).thenApplyAsync(result -> view.attach(result.getAsJsonObject())));
     }
 

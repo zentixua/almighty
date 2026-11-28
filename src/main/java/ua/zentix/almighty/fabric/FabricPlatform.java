@@ -29,7 +29,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 /** {@link Platform} on Fabric. */
 final class FabricPlatform implements Platform {
@@ -90,7 +89,9 @@ final class FabricPlatform implements Platform {
         boolean fallback = Nodes.byDefault(player, node);
         try {
             if (online != null) return me.lucko.fabric.api.permissions.v0.Permissions.check(online, name, fallback);
-            return me.lucko.fabric.api.permissions.v0.Permissions.check(player, name, fallback).get(2, TimeUnit.SECONDS);
+            // Never wait on the server thread (stability audit M10): an offline player's answer counts once the
+            // permission mod has it (LuckPerms loads the user in the background); until then the ladder decides.
+            return me.lucko.fabric.api.permissions.v0.Permissions.check(player, name, fallback).getNow(null);
         } catch (Exception | LinkageError e) {
             return null;
         }

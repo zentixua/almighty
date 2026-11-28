@@ -141,6 +141,16 @@ public final class Dispatch {
         }
     }
     static final int MAX_KEYS = 1024;
+    static final int MAX_KEYS_PER_AGENT = 256;
+
+    private static String digest(String text) {
+        try {
+            byte[] h = java.security.MessageDigest.getInstance("SHA-256").digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(h);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
     static final int MAX_KEY_LENGTH = 128;
 
     private final Map<String, Method> methods;
@@ -231,7 +241,8 @@ public final class Dispatch {
         }
         if (key == null || readOnly.test(name, p)) return method.call(new Args(p, caller));
         String slot = caller.name() + "\u0000" + key;
-        String call = name + "\u0000" + p;
+        // A digest, not the call itself (stability audit M1): 1024 remembered 16 MB builds would fill the heap.
+        String call = digest(name + "\u0000" + p);
         CompletableFuture<JsonElement> mine = new CompletableFuture<>();
         synchronized (keys) {
             long now = clockMillis.getAsLong();
@@ -242,6 +253,18 @@ public final class Dispatch {
                 return seen.result.thenApply(JsonElement::deepCopy);
             }
             while (keys.size() >= MAX_KEYS) keys.remove(keys.keySet().iterator().next());
+            // Each agent keeps at most its share: one agent's keys never push out another's retry protection.
+            String prefix = caller.name() + "\u0000";
+            int own = 0;
+            for (String k : keys.keySet()) if (k.startsWith(prefix)) own++;
+            if (own >= MAX_KEYS_PER_AGENT) {
+                for (var it = keys.keySet().iterator(); it.hasNext(); ) {
+                    if (it.next().startsWith(prefix)) {
+                        it.remove();
+                        break;
+                    }
+                }
+            }
             keys.put(slot, new Remembered(call, mine, now + KEY_TTL_MS));
         }
         try {

@@ -38,6 +38,21 @@ public final class Jobs {
         this.paused = paused;
     }
 
+    /** The most jobs one agent may have waiting or running (stability audit M5: a map loop queued images unbounded). */
+    public static final int MAX_PER_AGENT = 32;
+
+    /** Before making a job for the calling agent: 429 when it already has {@value #MAX_PER_AGENT} in the queue. */
+    public void admit() throws ua.zentix.almighty.bridge.RpcException {
+        ua.zentix.almighty.bridge.Caller by = ua.zentix.almighty.bridge.Dispatch.current();
+        if (by.agent() == null) return;
+        int own = 0;
+        for (Job j : active) if (j.agent().equals(by.name())) own++;
+        if (own >= MAX_PER_AGENT) {
+            throw new ua.zentix.almighty.bridge.RpcException(429, "jobs", "Agent " + by.name() + " has " + own
+                    + " jobs waiting or running: wait for them (job {id, wait}) or cancel some");
+        }
+    }
+
     public <J extends Job> J submit(J job) {
         ua.zentix.almighty.bridge.Caller by = ua.zentix.almighty.bridge.Dispatch.current();
         return submit(job, by.name(), by.requester());

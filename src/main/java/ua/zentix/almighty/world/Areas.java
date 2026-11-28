@@ -263,6 +263,13 @@ public final class Areas {
         return lease;
     }
 
+    /** Areas {@code agent} prepared that are still held ({@code area.prepare}). */
+    public int preparedBy(String agent) {
+        int n = 0;
+        for (Lease l : leases.values()) if (agent.equals(l.agent()) && !l.released()) n++;
+        return n;
+    }
+
     public Lease get(long id) {
         return leases.get(id);
     }

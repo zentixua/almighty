@@ -86,4 +86,14 @@ class DispatchTest {
         for (int i = 0; i < Dispatch.MAX_KEYS + 10; i++) dispatch.invoke(gm, "count", null, "k" + i);
         assertEquals(Dispatch.MAX_KEYS + 10, runs.get());
     }
+
+    /** Stability audit M1: one agent's many keys never push out another agent's retry protection. */
+    @Test
+    void keysAreKeptPerAgent() throws Exception {
+        dispatch.invoke(builder, "count", null, "mine").get();
+        for (int i = 0; i < Dispatch.MAX_KEYS + 10; i++) dispatch.invoke(gm, "count", null, "k" + i);
+        int before = runs.get();
+        dispatch.invoke(builder, "count", null, "mine").get();
+        assertEquals(before, runs.get(), "the builder's retry still gets its first result");
+    }
 }

@@ -158,7 +158,8 @@ public final class Api {
                     throw new RpcException(403, "policy", item + ": spawn eggs are given only by the owner");
                 }
                 int n = Math.min(count, holder.value().getDefaultMaxStackSize());
-                if (!owner && to != null) gm.quotas().charge(to, "give.items", n, gm.policies().current().limits().giveItems());
+                if (!owner && to != null) gm.quotas().charge(to, "give.items", n, ua.zentix.almighty.policy.Nodes.quota(to, "give_items",
+                        gm.policies().current().limits().giveItems()));
                 ServerPlayer p = to == null ? null : server.getPlayerList().getPlayer(to);
                 if (p == null) throw RpcException.conflict("The player who asked is offline");
                 net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(holder, n);
@@ -641,7 +642,8 @@ public final class Api {
         // The agent's own initiative below owner is charged to the agent (dropping the ticket must not lift the quota).
         if (limited) {
             gm.quotas().charge(a.caller().requester() != null ? a.caller().requester().toString() : "agent:" + a.caller().agent(),
-                    "build.blocks", plan.size(), gm.policies().current().limits().buildBlocks());
+                    "build.blocks", plan.size(), ua.zentix.almighty.policy.Nodes.quota(a.caller().requester(), "build_blocks",
+                            gm.policies().current().limits().buildBlocks()));
         }
         java.util.UUID requester = a.caller().requester();
         return gm.submit(() -> {

@@ -229,4 +229,19 @@ class BridgeTest {
         }
         assertEquals(4, stopping, "each queued request is answered 503 stopping");
     }
+
+    /** Plan 9.1, F1: a valid token from an address outside the agent's allow_from is refused (and counts as a failure). */
+    @Test
+    void allowFromRefusesOtherAddresses() throws Exception {
+        ua.zentix.almighty.policy.Policy p = ua.zentix.almighty.policy.Policy.parse("[agents.builder]\nallow_from = [\"10.0.0.0/8\"]\n");
+        ua.zentix.almighty.policy.Nodes.start(null, () -> p);
+        try {
+            HttpResponse<String> r = post("secret-builder", "{\"method\":\"whoami\"}");
+            assertEquals(403, r.statusCode());
+            assertEquals("not_allowed_from", json(r).getAsJsonObject("error").get("code").getAsString());
+            assertEquals(200, post("secret-abc", "{\"method\":\"whoami\"}").statusCode(), "another agent without allow_from");
+        } finally {
+            ua.zentix.almighty.policy.Nodes.start(null, ua.zentix.almighty.policy.Policy::defaults);
+        }
+    }
 }

@@ -66,6 +66,16 @@ public final class Nodes {
      */
     public interface Handler {
         Boolean get(UUID player, Node node);
+
+        /** The answer with the {@code almighty:zone} context set to {@code zone}; null: none. */
+        default Boolean getIn(UUID player, Node node, String zone) {
+            return null;
+        }
+
+        /** The integer node {@code almighty.quota.<counter>}; null: the policy's value. */
+        default Integer quota(UUID player, String counter) {
+            return null;
+        }
     }
 
     private static volatile Handler handler;
@@ -115,6 +125,36 @@ public final class Nodes {
     /** The current policy (the gate's; any thread). */
     public static Policy policy() {
         return policy.get();
+    }
+
+    /**
+     * Whether a verified player holds {@code node} in zone {@code zone} by a grant scoped to it: the permission
+     * handler's answer with the dynamic context {@code almighty:zone=<zone>} (plan 4.3; LuckPerms: {@code /lp user Bob
+     * permission set almighty.build true almighty:zone=arena}). Without a handler there are no scoped grants. Any thread.
+     */
+    public static boolean holdsIn(UUID id, Node node, String zone) {
+        if (!Identity.verified(id)) return false;
+        Handler h = handler;
+        Boolean forced = h == null ? null : h.getIn(id, node, zone);
+        if (forced != null) return forced;
+        ServerPlayer player = server == null ? null : online.get(id);
+        Boolean v = Platform.present() && player != null ? Platform.get().permissionIn(id, player, node, zone) : null;
+        return Boolean.TRUE.equals(v);
+    }
+
+    /**
+     * A player's hourly limit for {@code counter} ({@code build_blocks}, {@code give_items}): the permission handler's
+     * integer node {@code almighty.quota.<counter>} (LuckPerms meta) for a verified online player, else
+     * {@code fallback} (the policy's {@code [quotas]}). Any thread.
+     */
+    public static long quota(UUID id, String counter, long fallback) {
+        if (id == null || !Identity.verified(id)) return fallback;
+        Handler h = handler;
+        Integer forced = h == null ? null : h.quota(id, counter);
+        if (forced != null) return Math.max(0, forced);
+        ServerPlayer player = server == null ? null : online.get(id);
+        Integer v = Platform.present() && player != null ? Platform.get().quota(player, counter) : null;
+        return v != null ? Math.max(0, v) : fallback;
     }
 
     /** Whether a player holds a node: the permission handler for an online player, the offline query otherwise. */

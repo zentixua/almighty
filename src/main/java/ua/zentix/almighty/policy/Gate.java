@@ -178,6 +178,7 @@ public final class Gate implements Dispatch.Check {
         if (caller.agent() == null) return;
         // Only the gate sets this marker: whatever the agent sent under the name is dropped.
         params.remove(ZONE_ONLY);
+        params.remove(ZONE_GRANT);
         Node node = node(method, params, isBot);
         if (node == null) throw new RpcException(403, "policy", "No permission node for " + method + ": refused by default");
         Rights r = rights(caller, params);
@@ -217,6 +218,16 @@ public final class Gate implements Dispatch.Check {
             }
             return;
         }
+        // A request beyond the player's rights, where a permission plugin grants the node in some zone (the dynamic
+        // context almighty:zone, plan 4.3): allowed only wholly inside such a zone; the method checks its exact box.
+        if (r.ticket != null && r.ceiling.atLeast(node.defaultRole()) && ZONED.contains(method)) {
+            for (Policy.Zone z : policies.current().zones().values()) {
+                if (Nodes.holdsIn(r.ticket.player(), node, z.name())) {
+                    params.addProperty(ZONE_GRANT, true);
+                    return;
+                }
+            }
+        }
         // Unasked, above the floor: allowed only inside a zone where the owner lets the agent (agent_may); the method
         // checks its exact box against those zones.
         if (r.ticket == null && r.ceiling.atLeast(node.defaultRole()) && ZONED.contains(method)) {
@@ -252,6 +263,8 @@ public final class Gate implements Dispatch.Check {
 
     /** Set by the gate on a call it let through only for an {@code agent_may} zone; the method then checks the box. */
     public static final String ZONE_ONLY = "\u0000zone_only";
+    /** Set by the gate when only a zone-scoped grant of the requester's allows the call (dropped from incoming parameters). */
+    public static final String ZONE_GRANT = "\u0000zone_grant";
     /** Methods whose box is known to the method (and checked there): the only ones an agent_may zone can allow. */
     static final Set<String> ZONED = Set.of("build", "area.prepare", "bot.spawn");
 
@@ -271,6 +284,13 @@ public final class Gate implements Dispatch.Check {
                 if (z.agentMay().contains(node.id()) && z.holds(dim, lo, hi)) return;
             }
             throw new RpcException(403, "policy", "Not allowed: " + node.key() + " outside the zones where the agent may (agent_may)");
+        }
+        if (params.has(ZONE_GRANT) && r.ticket() != null) {
+            for (Policy.Zone z : policies.current().zones().values()) {
+                if (z.holds(dim, lo, hi) && Nodes.holdsIn(r.ticket().player(), node, z.name())) return;
+            }
+            throw new RpcException(403, "policy", "Not allowed: " + r.ticket().name() + " may " + node.description()
+                    + " only inside the zones granted to them (almighty:zone)");
         }
     }
 

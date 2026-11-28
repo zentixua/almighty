@@ -1,6 +1,7 @@
 package ua.zentix.almighty.policy;
 
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -56,6 +57,9 @@ public final class PolicyEdits {
         for (String a : agents) {
             if (neu.ceiling(a).compareTo(old.ceiling(a)) > 0) out.add("agent " + a + " ceiling " + old.ceiling(a).id() + " → " + neu.ceiling(a).id());
             if (neu.floor(a).compareTo(old.floor(a)) > 0) out.add("agent " + a + " floor " + old.floor(a).id() + " → " + neu.floor(a).id());
+            // allow_from: dropping it, or a range not listed before, lets the token in from more places.
+            List<String> was = from(old, a), now = from(neu, a);
+            if (!was.isEmpty() && (now.isEmpty() || !was.containsAll(now))) out.add("agent " + a + " accepted from more addresses (allow_from)");
         }
         for (Map.Entry<String, Policy.Zone> e : old.zones().entrySet()) {
             Policy.Zone was = e.getValue(), now = neu.zones().get(e.getKey());
@@ -72,6 +76,11 @@ public final class PolicyEdits {
         if (old.safety().privacyNotice() && !neu.safety().privacyNotice()) out.add("joining players no longer told an AI reads their messages (privacy_notice)");
         if (neu.limits().wider(old.limits())) out.add("larger quotas");
         return out.isEmpty() ? null : String.join("; ", out);
+    }
+
+    private static List<String> from(Policy p, String agent) {
+        Policy.AgentRules r = p.agents().get(agent);
+        return r == null ? List.of() : r.allowFrom().stream().map(AddressRange::text).toList();
     }
 
     private static boolean sameBox(Policy.Zone a, Policy.Zone b) {

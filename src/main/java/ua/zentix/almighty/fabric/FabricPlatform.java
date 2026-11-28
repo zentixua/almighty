@@ -96,6 +96,17 @@ final class FabricPlatform implements Platform {
             return null;
         }
     }
+    /** LuckPerms meta {@code almighty.quota.<counter>} through the API's options (no zone contexts on Fabric). */
+    @Override
+    public Integer quota(ServerPlayer online, String counter) {
+        if (!FabricLoader.getInstance().isModLoaded(PERMISSIONS_MOD)) return null;
+        try {
+            return me.lucko.fabric.api.permissions.v0.Options.get(online, "almighty.quota." + counter, (Integer) null, Integer::valueOf);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
 
     /** Fabric negotiates mod channels per connection; a bot's in-memory connection takes only vanilla packets. */
     @Override

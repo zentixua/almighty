@@ -211,6 +211,13 @@ public final class Bridge {
             }
             throw new RpcException(401, "unauthorized", "Header Authorization: Bearer <token> required");
         }
+        // allow_from (plan 9.1, F1): a valid token from an address the owner did not list counts as a failed attempt.
+        if (!ua.zentix.almighty.policy.Nodes.policy().allowsFrom(agent.name(), address)) {
+            long lock = guard.failure(address);
+            LOG.warn("Almighty bridge: agent {}'s token used from {}, not in its allow_from{}", agent.name(), address,
+                    lock > 0 ? "; locked out for " + lock / 1000 + " s" : "");
+            throw new RpcException(403, "not_allowed_from", "This agent's token is not accepted from " + address + " (allow_from in policy.toml)");
+        }
         guard.success(address);
         agent.seen(address);
         return new Caller(agent, address);

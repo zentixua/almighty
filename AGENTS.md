@@ -239,7 +239,10 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `bot.spawn`, and commands at their source position); unasked above the floor, `build`/`area.prepare`/`bot.spawn`
   pass the gate only with an internal marker (`Gate.ZONE_ONLY`, dropped from incoming parameters) and must lie
   wholly inside a zone whose `agent_may` lists the node. `[quotas] build_blocks, give_items` per player per hour
-  below owner (`policy/Quotas`; 429); per agent `calls_per_minute` (1200, any agent, `bridge/CallRate`; 429) and
+  below owner (`policy/Quotas`; 429; a permission plugin's integer node `almighty.quota.build_blocks|give_items`, LuckPerms
+  meta, sets one verified online player's own limit, `Nodes.quota`); a grant scoped by the dynamic context
+  `almighty:zone=<zone>` (NeoForge's permission API; Fabric's has no contexts) lets a request beyond the player's rights
+  run wholly inside that zone (`Gate.ZONE_GRANT`, set by the gate only, checked in `Gate.zone`); per agent `calls_per_minute` (1200, any agent, `bridge/CallRate`; 429) and
   `bot_minutes` (240 an hour for bots spawned below owner: spawn refused, a running bot removed). Below owner a
   script runs at most 50 ms (`Api.SCRIPT_MS_BELOW_OWNER`). Role ladder without a plugin: `/almighty role <player> <role|clear>
   [duration]` (admins and the console, only below their own role; never owner; `config/almighty/roles.json`,
@@ -355,7 +358,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   forge). Optional Agent Skills frontmatter (`name`, `description`); without it the first line is the description.
   Progressive disclosure: the index carries ids and descriptions only, `notes {id}` one note. `Catalog`: the live
   catalog (mods, registries, tags, recipes, commands, events, mod config without secret-like keys); registries
-  off the server thread, what `/reload` replaces snapshotted on it once per reload, recipe details off it; paged.
+  off the server thread (recipe types too), what `/reload` replaces (loot table ids, advancements with title and parent)
+  snapshotted on it once per reload, recipe details off it; paged.
   Notes are reference, never instructions or rights. Mod-specific hints belong only in that mod's note, not the
   adapter: the bridge depends on no mod.
 
@@ -502,7 +506,8 @@ and in the file until removed by name; move an unreadable rules file aside (`rul
   (the bridge would ignore unknown parameters); tool errors are `isError` results, not protocol errors.
   Instructions: the core rule in the first 512 characters (Codex and ChatGPT read only those), notes one line each,
   under 3,000 characters (Claude Code cuts at 4,096). `?profile=compact` (6 tools) and `?images=false` per URL; `[agents.<name>] profile, images` in `policy.toml` are
-  that agent's defaults (the URL overrides them).
+  that agent's defaults (the URL overrides them); `allow_from` (IP addresses or CIDR ranges, `policy/AddressRange`) is
+  where its token is accepted (`Bridge.authenticate`: 403 `not_allowed_from`, counted as a failed attempt).
 - Groovy 4 ships as a nested jar (`jarJar`; dedicated NeoForge servers load it into the game layer, exposing game
   and mod classes). Gradle runs use `additionalRuntimeClasspath` (nested jars are not read there). Each script has
   its own `GroovyClassLoader` over the mod's loader; call `Compiled.close` after the last run, or classes never unload.

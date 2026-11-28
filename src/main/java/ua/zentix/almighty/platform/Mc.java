@@ -35,6 +35,25 @@ public final class Mc {
 
     // Profiles (authlib's GameProfile is a record on 26.x).
 
+    /** Ids of the server's loot tables (reloadable data; server thread). */
+    public static java.util.List<ResourceLocation> lootTableIds(net.minecraft.server.MinecraftServer server) {
+        //? if >=26.1 {
+        /*return server.reloadableRegistries().lookup().lookupOrThrow(net.minecraft.core.registries.Registries.LOOT_TABLE).listElementIds()
+                .map(Mc::id).toList();
+        *///?} else {
+        return java.util.List.copyOf(server.reloadableRegistries().getKeys(net.minecraft.core.registries.Registries.LOOT_TABLE));
+        //?}
+    }
+
+    /** An advancement's shown title. */
+    public static String advancementTitle(net.minecraft.advancements.DisplayInfo d) {
+        //? if >=26.3 {
+        /*return d.title().getString();
+        *///?} else {
+        return d.getTitle().getString();
+        //?}
+    }
+
     public static String name(GameProfile profile) {
         //? if >=26.1 {
         /*return profile.name();

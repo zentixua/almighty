@@ -105,6 +105,52 @@ public final class GmLadderGameTests {
         h.succeed();
     }
 
+    /**
+     * Plan 4.3 with a permission plugin: a grant scoped by the context almighty:zone lets a guest build inside that
+     * zone only; the integer node almighty.quota.build_blocks sets that player's hourly limit.
+     */
+    @GameTest(template = "floor", batch = "gm_ladder_lp")
+    public static void zoneScopedGrantsAndQuotaNodes(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        UUID id = UUID.randomUUID();
+        ServerPlayer guest = player(h, "ladder_zoned", id);
+        BlockPos in = h.absolutePos(new BlockPos(3, 2, 3)), out = h.absolutePos(new BlockPos(30, 2, 30));
+        try {
+            gm.policies().set(Policy.parse(String.format(Locale.ROOT, "preset = \"public\"\nidentity = \"proxy\"\n[zones.arena]\n"
+                    + "from = [%d, %d, %d]\nto = [%d, %d, %d]\n", in.getX() - 2, in.getY() - 2, in.getZ() - 2, in.getX() + 2, in.getY() + 4, in.getZ() + 2)));
+            String t = ticket(h, gm, guest);
+            check(refused(gm, "build", params(set(in, ",\"for\":\"" + t + "\""))).status() == 403, "no grant: a guest cannot build");
+            Nodes.handler(new Nodes.Handler() {
+                public Boolean get(UUID player, Node node) {
+                    return null;
+                }
+
+                public Boolean getIn(UUID player, Node node, String zone) {
+                    return player.equals(id) && node == Node.BUILD && zone.equals("arena") ? Boolean.TRUE : null;
+                }
+
+                public Integer quota(UUID player, String counter) {
+                    return player.equals(id) && counter.equals("build_blocks") ? 2 : null;
+                }
+            });
+            gm.dispatch().invoke(GM, "build", params(set(in, ",\"for\":\"" + t + "\"")));
+            check(refused(gm, "build", params(set(out, ",\"for\":\"" + t + "\""))).status() == 403, "outside the granted zone: refused");
+            JsonObject sneaky = params(set(out, ",\"for\":\"" + t + "\""));
+            sneaky.addProperty(ua.zentix.almighty.policy.Gate.ZONE_GRANT, true);
+            check(refused(gm, "build", sneaky).status() == 403, "the marker cannot be sent by the agent");
+            // The player's own quota node (2 an hour; the policy has the default): 1 used, 2 more would exceed it.
+            String two = String.format(Locale.ROOT, "{\"ops\":[{\"op\":\"fill\",\"from\":[%d,%d,%d],\"to\":[%d,%d,%d],\"block\":\"minecraft:stone\"}],\"wait\":0,\"for\":\"%s\"}",
+                    in.getX(), in.getY() + 1, in.getZ(), in.getX() + 1, in.getY() + 1, in.getZ(), t);
+            check(refused(gm, "build", params(two)).status() == 429, "the quota node limits this player");
+        } finally {
+            Nodes.handler(null);
+            gm.policies().set(before);
+            h.getLevel().getServer().getPlayerList().remove(guest);
+        }
+        h.succeed();
+    }
+
     @GameTest(template = "floor", batch = "gm_ladder")
     public static void rolesHandlersQuotasClaims(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);

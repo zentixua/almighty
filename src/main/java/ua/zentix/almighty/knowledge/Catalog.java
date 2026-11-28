@@ -49,7 +49,7 @@ import java.util.regex.Pattern;
  */
 public final class Catalog {
     public static final List<String> KINDS = List.of("mods", "blocks", "items", "entities", "effects", "enchantments",
-            "biomes", "dimensions", "tags", "recipes", "commands", "events", "config");
+            "biomes", "dimensions", "tags", "recipes", "recipe_types", "loot_tables", "advancements", "commands", "events", "config");
     /** Config keys whose values are never shown. */
     static final Pattern SECRET = Pattern.compile("(?i).*(token|secret|pass(word|wd|phrase)?|pwd|credential|key|webhook|auth(?!or)|cookie|session|jdbc|dsn|(database|db)[._-]?url).*");
     private static final int MAX_TEXT = 300;
@@ -99,6 +99,9 @@ public final class Catalog {
         kinds.put("tags", tags(server.registryAccess()));
         kinds.put("commands", commands(server.getCommands().getDispatcher(), server.createCommandSourceStack()));
         kinds.put("config", config());
+        // Loot tables and advancements are data a reload replaces: their ids (and an advancement's title), taken here.
+        kinds.put("loot_tables", lootTables(server));
+        kinds.put("advancements", advancements(server));
         // The level map is the server thread's: a mod may add a dimension at runtime.
         List<Entry> dimensions = new ArrayList<>();
         for (ResourceKey<?> level : server.levelKeys()) dimensions.add(new Entry("dimensions", Mc.id(level).toString(), "", JsonObject::new));
@@ -168,6 +171,7 @@ public final class Catalog {
                 return d;
             });
             case "biomes" -> registry(kind, Mc.registry(access, Registries.BIOME), b -> new JsonObject());
+            case "recipe_types" -> registry(kind, BuiltInRegistries.RECIPE_TYPE, t -> new JsonObject());
             case "events" -> {
                 List<Entry> out = new ArrayList<>();
                 Platform.get().events().all().forEach((className, mod) -> {
@@ -228,6 +232,39 @@ public final class Catalog {
     }
 
     /** Tags of the main registries with their sizes: taken on the server thread (a reload rebinds them). */
+    /** Loot table ids (chests, entities, blocks, archaeology …); server thread, at a reload. */
+    private static List<Entry> lootTables(MinecraftServer server) {
+        List<Entry> out = new ArrayList<>();
+        for (ResourceLocation id : Mc.lootTableIds(server)) {
+            String path = id.getPath();
+            String group = path.contains("/") ? path.substring(0, path.indexOf('/')) : "";
+            out.add(new Entry("loot_tables", id.toString(), group, () -> {
+                JsonObject d = new JsonObject();
+                if (!group.isEmpty()) d.addProperty("group", group);
+                return d;
+            }));
+        }
+        out.sort((a, b) -> a.id().compareTo(b.id()));
+        return List.copyOf(out);
+    }
+
+    /** Advancement ids with their title and parent, if any; server thread, at a reload. */
+    private static List<Entry> advancements(MinecraftServer server) {
+        List<Entry> out = new ArrayList<>();
+        for (net.minecraft.advancements.AdvancementHolder a : server.getAdvancements().getAllAdvancements()) {
+            String title = a.value().display().map(Mc::advancementTitle).orElse("");
+            String parent = a.value().parent().map(Object::toString).orElse(null);
+            out.add(new Entry("advancements", a.id().toString(), title, () -> {
+                JsonObject d = new JsonObject();
+                if (!title.isEmpty()) d.addProperty("title", title);
+                if (parent != null) d.addProperty("parent", parent);
+                return d;
+            }));
+        }
+        out.sort((a, b) -> a.id().compareTo(b.id()));
+        return List.copyOf(out);
+    }
+
     private static List<Entry> tags(RegistryAccess access) {
         List<Entry> out = new ArrayList<>();
         for (ResourceKey<? extends Registry<?>> key : List.of(Registries.BLOCK, Registries.ITEM, Registries.ENTITY_TYPE,

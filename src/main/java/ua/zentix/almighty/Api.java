@@ -183,6 +183,11 @@ public final class Api {
         m.put("look", a -> view(gm, a, () -> new LookView(Dims.level(server, a), a.ints("from", 3), a.ints("to", 3), LookView.Look.parse(a.string("look")))));
         m.put("build", a -> build(gm, a));
         m.put("file", a -> CompletableFuture.completedFuture(gm.files().call(a)));
+        m.put("role", a -> {
+            // The name lookup may ask Mojang (an unknown or stale name): here, on the bridge thread, never on the tick.
+            com.mojang.authlib.GameProfile looked = ua.zentix.almighty.platform.Mc.cachedProfile(server, a.string("player"));
+            return gm.onMain(() -> gm.role(a, looked));
+        });
         m.put("changes", a -> CompletableFuture.completedFuture(gm.journal().list(a.integer("limit", 20, 1, 200))));
         m.put("undo", a -> {
             // A journal change (any GM call or job: builds, commands, functions, scripts), conflict-aware.

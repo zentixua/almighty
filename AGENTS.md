@@ -210,7 +210,9 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   msg, setblock, fill, clone, place …) or `SELF_ONLY` (tp, give, effect, clear, gamemode, kill …) aimed only at
   the requester (`@s`, their name or UUID; no other selector, name, quoted name, short or Floodgate name, UUID in any
   spelling, or `execute on`; a rule's filled command is checked the same way at every fire); everything else (any
-  mod command, data, summon, function, schedule, ban …) is confirmed. Function macros are expanded before the
+  mod command, data, summon, function, schedule, ban …) is confirmed. A call that is one teleport between the
+  requester and one other player (`tp Bob`, `tp @s Bob`, `tp Bob Me`) waits for that other player instead
+  (`Confirmations.teleportPartner`, scenario P10; offline → 409). Function macros are expanded before the
   check and in the prompt. Also any kind in `[safety] confirm_first`. → 202 `pending` with an id; the server asks
   that player (the exact call, `[Allow]`/`[Deny]` and the typed `/almighty confirm <nonce>`; on 26.x also a vanilla
   confirmation dialog with the same buttons, `Mc.confirmDialog`, except for Bedrock players; never clipped: a call
@@ -336,8 +338,14 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   all or nothing, and the change is marked undone only when every piece finished. A block whose mod is gone refuses the revert instead of
   writing air. Caveat: work the server thread runs inside a GM call (a script that loads a chunk drains queued
   tasks, player packets included) is recorded into that call's change; scripts must not load chunks (deny list).
-- Policy edits by asking (`policy/ConfigFiles`, `PolicyEdits`): `file` reads and writes only `policy.toml` and
-  `scripts/<name>.groovy`. Friction follows origin: the owner (the console, an internal caller, or a request
+- Policy edits by asking (`policy/ConfigFiles`, `PolicyEdits`): `file` reads and writes only `policy.toml`,
+  `scripts/<name>.groovy` and the owner's notes `notes/<name>.md` (written only by the owner origin; read by any agent).
+  `policy.toml` has a schema `version` (absent = 1, `Policy.VERSION`): a newer one is refused with the reason and the
+  last good policy stays; migrations of older schemas go in `Policy.parse` (none yet). Roles by asking: `role`
+  (`GmServer.role`, `policy/RoleCalls`; node `policy`): the console at once; a request with that player's rights
+  (admin or owner, roles below their own); the agent's own initiative applies only clearing or narrowing an existing
+  grant (a role no higher, ending no later; owners told), since a stored grant outlives op levels and presets;
+  anything else waits for an `almighty.engine` holder, bound to the player's UUID. The name lookup runs on the bridge thread. Friction follows origin: the owner (the console, an internal caller, or a request
   whose player is an owner) applies at once; a player's request is refused (403); the agent's own initiative, on
   any preset (private too, where its floor is owner), applies at once only if `PolicyEdits.grants` finds nothing
   (preset more open or leaving private, identity verifying more people, owners added or removed, ceilings or
@@ -379,7 +387,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
 `ships {name?, center+radius?}` (Sable ships; 503 without Sable),
 `notes {id? | query?+kind?+offset?+limit? | id: "world:<name>"+text}` → index `{notes: [{id, source, description}], catalog}`,
 one note, or `{entries, total, next_offset?, notes}`; `audit {limit?, agent?, method?}`, `pending {id, wait?}`,
-`give {item, count?, for}`, `changes {limit?}`, `undo {change}`, `file {action: list|read|write|undo, path?, text?}`. Any call may carry `for` (the ticket of the player's message it answers) and, on `/rpc`,
+`give {item, count?, for}`, `changes {limit?}`, `undo {change}`, `file {action: list|read|write|undo, path?, text?}`,
+`role {player, role (guest|member|builder|admin|clear), duration? | until? ("HH:MM", the policy's timezone)}`. Any call may carry `for` (the ticket of the player's message it answers) and, on `/rpc`,
 a top-level idempotency `key`.
 
 All accept `dimension` (Overworld by default); long operations accept `wait` (default 30 s, up to 50): if the job

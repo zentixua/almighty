@@ -533,6 +533,92 @@ public final class GmServer {
         };
     }
 
+    /**
+     * {@code role {player, role, duration? | until?}} (plan 4.10, O17): give a player a role of the ladder (or
+     * {@code clear}) in {@code config/almighty/roles.json}, as {@code /almighty role} does. Friction follows origin:
+     * in-process (the console) as the owner; for a request, with that player's rights (admins and owners only, and
+     * only roles below their own); the agent's own initiative applies at once only when it restricts (owners online
+     * are told), and a grant waits for the owner's approval (a holder of {@code almighty.engine}). Server thread.
+     */
+    public JsonObject role(ua.zentix.almighty.bridge.Args a, com.mojang.authlib.GameProfile looked) throws RpcException {
+        String name = a.string("player");
+        String roleName = a.string("role").toLowerCase(java.util.Locale.ROOT);
+        ua.zentix.almighty.policy.Role role = roleName.equals("clear") ? null : ua.zentix.almighty.policy.Role.parse(roleName);
+        if (role == null && !roleName.equals("clear")) throw RpcException.badRequest("role: guest, member, builder, admin, or clear");
+        if (a.has("duration") && a.has("until")) throw RpcException.badRequest("duration or until, not both");
+        long until = 0;
+        if (a.has("duration")) {
+            java.time.Duration d = ua.zentix.almighty.policy.Roles.parse(a.string("duration"));
+            if (d == null) throw RpcException.badRequest("duration such as 30m, 3h, 2d");
+            until = System.currentTimeMillis() + d.toMillis();
+        } else if (a.has("until")) {
+            until = ua.zentix.almighty.policy.RoleCalls.until(a.string("until"), policies.current().timezone(), java.time.Instant.now());
+        }
+        net.minecraft.server.level.ServerPlayer online = server.getPlayerList().getPlayerByName(name);
+        // The cache lookup (which may ask Mojang) ran on the bridge thread: `looked`.
+        com.mojang.authlib.GameProfile profile = online != null ? online.getGameProfile() : looked;
+        if (profile == null) throw RpcException.notFound("No player " + name + " (they must have joined this server)");
+        java.util.UUID id = Mc.id(profile);
+        ua.zentix.almighty.policy.Roles.Grant before = roles.grant(id);
+        ua.zentix.almighty.policy.Role granter;
+        String by;
+        Confirmations.Pending approved = Confirmations.running();
+        boolean ownerApproved = approved != null && approved.kind == Confirmations.Kind.ADMIN && approved.method.equals("role")
+                && approved.node == ua.zentix.almighty.policy.Node.ENGINE && approved.decider != null;
+        // An approval is bound to the player it was shown for, not to whoever holds that name now.
+        if (ownerApproved && (!a.raw().has(ROLE_PLAYER) || !a.raw().get(ROLE_PLAYER).getAsString().equals(id.toString()))) {
+            throw RpcException.conflict(name + " is not the player this was proposed for: not applied");
+        }
+        if (a.caller().agent() == null || ownerApproved) {
+            granter = ua.zentix.almighty.policy.Role.OWNER;
+            by = ownerApproved ? approved.deciderName + " (approved)" : a.caller().name();
+        } else if (a.caller().requester() != null) {
+            Gate.Rights r = gate.rights(a.caller(), a.raw());
+            granter = r.effective();
+            by = r.ticket().name() + " via " + a.caller().name();
+            if (!granter.atLeast(ua.zentix.almighty.policy.Role.ADMIN)) throw new RpcException(403, "policy", "Only admins and owners give roles");
+        } else {
+            by = a.caller().name() + " (on its own)";
+            if (ua.zentix.almighty.policy.RoleCalls.grants(before, role, until)) {
+                // A grant on the agent's own initiative: one owner's approval, as for a granting policy edit.
+                String text = "role: the agent proposes " + Mc.name(profile) + " → " + roleName
+                        + (until == 0 ? "" : " until " + java.time.Instant.ofEpochMilli(until).atZone(policies.current().timezone())
+                        .toLocalDateTime().withSecond(0).withNano(0));
+                JsonObject proposal = a.raw().deepCopy();
+                proposal.addProperty(ROLE_PLAYER, id.toString());
+                Confirmations.Pending pending = decisions.confirmations().ask(Confirmations.Kind.ADMIN, a.caller(), "role", proposal,
+                        null, ua.zentix.almighty.policy.Node.ENGINE, null, "the agent", text);
+                if (pending.count() == 1) decisions.prompt(pending);
+                throw Confirmations.waiting(pending, "the owner (it grants a role)");
+            }
+            granter = ua.zentix.almighty.policy.Role.OWNER;
+        }
+        String why = roles.setUntil(id, Mc.name(profile), role, until, granter, by);
+        if (why != null) throw new RpcException(403, "policy", why);
+        Nodes.refresh(server);
+        if (a.caller().agent() != null && a.caller().requester() == null && !ownerApproved) {
+            decisions.tellOwners("The agent " + a.caller().name() + " changed " + Mc.name(profile) + "'s role on its own (only restricting): "
+                    + roleName + ". Change back: /almighty role " + Mc.name(profile) + " " + (before == null ? "clear" : before.role().id()));
+        }
+        JsonObject out = new JsonObject();
+        out.addProperty("player", Mc.name(profile));
+        out.addProperty("uuid", id.toString());
+        out.addProperty("role", roleName);
+        if (until != 0) out.addProperty("until", java.time.Instant.ofEpochMilli(until).atZone(policies.current().timezone()).toOffsetDateTime().toString());
+        JsonObject undo = new JsonObject();
+        undo.addProperty("player", Mc.name(profile));
+        undo.addProperty("role", before == null ? "clear" : before.role().id());
+        if (before != null && before.until() != 0) {
+            out.addProperty("previous_until", java.time.Instant.ofEpochMilli(before.until()).atZone(policies.current().timezone()).toOffsetDateTime().toString());
+        }
+        out.addProperty("previous", before == null ? "none" : before.role().id());
+        out.add("undo", undo);
+        return out;
+    }
+
+    /** The UUID a role proposal was made for (set by the server at ask time, checked at the approved replay). */
+    static final String ROLE_PLAYER = "_role_player";
+
     /** How long one journal change collects a rule's writes before the next fire opens a new one. */
     static final long RULE_CHANGE_TICKS = 1200;
     /** Open journal changes of declarative rules, by creator and rule; closed after {@link #RULE_CHANGE_TICKS}. */

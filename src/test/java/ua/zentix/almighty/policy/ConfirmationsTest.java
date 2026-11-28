@@ -126,4 +126,19 @@ class ConfirmationsTest {
         assertTrue(c.decide(first, UUID.randomUUID(), "Nobody", true, n -> false).contains("do not hold"));
         assertNull(c.decide(first, verifiedAdmin, "Admin", true, n -> true));
     }
+
+    /** Scenario P10: which teleports are the other player's to allow. */
+    @Test
+    void teleportPartners() {
+        java.util.function.Function<String, String> partner = c -> Confirmations.teleportPartner("command",
+                JsonParser.parseString("{\"commands\":[\"" + c + "\"]}").getAsJsonObject(), "Alex");
+        assertEquals("Bob", partner.apply("tp Bob"));
+        assertEquals("Bob", partner.apply("tp @s Bob"));
+        assertEquals("Bob", partner.apply("teleport Alex Bob"));
+        assertEquals("Bob", partner.apply("minecraft:tp Bob Alex"));
+        assertEquals(null, partner.apply("tp @s 0 64 0"), "a place: the asker's own move");
+        assertEquals(null, partner.apply("tp Bob Carl"), "two others: the asker confirms, as before");
+        assertEquals(null, partner.apply("tp @a Bob"));
+        assertEquals(null, partner.apply("execute as Bob run tp Alex"));
+    }
 }

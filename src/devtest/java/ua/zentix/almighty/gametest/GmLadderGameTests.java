@@ -81,6 +81,53 @@ public final class GmLadderGameTests {
         return String.format(Locale.ROOT, "from = [%d, %d, %d]\nto = [%d, %d, %d]\n", a.getX(), a.getY(), a.getZ(), b.getX(), b.getY(), b.getZ());
     }
 
+    /**
+     * Scenario O17: the owner says in game "make Bob a builder until 23:00"; the agent writes the role with the
+     * owner's ticket and it applies at once. On its own, the agent may only restrict; a grant waits for the owner.
+     */
+    @GameTest(template = "floor", batch = "gm_ladder_role")
+    public static void theOwnerMakesBobABuilder(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        ServerPlayer owner = player(h, "role-owner", UUID.randomUUID()), bob = player(h, "role-bob", UUID.randomUUID());
+        try {
+            gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\"\nowners = [\"" + owner.getUUID() + "\"]"));
+            Nodes.refresh(h.getLevel().getServer());
+            String t = ticket(h, gm, owner);
+            JsonObject done = gm.dispatch().invoke(GM, "role", params("{\"player\":\"role-bob\",\"role\":\"builder\",\"until\":\"23:00\",\"for\":\"%s\"}", t))
+                    .get(1, java.util.concurrent.TimeUnit.SECONDS).getAsJsonObject();
+            check(done.get("role").getAsString().equals("builder") && done.has("until") && done.get("previous").getAsString().equals("none"),
+                    "applied at once with its end: " + done);
+            check(Nodes.role(bob.getUUID()) == Role.BUILDER, "Bob is a builder: " + Nodes.role(bob.getUUID()));
+            // Unasked, the agent may lower it (the owner is told), but a raise waits for the owner.
+            // Its own agent: an agent asks the owner at most once per 10 minutes, and other tests need gm's ask.
+            Caller helper = new Caller(Agents.of(Map.of("role-helper", "h".repeat(32))).get("role-helper"), "test");
+            RpcException wait;
+            try {
+                gm.dispatch().invoke(helper, "role", params("{\"player\":\"role-bob\",\"role\":\"admin\"}")).get(1, java.util.concurrent.TimeUnit.SECONDS);
+                throw new GameTestAssertException("an unasked grant applied at once");
+            } catch (java.util.concurrent.ExecutionException e) {
+                wait = (RpcException) e.getCause();
+            } catch (RpcException e) {
+                wait = e;
+            }
+            check(wait.status() == 202, "an unasked grant waits for the owner: " + wait.status() + " " + wait.getMessage());
+            check(Nodes.role(bob.getUUID()) == Role.BUILDER, "nothing granted while waiting");
+            gm.dispatch().invoke(GM, "role", params("{\"player\":\"role-bob\",\"role\":\"clear\"}")).get(1, java.util.concurrent.TimeUnit.SECONDS);
+            check(Nodes.role(bob.getUUID()) == Role.MEMBER, "cleared: back to the friends role: " + Nodes.role(bob.getUUID()));
+            // A member's request cannot give roles.
+            String bt = ticket(h, gm, bob);
+            check(refused(gm, "role", params("{\"player\":\"role-owner\",\"role\":\"builder\",\"for\":\"%s\"}", bt)).status() == 403,
+                    "a member gives no roles");
+        } finally {
+            gm.roles().set(bob.getUUID(), "role-bob", null, null, Role.OWNER, "test");
+            gm.policies().set(before);
+            h.getLevel().getServer().getPlayerList().remove(owner);
+            h.getLevel().getServer().getPlayerList().remove(bob);
+        }
+        h.succeed();
+    }
+
     @GameTest(template = "floor", batch = "gm_ladder")
     public static void zonesDenyAndAgentMay(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);

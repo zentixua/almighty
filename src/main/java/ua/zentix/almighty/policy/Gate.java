@@ -116,7 +116,7 @@ public final class Gate implements Dispatch.Check {
             case "bot.remove" -> Node.BOTS;
             case "audit" -> Node.AUDIT;
             case "give" -> Node.GIVE_SELF;
-            case "file" -> Node.POLICY;
+            case "file", "role" -> Node.POLICY;
             default -> null;
         };
     }
@@ -125,12 +125,21 @@ public final class Gate implements Dispatch.Check {
     private void requesterConfirms(Caller caller, String method, JsonObject params, Rights r, Node node, boolean decided) throws RpcException {
         if (!decided && confirmations != null && r.ticket != null && Nodes.role(r.ticket.player()) != Role.OWNER
                 && Confirmations.needsRequester(method, params, r.ticket.name(), r.ticket.player(), policies.current().safety().confirmFirst())) {
+            // P10: a teleport to (or of) one other player is that player's to allow, not the asker's.
+            String partner = Confirmations.teleportPartner(method, params, r.ticket.name());
+            UUID confirmer = r.ticket.player();
+            if (partner != null) {
+                confirmer = Nodes.onlineId(partner);
+                if (confirmer == null) throw RpcException.conflict(partner + " is offline: a teleport with them waits for their yes");
+            }
             Confirmations.Pending p = confirmations.ask(Confirmations.Kind.REQUESTER, caller, method, params,
-                    r.ticket.player(), node, r.ticket.player(), r.ticket.name());
+                    confirmer, node, r.ticket.player(), r.ticket.name(),
+                    partner == null ? null : r.ticket.name() + " asks: " + Confirmations.render(method, params));
             prompter.prompt(p);
             throw Confirmations.waiting(p, r.ticket.name());
         }
     }
+
 
     /** A private reply to the requester alone (chat or actionbar): the only {@code say} below {@code speak.all}. */
     static boolean replyToRequester(JsonObject p, Tickets.Ticket t) throws RpcException {

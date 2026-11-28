@@ -45,6 +45,12 @@ public final class Nodes {
         return false;
     }
 
+    /** The UUID of an online player by name (from the snapshot; any thread), or null. */
+    public static UUID onlineId(String name) {
+        for (ServerPlayer p : online.values()) if (Mc.name(p.getGameProfile()).equalsIgnoreCase(name)) return p.getUUID();
+        return null;
+    }
+
     /** Extra roles (the ladder of step 9: {@code /almighty role}); none yet. */
     private static volatile java.util.function.Function<UUID, Role> granted = id -> null;
 

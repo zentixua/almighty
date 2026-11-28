@@ -171,6 +171,49 @@ public final class GmLadderGameTests {
         });
     }
 
+    //? if cpa {
+    /*// Plan step 19: on Fabric, claims of any protection mod that registers with the Common Protection API. A
+    // provider protecting one chunk from everyone: the source refuses exactly that chunk, and the server's claims
+    // (built at start from the installed mods) refuse a build there naming the API.
+    @GameTest(template = "floor", batch = "gm_ladder_cpa")
+    public static void commonProtectionApiDecidesClaims(GameTestHelper h) {
+        GmServer gm = gm(h);
+        BlockPos at = h.absolutePos(new BlockPos(5, 2, 5));
+        int cx = at.getX() >> 4, cz = at.getZ() >> 4;
+        net.minecraft.resources.ResourceLocation id = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("almighty", "test_protection");
+        eu.pb4.common.protection.api.CommonProtection.register(id, new eu.pb4.common.protection.api.ProtectionProvider() {
+            public boolean isProtected(net.minecraft.world.level.Level level, BlockPos pos) {
+                return (pos.getX() >> 4) == cx && (pos.getZ() >> 4) == cz;
+            }
+
+            public boolean isAreaProtected(net.minecraft.world.level.Level level, net.minecraft.world.phys.AABB box) {
+                return false;
+            }
+
+            public boolean canPlaceBlock(net.minecraft.world.level.Level level, BlockPos pos, net.minecraft.server.players.NameAndId who,
+                                         net.minecraft.world.entity.player.Player player) {
+                return !isProtected(level, pos);
+            }
+
+            public boolean canBreakBlock(net.minecraft.world.level.Level level, BlockPos pos, net.minecraft.server.players.NameAndId who,
+                                         net.minecraft.world.entity.player.Player player) {
+                return !isProtected(level, pos);
+            }
+        });
+        try {
+            var source = new ua.zentix.almighty.compat.cpa.CommonProtectionClaims();
+            check(!source.mayBuild(null, h.getLevel(), cx, cz), "the protected chunk is refused to a stranger");
+            check(!source.mayBuild(UUID.randomUUID(), h.getLevel(), cx, cz), "and to a player the provider does not allow");
+            check(source.mayBuild(null, h.getLevel(), cx + 1, cz), "the next chunk is open");
+            String refusal = gm.claims().refusal(null, h.getLevel(), at.getX(), at.getZ(), at.getX(), at.getZ());
+            check(refusal != null && refusal.contains("Common Protection API"), "a build there is refused: " + refusal);
+        } finally {
+            eu.pb4.common.protection.api.CommonProtection.remove(id);
+        }
+        h.succeed();
+    }
+    *///?}
+
     /** Review of step 9: commands reaching into a zone by coordinates, execute relocation, bots in a zone without pos. */
     @GameTest(template = "floor", batch = "gm_ladder_commands")
     public static void zonesCoverCommandsAndBots(GameTestHelper h) throws Exception {

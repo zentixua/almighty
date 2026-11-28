@@ -142,7 +142,7 @@ kind: map - top-down map like a vanilla map: center [x, z] and size (up to 1024)
 
 ## build
 
-Builds in portions between ticks (the server does not freeze), with undo; one of two: ops - in order: {"op": "fill", "from": [x,y,z], "to": [x,y,z], "block": "stone", "mode": "replace|keep|hollow|outline"}, {"op": "set", "pos": [x,y,z], "block": "oak_stairs[facing=east]"}, {"op": "layers", "origin": [x,y,z], "palette": {"#": "stone"}, "layers": [["#.#", ...], ...]} (a symbol not in the palette leaves the block). Waits for its chunks by itself. The answer has the job number. undo - a job number: undo that job, restoring blocks and block entity contents. undo_change - a change id (receipts and changes show it; commands and scripts too): revert its block writes, except where something changed them since (conflicts).
+Builds in portions between ticks (the server does not freeze), with undo; one of two: ops - in order: {"op": "fill", "from": [x,y,z], "to": [x,y,z], "block": "stone", "mode": "replace|keep|hollow|outline"}, {"op": "set", "pos": [x,y,z], "block": "oak_stairs[facing=east]"}, {"op": "layers", "origin": [x,y,z], "palette": {"#": "stone"}, "layers": [["#.#", ...], ...]} (a symbol not in the palette leaves the block). Waits for its chunks by itself. The answer has the job number. undo - a job number: undo that job, restoring blocks and block entity contents. undo_change - a change id (receipts and call changes show it; commands and scripts too): revert its block writes, except where something changed them since (conflicts).
 
 | Parameter | Type | Notes |
 |---|---|---|

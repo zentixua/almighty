@@ -116,6 +116,7 @@ public final class GmServer {
                 System::currentTimeMillis);
         Nodes.granted(roles::of);
         this.policies = new Policies(GmServer.configDir == null ? null : GmServer.configDir.resolve("policy.toml"));
+        audit.zone(() -> policies.current().timezone());
         // Bot names from a thread-safe set the bots keep (the gate runs on bridge threads).
         this.gate = new Gate(policies, tickets, Nodes::holds, bots::isBotName);
         this.decisions = new Decisions(server, new Confirmations(System::currentTimeMillis), tickets, feed);

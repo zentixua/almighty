@@ -56,6 +56,13 @@ public final class Audit {
     private final Thread writer;
     private volatile boolean running = true;
 
+    /** The day of each file: policy.toml {@code timezone}, else the machine's. */
+    private volatile java.util.function.Supplier<ZoneId> zone = ZoneId::systemDefault;
+
+    public void zone(java.util.function.Supplier<ZoneId> zone) {
+        this.zone = zone;
+    }
+
     /** {@code dir} null: memory only (tests). */
     public Audit(Path dir, int days) {
         this.dir = dir;
@@ -183,7 +190,7 @@ public final class Audit {
             }
             if (line.equals(END)) break;
             try {
-                LocalDate today = LocalDate.now(ZoneId.systemDefault());
+                LocalDate today = LocalDate.now(zone.get());
                 if (out == null || !today.equals(day)) {
                     if (out != null) out.close();
                     Files.createDirectories(dir);
@@ -220,7 +227,7 @@ public final class Audit {
     /** Delete audit files older than {@code days}. */
     private void prune() {
         if (!Files.isDirectory(dir)) return;
-        LocalDate oldest = LocalDate.now(ZoneId.systemDefault()).minusDays(days);
+        LocalDate oldest = LocalDate.now(zone.get()).minusDays(days);
         try (DirectoryStream<Path> files = Files.newDirectoryStream(dir, "audit-*.jsonl")) {
             for (Path f : files) {
                 String name = f.getFileName().toString();

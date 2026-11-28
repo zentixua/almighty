@@ -366,10 +366,16 @@ public final class AlmightyCommand {
             return 0;
         }
         String text = role == null ? Mc.name(profile) + " no longer has a granted role"
-                : Mc.name(profile) + " is " + role.id() + (d == null ? "" : " for " + durationText);
+                : Mc.name(profile) + " is " + role.id() + (d == null ? "" : " for " + durationText + ", until "
+                        + until(java.time.Instant.now().plus(d), gm.policies().current().timezone()));
         gm.audit().owner(by, "role", text);
         source.sendSuccess(() -> ua.zentix.almighty.policy.Prompts.line(text), true);
         return 1;
+    }
+
+    /** A time in the policy's zone, as players read it: {@code 2026-11-28 18:30 Europe/Warsaw}. */
+    static String until(java.time.Instant at, java.time.ZoneId zone) {
+        return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", java.util.Locale.ROOT).format(at.atZone(zone)) + " " + zone.getId();
     }
 
     /** Owners are UUIDs in policy.toml: added and removed by the owner (level 4), the file validated and reloaded. */

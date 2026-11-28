@@ -38,6 +38,14 @@ public final class Prompts {
         ServerPlayer player = server.getPlayerList().getPlayer(p.confirmer);
         if (player == null) return;
         player.sendSystemMessage(question(p));
+        // 26.x: the same question as a dialog in front of the player (the chat line stays: Bedrock, a closed dialog).
+        if (!Identity.bedrock(player.getUUID())) {
+            Mc.confirmDialog(player, prefix().append(Component.literal(GmConfig.NAME.get() + " asks").withStyle(ChatFormatting.WHITE)),
+                    Component.literal(GmConfig.NAME.get() + " wants to run as you:\n").withStyle(ChatFormatting.WHITE)
+                            .append(Component.literal(p.text).withStyle(ChatFormatting.YELLOW))
+                            .append(Component.literal("\nThis cannot be undone.").withStyle(ChatFormatting.GRAY)),
+                    "/almighty confirm " + p.nonce(), "/almighty deny " + p.nonce());
+        }
     }
 
     static Component question(Confirmations.Pending p) {

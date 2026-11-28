@@ -476,6 +476,29 @@ public final class Mc {
         //?}
     }
 
+    /**
+     * A confirmation dialog (26.x, vanilla dialogs since 1.21.6): the question with Allow and Deny buttons that run
+     * their commands as the player. False where the game has no dialogs (1.21.1): the chat line stands alone.
+     */
+    public static boolean confirmDialog(net.minecraft.server.level.ServerPlayer player, Component title, Component body,
+                                        String allow, String deny) {
+        //? if >=26.1 {
+        /*var common = new net.minecraft.server.dialog.CommonDialogData(title, java.util.Optional.empty(), true, false,
+                net.minecraft.server.dialog.DialogAction.CLOSE,
+                java.util.List.of(new net.minecraft.server.dialog.body.PlainMessage(body, 300)), java.util.List.of());
+        var yes = new net.minecraft.server.dialog.ActionButton(new net.minecraft.server.dialog.CommonButtonData(
+                Component.literal("Allow").withStyle(net.minecraft.ChatFormatting.GREEN), 150),
+                java.util.Optional.of(new net.minecraft.server.dialog.action.StaticAction(new ClickEvent.RunCommand(allow))));
+        var no = new net.minecraft.server.dialog.ActionButton(new net.minecraft.server.dialog.CommonButtonData(
+                Component.literal("Deny").withStyle(net.minecraft.ChatFormatting.RED), 150),
+                java.util.Optional.of(new net.minecraft.server.dialog.action.StaticAction(new ClickEvent.RunCommand(deny))));
+        player.openDialog(net.minecraft.core.Holder.direct(new net.minecraft.server.dialog.ConfirmationDialog(common, yes, no)));
+        return true;
+        *///?} else {
+        return false;
+        //?}
+    }
+
     public static ClickEvent suggestCommand(String command) {
         //? if >=26.1 {
         /*return new ClickEvent.SuggestCommand(command);

@@ -204,7 +204,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   the requester (`@s`, their name or UUID; no other selector, name, UUID or `execute on`); everything else (any
   mod command, data, summon, function, schedule, ban …) is confirmed. Function macros are expanded before the
   check and in the prompt. Also any kind in `[safety] confirm_first`. → 202 `pending` with an id; the server asks
-  that player (the exact call, `[Allow]`/`[Deny]` and the typed `/almighty confirm <nonce>`; never clipped: a call
+  that player (the exact call, `[Allow]`/`[Deny]` and the typed `/almighty confirm <nonce>`; on 26.x also a vanilla
+  confirmation dialog with the same buttons, `Mc.confirmDialog`, except for Bedrock players; never clipped: a call
   too long to show is refused); only that player may answer; at most 3 waiting per player and 20 per agent;
   2 minutes. A request above the player's rights whose kind is in `[safety] ask_admin` → 202 for an admin (for
   commands: when the player's own source cannot parse it; the decider needs `almighty.approve`): merged with an

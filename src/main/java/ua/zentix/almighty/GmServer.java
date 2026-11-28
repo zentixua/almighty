@@ -226,10 +226,15 @@ public final class GmServer {
                 InetSocketAddress address = new InetSocketAddress(GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PORT.get());
                 Agents agents = Agents.load(configDir);
                 javax.net.ssl.SSLContext tls = tls(server);
+                String refusal = ua.zentix.almighty.bridge.Tls.plainRefusal(GmConfig.BRIDGE_HOST.get(), tls != null,
+                        GmConfig.BRIDGE_PLAIN_OFF_LOOPBACK.get());
+                if (refusal != null) {
+                    LOG.error("Almighty bridge not started: {}", refusal);
+                    return gm;
+                }
                 if (tls == null && !loopback(GmConfig.BRIDGE_HOST.get())) {
-                    LOG.warn("Almighty bridge listens on {} without TLS: tokens and calls cross the network in plain text. Keep that "
-                            + "address reachable only from this machine or a private network, or set bridge.tls_cert and bridge.tls_key",
-                            GmConfig.BRIDGE_HOST.get());
+                    LOG.warn("Almighty bridge listens on {} without TLS (bridge.allow_plain_http_off_loopback): keep that address"
+                            + " reachable only from this machine", GmConfig.BRIDGE_HOST.get());
                 }
                 gm.bridge = new Bridge(address, agents, gm.dispatch, Api.LONG, new HashSet<>(GmConfig.BRIDGE_ALLOWED_ORIGINS.get()), tls);
                 gm.mcp = Mcp.mount(server, gm.bridge, configDir, GmConfig.BRIDGE_HOST.get(), GmConfig.BRIDGE_PUBLIC_URL.get(),

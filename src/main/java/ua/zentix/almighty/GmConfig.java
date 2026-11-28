@@ -17,6 +17,7 @@ public final class GmConfig {
     public static final Setting<String> BRIDGE_PUBLIC_URL;
     public static final Setting<String> BRIDGE_TLS_CERT;
     public static final Setting<String> BRIDGE_TLS_KEY;
+    public static final Setting<Boolean> BRIDGE_PLAIN_OFF_LOOPBACK;
     public static final Setting<Boolean> BRIDGE_INTEGRATED;
     public static final Setting<Double> WORK_MS_PER_TICK;
     public static final Setting<Integer> BUILD_MAX_BLOCKS;
@@ -49,6 +50,9 @@ public final class GmConfig {
         BRIDGE_TLS_CERT = b.string("tls_cert", "", "HTTPS: a PEM certificate chain file (for example a reverse proxy's or Let's Encrypt's fullchain.pem), relative",
                         "to the server directory. With tls_key set, the bridge speaks only HTTPS. Empty: plain HTTP (fine on loopback).");
         BRIDGE_TLS_KEY = b.string("tls_key", "", "HTTPS: the matching unencrypted PKCS#8 PEM private key (BEGIN PRIVATE KEY, for example privkey.pem).");
+        BRIDGE_PLAIN_OFF_LOOPBACK = b.bool("allow_plain_http_off_loopback", false, "Without TLS the bridge starts only on loopback (127.0.0.1, ::1, localhost): elsewhere the token would",
+                        "cross the network in plain text, so a host such as 0.0.0.0 is refused. true: start anyway, for a network only this",
+                        "machine reaches (a container's private address whose port is not published). Never on a public address.");
         BRIDGE_INTEGRATED = b.bool("integrated", false, "Also start the bridge on the integrated server of single-player and LAN worlds (for mod developers and",
                         "filming). Loopback only: with another host the bridge does not start there.");
         b.section("work");

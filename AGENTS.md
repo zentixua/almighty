@@ -129,9 +129,10 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `/almighty approve <code> <name> owner` (`OwnerApp`): the owner's own app, `[agents.<name>] ceiling = "owner"` added
   to `policy.toml` (validated, then `Policies.reload`); without it the gate's default ceiling applies (`admin`).
 - TLS (`bridge/Tls`): with `bridge.tls_cert` + `bridge.tls_key` (owner's PEM chain and PKCS#8 key, JDK only) the bridge
-  is HTTPS only; sign-in and `/almighty connect` then use https. A non-loopback bind without TLS logs a warning but
-  still starts (plan 7.2 said refuse: that would stop setups binding a private container address, as Open Skies may).
-  No self-signed generation: owners put a reverse proxy or tunnel in front, or bring a certificate.
+  is HTTPS only; sign-in and `/almighty connect` then use https. A non-loopback bind without TLS is refused (plan 7.2,
+  `Tls.plainRefusal`: the bridge does not start, the log names the fix) unless the owner sets
+  `bridge.allow_plain_http_off_loopback = true` (a container's private address). No self-signed generation (the JDK
+  has no public certificate builder): owners put a reverse proxy or tunnel in front, or bring a certificate.
   `bridge.integrated` starts the bridge on single-player/LAN worlds, loopback only.
 - `bridge/`: Java's own HTTP (`com.sun.net.httpserver`): `POST /rpc` `{"method", "params"}` → `{"ok": true, "result"}`
   or `{"ok": false, "error": {code, message}}`. Threads: a 4-thread accept pool checks the request and hands it to a

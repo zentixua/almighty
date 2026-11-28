@@ -30,6 +30,18 @@ public final class Tls {
 
     private Tls() {}
 
+    /**
+     * Why the bridge must not start on {@code host}: plain HTTP off loopback carries the bearer token in clear text
+     * (plan 7.2, R17), so it is refused unless the owner turned on {@code bridge.allow_plain_http_off_loopback}.
+     * Null when the bridge may start.
+     */
+    public static String plainRefusal(String host, boolean tls, boolean plainAllowed) {
+        if (tls || plainAllowed || ua.zentix.almighty.mcp.signin.SignIn.loopback(host)) return null;
+        return "bridge.host is " + host + " without TLS: tokens would cross the network in plain text. Set bridge.tls_cert"
+                + " and bridge.tls_key, bind 127.0.0.1 behind a reverse proxy or tunnel, or, on a network only this machine"
+                + " reaches (a container's private address), set bridge.allow_plain_http_off_loopback = true";
+    }
+
     public static SSLContext context(Path certFile, Path keyFile) throws IOException, GeneralSecurityException {
         List<Certificate> chain = new ArrayList<>();
         CertificateFactory x509 = CertificateFactory.getInstance("X.509");

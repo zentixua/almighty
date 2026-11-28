@@ -99,6 +99,41 @@ public final class GmConfirmGameTests {
         h.succeed();
     }
 
+    /** Scenario P10: a teleport to a friend waits for the friend's yes, not the asker's. */
+    @GameTest(template = "floor", batch = "gm_confirm_tp")
+    public static void aTeleportToAFriendAsksTheFriend(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        ServerPlayer alex = player(h, "tp_alex", UUID.randomUUID()), bea = player(h, "tp_bea", UUID.randomUUID());
+        try {
+            gm.policies().set(Policy.parse("preset = \"friends\"\nidentity = \"proxy\""));
+            op(h, alex, 2);
+            String t = ticket(h, gm, alex, "take me to bea");
+            for (String cmd : new String[] {"tp tp_bea", "tp tp_alex tp_bea", "tp tp_bea @s"}) {
+                try {
+                    gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"%s\"],\"for\":\"%s\"}", cmd, t));
+                    throw new GameTestAssertException("a teleport with a friend ran unasked: " + cmd);
+                } catch (RpcException e) {
+                    check(e.status() == 202, cmd + ": " + e.getMessage());
+                    Confirmations.Pending p = gm.decisions().confirmations().get(e.details().get("id").getAsString());
+                    check(bea.getUUID().equals(p.confirmer), cmd + ": the friend confirms, not " + p.confirmer);
+                    check(p.text.contains("tp_alex"), "the friend sees who asked: " + p.text);
+                    check(!e2s(gm.decisions().decide(p.nonce(), alex, true)).startsWith("Allowed"), "the asker cannot answer for the friend");
+                    gm.decisions().decide(p.nonce(), bea, false);
+                }
+            }
+            // To a place: still the asker's own move (self only, at once).
+            JsonArray own = gm.dispatch().invoke(GM, "command", params("{\"commands\":[\"tp @s ~ ~ ~\"],\"for\":\"%s\"}", t)).join().getAsJsonArray();
+            check(own.get(0).getAsJsonObject().get("ok").getAsBoolean(), "a teleport of oneself to a place runs: " + own);
+        } finally {
+            deop(h, alex);
+            gm.policies().set(before);
+            h.getLevel().getServer().getPlayerList().remove(alex);
+            h.getLevel().getServer().getPlayerList().remove(bea);
+        }
+        h.succeed();
+    }
+
     @GameTest(template = "floor", batch = "gm_confirm")
     public static void irreversibleWaitsForTheRequester(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);

@@ -82,6 +82,11 @@ public final class Roles {
      * {@code granterRole}. Returns null, or why not.
      */
     public synchronized String set(UUID player, String name, Role role, Duration duration, Role granterRole, String by) {
+        return setUntil(player, name, role, duration == null ? 0 : clockMillis.getAsLong() + duration.toMillis(), granterRole, by);
+    }
+
+    /** As {@link #set}, ending at {@code until} (milliseconds since the epoch; 0: until cleared). */
+    public synchronized String setUntil(UUID player, String name, Role role, long until, Role granterRole, String by) {
         if (role == Role.OWNER) return "owners are listed in policy.toml (owners), never granted";
         Grant old = grant(player);
         if (old != null && !granterRole.atLeast(Role.OWNER) && old.role().compareTo(granterRole) >= 0) {
@@ -89,7 +94,7 @@ public final class Roles {
         }
         if (role != null && role.compareTo(granterRole) >= 0) return "you can give only roles below your own (" + granterRole.id() + ")";
         if (role == null) grants.remove(player);
-        else grants.put(player, new Grant(role, duration == null ? 0 : clockMillis.getAsLong() + duration.toMillis(), name, by));
+        else grants.put(player, new Grant(role, until, name, by));
         // Only a real change: cached rights (rules, offline answers) drop on every bump.
         Policies.CHANGES.incrementAndGet();
         save();

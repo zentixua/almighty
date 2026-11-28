@@ -155,6 +155,33 @@ class PolicyFilesTest {
         assertEquals(3, Files.list(dir.resolve("policy.history")).filter(x -> x.toString().endsWith(".toml")).count());
     }
 
+    /** Plan 4.10: file reaches the owner's server notes; only the owner writes them, anyone with the node reads them. */
+    @Test
+    void serverNotesAreTheOwners(@TempDir Path dir) throws Exception {
+        ConfigFiles f = files(dir, friends(""));
+        Caller console = new Caller(null, "console", null);
+        JsonObject p = new JsonObject();
+        p.addProperty("action", "write");
+        p.addProperty("path", "notes/arena.md");
+        p.addProperty("text", "The arena is at 5000 70 5000.");
+        assertTrue(f.call(new Args(p, console)).get("how").getAsString().contains("server:arena"));
+        assertEquals("The arena is at 5000 70 5000.", Files.readString(dir.resolve("notes/arena.md")));
+        assertEquals(403, assertThrows(RpcException.class, () -> f.call(new Args(p, gm))).status(), "the agent on its own writes world notes instead");
+        JsonObject read = new JsonObject();
+        read.addProperty("action", "read");
+        read.addProperty("path", "notes/arena.md");
+        assertTrue(f.call(new Args(read, gm)).get("text").getAsString().contains("5000"));
+        JsonObject list = new JsonObject();
+        list.addProperty("action", "list");
+        assertTrue(f.call(new Args(list, gm)).toString().contains("notes/arena.md"));
+        p.addProperty("path", "notes/../token.md");
+        assertEquals(400, assertThrows(RpcException.class, () -> f.call(new Args(p, console))).status());
+        p.addProperty("path", "notes/arena.md");
+        p.addProperty("text", "");
+        f.call(new Args(p, console));
+        assertTrue(!Files.exists(dir.resolve("notes/arena.md")), "an empty text removes the note");
+    }
+
     @Test
     void onPrivateTheAgentUnaskedIsNotTheOwner(@TempDir Path dir) throws Exception {
         // Private: the agent's floor is its ceiling (owner for gm), but its own initiative still gets the friction.

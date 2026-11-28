@@ -91,6 +91,25 @@ class PolicyTest {
         assertEquals(null, PolicyEdits.grants(quiet, Policy.parse("")), "turning it on does not");
     }
 
+    /** Plan F7: a file from a newer Almighty is refused with its reason and the last good policy stays. */
+    @Test
+    void schemaVersion(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+        assertTrue(Policy.template(Policy.Preset.FRIENDS).contains("version = " + Policy.VERSION));
+        Policy.parse("version = 1\n");
+        Policy.Invalid newer = assertThrows(Policy.Invalid.class, () -> Policy.parse("version = 2\npreset = \"public\"\n"));
+        assertTrue(newer.getMessage().contains("newer Almighty"), newer.getMessage());
+        assertThrows(Policy.Invalid.class, () -> Policy.parse("version = \"one\"\n"));
+        assertThrows(Policy.Invalid.class, () -> Policy.parse("version = 0\n"));
+        java.nio.file.Path file = dir.resolve("policy.toml");
+        java.nio.file.Files.writeString(file, "preset = \"friends\"\nversion = 1\n");
+        Policies p = new Policies(file);
+        assertEquals(null, p.reload());
+        java.nio.file.Files.writeString(file, "preset = \"public\"\nversion = 7\n");
+        String why = p.reload();
+        assertTrue(why != null && why.contains("newer Almighty"), why);
+        assertEquals(Policy.Preset.FRIENDS, p.current().preset(), "the last good policy stays");
+    }
+
     /** Rights audit m5: mojang → auto verifies Floodgate players too, so it is a grant; auto → mojang restricts. */
     @Test
     void identityOrder() throws Exception {

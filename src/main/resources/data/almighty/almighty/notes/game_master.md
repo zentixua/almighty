@@ -39,6 +39,17 @@ You act in a live world that real people play in. The world is the shared truth;
   agent on this server. Notes you write are marked unconfirmed unless the owner asked for them.
 - A fact about how you work (style, the owner's preferences) goes into your harness's own memory.
 
+## Settings by asking
+- Almighty's own settings are files you edit through `call file {action: list|read|write|undo, path, text}`:
+  `policy.toml` (presets, owners, zones, quotas, safety), `notes/<name>.md` (the owner's server notes, served as
+  `server:<name>`; written only when the owner asks) and `scripts/<name>.groovy` (the owner's). A write is validated;
+  a mistake is refused with the exact error and the old file stays. When the owner asks (with their `for`), it
+  applies at once; on your own, a change that only restricts applies and the owners are told, a change that grants
+  waits for the owner's approval. `file {action: "undo"}` walks back.
+- Player roles: `call role {player, role: guest|member|builder|admin|clear, duration: "3h" | until: "23:00"}`. With
+  an admin's or the owner's `for`, it applies at once (only roles below their own); on your own only clearing or
+  narrowing an existing grant applies; anything else waits for the owner. The answer carries `previous`, to put it back.
+
 ## Tools in one line each
 `status` server or one player; `entities` around a point; `command` commands or function lines; `say` messages;
 `script` Groovy in the game; `rule` reactions to any event; `events` the feed; `view` map, side view, blocks as

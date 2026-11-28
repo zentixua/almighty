@@ -259,8 +259,9 @@ public final class AlmightyCommand {
     private static int decide(CommandSourceStack source, String nonce, boolean allow) {
         GmServer gm = GmServer.of(source.getServer());
         if (gm == null) return 0;
-        net.minecraft.server.level.ServerPlayer by = source.getEntity() instanceof net.minecraft.server.level.ServerPlayer p ? p : null;
-        if (by == null && !Mc.has(source, 4)) {
+        // Only the player's own typing (or click) answers, never a command run as them (execute as …): Mc.typedBy.
+        net.minecraft.server.level.ServerPlayer by = Mc.typedBy(source);
+        if (by == null && (source.getEntity() != null || !Mc.has(source, 4))) {
             source.sendFailure(Component.literal("Only a player or the console can answer"));
             return 0;
         }

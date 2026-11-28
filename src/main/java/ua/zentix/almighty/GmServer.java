@@ -489,6 +489,17 @@ public final class GmServer {
                     // The filled command, not only the template: plain-name fills could still complete a forged prefix.
                     String forged = ua.zentix.almighty.policy.Forgery.refusal(command);
                     if (forged != null) throw new RpcException(403, "policy", forged);
+                    // The filled command, not only the template (rights audit M3): "kill {player}" passes at add time,
+                    // but at a fire it names someone; anything irreversible for another than the creator is refused.
+                    JsonObject one = new JsonObject();
+                    com.google.gson.JsonArray list = new com.google.gson.JsonArray();
+                    list.add(command);
+                    one.add("commands", list);
+                    if (ua.zentix.almighty.policy.Confirmations.needsRequester("command", one, c.name() == null ? "" : c.name(), c.player(),
+                            policies.current().safety().confirmFirst())) {
+                        throw new RpcException(403, "policy", "This rule's command would act on someone other than its creator, who must"
+                                + " confirm that themself: " + command);
+                    }
                     net.minecraft.commands.CommandSourceStack source = ua.zentix.almighty.act.CommandRunner.sourceFor(server, level, pos, as);
                     ua.zentix.almighty.policy.CommandZones.check(server.getCommands().getDispatcher(), source, command, (node, dim, lo, hi) -> {
                         String d = gate.zoneDenies(role, node, dim, lo, hi);

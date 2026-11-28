@@ -216,21 +216,44 @@ public final class Confirmations {
                 if (SELF_ONLY.contains(root)) selfOnly = true;
                 else if (!SAFE.contains(root)) return true;
             }
-            if (selfOnly && !onlySelf(c, requesterName, requester)) return true;
+            // execute as/at <targets> runs even a safe command once per target, where they stand (lava under each of
+            // @a): with execute, the targets must be the requester too (review of the rights fixes).
+            boolean executes = segments(c).stream().anyMatch(seg -> root(seg).equals("execute"));
+            if ((selfOnly || executes) && !onlySelf(c, requesterName, requester)) return true;
         }
         return false;
     }
 
     /** Every target in the command is the requester: no selector but {@code @s}, no other name or UUID, no {@code execute on}. */
     private static boolean onlySelf(String c, String requesterName, UUID requester) {
-        var m = WORD.matcher(c.strip().replaceFirst("^[/$]+", ""));
+        String text = c.strip().replaceFirst("^[/$]+", "");
+        // A quoted name targets a player just as well ("kill \"Friend\""): any quoted word that is not the requester.
+        var quoted = java.util.regex.Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"|'((?:[^'\\\\]|\\\\.)*)'").matcher(text);
+        while (quoted.find()) {
+            String q = quoted.group(1) != null ? quoted.group(1) : quoted.group(2);
+            if (q.matches("[.*]?[A-Za-z0-9_]{1,16}") && !q.equalsIgnoreCase(requesterName) && looksLikePlayer(q)) return false;
+        }
+        var m = WORD.matcher(text);
         String prev = "";
         while (m.find()) {
-            String w = m.group();
+            // Quotes taken off: the game reads a quoted name or UUID as the same target.
+            String w = m.group().replaceAll("^[\"']+|[\"',]+$", "");
             if (w.startsWith("@") && !w.equals("@s") && !w.startsWith("@s[")) return false;
             if (prev.equalsIgnoreCase("on")) return false;
-            if (w.matches("[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}") && (requester == null || !w.equalsIgnoreCase(requester.toString()))) return false;
-            if (w.matches("[A-Za-z0-9_]{3,16}") && !w.equalsIgnoreCase(requesterName) && looksLikePlayer(w)) return false;
+            // UUIDs as the game reads them: groups may drop leading zeros (0-0-0-0-1).
+            if (w.matches("[0-9a-fA-F]+(-[0-9a-fA-F]+){4}")) {
+                UUID id;
+                try {
+                    id = UUID.fromString(w);
+                } catch (IllegalArgumentException e) {
+                    return false;
+                }
+                if (!id.equals(requester)) return false;
+            }
+            // Names: offline and Floodgate names can be 1 or 2 characters, Floodgate ones start with a dot or star
+            // (.Steve is another player than Steve: compared whole).
+            String name = w.startsWith(".") || w.startsWith("*") ? w.substring(1) : w;
+            if (name.matches("[A-Za-z0-9_]{1,16}") && !w.equalsIgnoreCase(requesterName) && looksLikePlayer(w)) return false;
             prev = w;
         }
         return true;

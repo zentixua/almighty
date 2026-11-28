@@ -210,6 +210,57 @@ public final class GmGateGameTests {
         h.succeed();
     }
 
+    /**
+     * Another agent's bot and prepared area (rights audit M7): below bots.admin an agent may not drive or remove a bot
+     * it did not spawn, below undo.any not release another agent's area, and nobody releases a build's lease.
+     */
+    @GameTest(template = "floor", batch = "gm_gate_owned", timeoutTicks = 200)
+    public static void othersBotsAndAreasNeedAdmin(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        Policy before = gm.policies().current();
+        Agents two = Agents.of(Map.of("owner", "o".repeat(32), "helper", "h".repeat(32)));
+        Caller owner = new Caller(two.get("owner"), "test"), helper = new Caller(two.get("helper"), "test");
+        var at = h.absolutePos(new net.minecraft.core.BlockPos(2, 2, 2));
+        gm.policies().set(Policy.parse("preset = \"private\"\n[agents.owner]\nceiling = \"owner\"\n[agents.helper]\nceiling = \"builder\""));
+        try {
+            gm.dispatch().invoke(owner, "bot.spawn", params("{\"name\":\"OwnedBot\",\"pos\":[%d,%d,%d]}", at.getX(), at.getY(), at.getZ()));
+            JsonObject area = gm.dispatch().invoke(owner, "area.prepare", params("{\"from\":[%d,%d],\"to\":[%d,%d],\"wait\":0}",
+                    at.getX(), at.getZ(), at.getX(), at.getZ())).join().getAsJsonObject();
+            long id = area.get("id").getAsLong();
+            RpcException release = failed(gm.dispatch().invoke(helper, "area.release", params("{\"id\":%d}", id)));
+            check(release.status() == 403, "another agent's area: " + release.getMessage());
+            h.succeedWhen(() -> {
+                if (gm.bots().find("OwnedBot") == null) throw new GameTestAssertException("waiting for the bot");
+                try {
+                    RpcException remove = failed(gm.dispatch().invoke(helper, "bot.remove", params("{\"name\":\"OwnedBot\"}")));
+                    check(remove.status() == 403, "another agent's bot: " + remove.getMessage());
+                    RpcException act = failed(gm.dispatch().invoke(helper, "bot.act", params("{\"name\":\"OwnedBot\",\"actions\":[{\"wait\":1}],\"wait\":0}")));
+                    check(act.status() == 403, "driving another agent's bot: " + act.getMessage());
+                    gm.dispatch().invoke(owner, "bot.remove", params("{\"name\":\"OwnedBot\"}")).join();
+                    gm.dispatch().invoke(owner, "area.release", params("{\"id\":%d}", id)).join();
+                } catch (RpcException e) {
+                    throw new GameTestAssertException("call failed: " + e.getMessage());
+                } finally {
+                    gm.policies().set(before);
+                }
+            });
+        } catch (RuntimeException | RpcException e) {
+            gm.policies().set(before);
+            throw e;
+        }
+    }
+
+    /** The refusal of a call, whether thrown at once or completing its future. */
+    private static RpcException failed(java.util.concurrent.CompletableFuture<?> f) {
+        try {
+            f.join();
+        } catch (java.util.concurrent.CompletionException e) {
+            if (e.getCause() instanceof RpcException r) return r;
+            throw e;
+        }
+        throw new GameTestAssertException("the call was allowed");
+    }
+
     private static String ticket(GameTestHelper h, GmServer gm, ServerPlayer p, String text) throws InterruptedException {
         long after = gm.feed().read(0, 4096, 0).get("next").getAsLong();
         h.getLevel().getServer().getCommands().performPrefixedCommand(p.createCommandSourceStack(), "gm " + text);

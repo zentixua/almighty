@@ -182,7 +182,9 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   (private: = ceiling; friends: member; public: guest; or `floor`); `for: <ticket>` → that player's rights, capped
   by the ceiling (a ticket only narrows). `say` needs `speak.all` unless it is a chat/actionbar reply to the ticket's
   player alone; `entities` needs `observe.players` unless it asks for a non-player type; `undo`/`cancel` of another
-  agent's job need `undo.any` (`Gate.require`). Below owner, `say` components keep only `open_url`, `copy_to_clipboard`
+  agent's job need `undo.any` (`Gate.require`); driving or removing another agent's bot needs `bots.admin` (`Bots.mine`),
+  releasing another agent's prepared area `undo.any`, and a build's or bot's lease is never released by `area.release`.
+  Below owner, `say` components keep only `open_url`, `copy_to_clipboard`
   and `change_page` clicks (JSON-level, translation arguments included; `show_dialog`, `custom` go too) and may not contain `[Almighty]`. Parameters are read
   null-safe (null = absent, as `Args`) and a malformed one is 400. The gate never reads server lists off the server
   thread: bot names (`Bots.isBotName`), ops and online players (`Nodes.refresh`, once a second) are snapshots.
@@ -202,7 +204,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   <job>` works for that player or level 4. `policy/Confirmations` + `Decisions` + `Prompts`: a request's command
   waits for that player's confirmation unless every command in it is in the allowlist `SAFE` (time, weather, say,
   msg, setblock, fill, clone, place …) or `SELF_ONLY` (tp, give, effect, clear, gamemode, kill …) aimed only at
-  the requester (`@s`, their name or UUID; no other selector, name, UUID or `execute on`); everything else (any
+  the requester (`@s`, their name or UUID; no other selector, name, quoted name, short or Floodgate name, UUID in any
+  spelling, or `execute on`; a rule's filled command is checked the same way at every fire); everything else (any
   mod command, data, summon, function, schedule, ban …) is confirmed. Function macros are expanded before the
   check and in the prompt. Also any kind in `[safety] confirm_first`. → 202 `pending` with an id; the server asks
   that player (the exact call, `[Allow]`/`[Deny]` and the typed `/almighty confirm <nonce>`; on 26.x also a vanilla

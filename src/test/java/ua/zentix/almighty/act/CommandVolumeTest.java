@@ -20,7 +20,7 @@ class CommandVolumeTest {
         assertEquals(8, CommandVolume.volume("clone from minecraft:overworld 0 0 0 1 1 1 to minecraft:the_nether 5 5 5"));
         assertEquals(CommandVolume.VANILLA_MAX, CommandVolume.volume("fill ^ ^ ^ ^5 ^5 ^5 stone"), "local: unknown");
         assertEquals(CommandVolume.VANILLA_MAX, CommandVolume.volume("fill 0 0 0 ~5 5 5 stone"), "mixed: unknown");
-        assertEquals(CommandVolume.VANILLA_MAX, CommandVolume.volume("fill 0 0 0 999 999 999 stone"), "vanilla refuses more anyway");
+        assertEquals(1_000_000_000L, CommandVolume.volume("fill 0 0 0 999 999 999 stone"), "the real size (a raised gamerule)");
         assertEquals(0, CommandVolume.volume("setblock 0 0 0 stone"));
         assertEquals(0, CommandVolume.volume("say fill 0 0 0 9 9 9"));
     }

@@ -64,6 +64,8 @@ public final class BuildJob extends Job {
          * state of it: wire power, a door opened); a journal revert compares the exact state.
          */
         private boolean blockOnly;
+        /** A job's snapshot: the contents (hash) each write left in a container, by index; absent: left none. */
+        private final it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap contents = new it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap();
 
         /** {@code s} and {@code tag}: what the position held before; {@code now}: the state id the write left there. */
         void add(BlockPos p, BlockState s, CompoundTag tag, int now) {
@@ -283,7 +285,8 @@ public final class BuildJob extends Job {
         // An undo never empties a container someone filled since (a player's items in a chest the build placed): a
         // conflict, left as it is, unless the undo puts the same block back (its contents then are the snapshot's).
         if (plan == null && be instanceof net.minecraft.world.Container box && !box.isEmpty()
-                && Block.stateById(restore.state[restoreAt]).getBlock() != old.getBlock()) {
+                && Block.stateById(restore.state[restoreAt]).getBlock() != old.getBlock()
+                && !(restore.contents.containsKey(restoreAt) && restore.contents.get(restoreAt) == contents(box))) {
             conflicts++;
             return false;
         }
@@ -310,12 +313,26 @@ public final class BuildJob extends Job {
             }
         }
         if (changed || oldTag != null) {
+            // What this write left in a container (an undo of it brought a chest back full, an owner's chest with
+            // items): undoing it later is not "someone filled it since".
+            if (level.getBlockEntity(pos) instanceof net.minecraft.world.Container left && !left.isEmpty()) {
+                snapshot.contents.put(snapshot.size, contents(left));
+            }
             snapshot.add(pos, old, oldTag, Block.getId(level.getBlockState(pos)));
             placed++;
         } else {
             unchanged++;
         }
         return changed;
+    }
+
+    private static int contents(net.minecraft.world.Container box) {
+        int h = 1;
+        for (int i = 0; i < box.getContainerSize(); i++) {
+            net.minecraft.world.item.ItemStack stack = box.getItem(i);
+            h = 31 * h + (stack.isEmpty() ? 0 : net.minecraft.world.item.ItemStack.hashItemAndComponents(stack) * 31 + stack.getCount());
+        }
+        return h;
     }
 
     private static boolean holds(BlockState now, int expected, boolean blockOnly) {

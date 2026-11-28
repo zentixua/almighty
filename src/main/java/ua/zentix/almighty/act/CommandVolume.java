@@ -46,8 +46,8 @@ public final class CommandVolume {
         for (int a = 0; a < 3; a++) {
             long d = span(t[i + a], t[i + 3 + a]);
             if (d < 0) return VANILLA_MAX;
-            v *= d;
-            if (v > VANILLA_MAX) return VANILLA_MAX;
+            // The real size: an owner may have raised vanilla's limit (gamerule commandModificationBlockLimit).
+            v = (long) Math.min((double) v * d, 1e15);
         }
         return v;
     }

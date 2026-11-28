@@ -3,8 +3,8 @@ loaderVersion = "${loader_version_range}"
 license = "${mod_license}"
 issueTrackerURL = "${mod_url}/issues"
 
-# Two mixins, each where no API exists: respawning a bot with its own class (mixin/PlayerListMixin) and the change
-# journal's hook on block writes (mixin/LevelChunkMixin).
+# Three mixins, each where no API exists: respawning a bot with its own class (mixin/PlayerListMixin), the change
+# journal's hook on block writes (mixin/LevelChunkMixin) and on emptying containers before them (mixin/ClearableMixin).
 [[mixins]]
 config = "almighty.mixins.json"
 

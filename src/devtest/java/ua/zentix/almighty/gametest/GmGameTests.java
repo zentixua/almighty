@@ -183,7 +183,7 @@ public final class GmGameTests {
         CompletableFuture<JsonElement> build = call(h, "build", params(
                 "{\"ops\":[{\"op\":\"fill\",\"from\":%s,\"to\":%s,\"block\":\"minecraft:stone\"}],\"wait\":50}",
                 at(h, 16, 2, 16), at(h, 31, 5, 31)));
-        AtomicReference<CompletableFuture<JsonElement>> undo = new AtomicReference<>();
+        AtomicReference<CompletableFuture<JsonElement>> undo = new AtomicReference<>(), redo = new AtomicReference<>();
         AtomicLong id = new AtomicLong();
         h.startSequence()
                 .thenExecuteAfter(2, () -> {
@@ -225,6 +225,14 @@ public final class GmGameTests {
                     } catch (CompletionException e) {
                         check(e.getCause() instanceof RpcException rpc && rpc.getMessage().contains("already undone"), "second undo: " + e.getCause());
                     }
+                    // The undo brought the chest back full itself: undoing the undo (a redo) is no conflict there.
+                    redo.set(call(h, "undo", params("{\"job\":%d,\"wait\":50}", r.get("id").getAsLong())));
+                })
+                .thenWaitUntil(() -> ready(redo.get()))
+                .thenExecute(() -> {
+                    JsonObject r = result(redo.get());
+                    check(r.get("state").getAsString().equals("done") && !r.has("conflicts"), "redo: " + r);
+                    h.assertBlockPresent(Blocks.STONE, chest);
                     GmServer.clock = clock;
                 })
                 .thenSucceed();

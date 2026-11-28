@@ -270,8 +270,10 @@ public final class GmScriptGameTests {
         Path store = h.getLevel().getServer().getWorldPath(LevelResource.ROOT).resolve("almighty").resolve("rules.json");
         JsonObject every;
         try {
+            // A wide budget: this test is about every and limit; the budget check is wall-clock, and a loaded machine
+            // (parallel servers) can make a run of this tiny script take over the default 5 ms (budget tests: below).
             every = rule(h, "tick", "gm-test-every", "(state.gmTicks = state.gmTicks ?: []) << server.tickCount",
-                    "every", 5, "limit", 3, "persist", true);
+                    "every", 5, "limit", 3, "persist", true, "budget_ms", 50);
             check(read(store).contains("gm-test-every"), "rule was not saved: " + read(store));
             Rules copy = new Rules(h.getLevel().getServer(), ua.zentix.almighty.platform.Platform.get().events(), gm.feed(), new HashMap<>(), store);
             copy.load();

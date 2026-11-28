@@ -70,12 +70,32 @@ jobs:
             gh release view "v$v" --json body -q .body > dist/changelog.md
             notes="release body v$v"
           fi
-          # One entry per jar: almighty-<v>+<game>-<loader>.jar; Java 21 before 26.1, 25 from 26.1.
+          # One entry per jar: almighty-<v>+<game>-<loader>.jar. Java and the optional mods come from the node's
+          # versions/<node>/gradle.properties (compat_<mod> = a build of that mod exists there); without the node,
+          # Java 21 before 26.1, 25 from 26.1, and no optional mods. Fabric files require Fabric API.
           files=$(for f in dist/almighty-"$v"+*.jar; do
             b=$(basename "$f" .jar); node=${b#almighty-"$v"+}; game=${node%-*}; loader=${node##*-}
-            case $game in 1.*) java=21 ;; *) java=25 ;; esac
-            jq -nc --arg f "$(basename "$f")" --arg g "$game" --arg l "$loader" --arg j "$java" \
-              '{file: $f, game: $g, loader: $l, java: $j}'
+            props=versions/$node/gradle.properties
+            prop() { [ -f "$props" ] && sed -n "s/^$1=//p" "$props" | head -n 1; }
+            java=$(prop java_version || true)
+            [ -n "$java" ] || case $game in 1.*) java=21 ;; *) java=25 ;; esac
+            deps=$({
+              [ "$loader" != fabric ] || echo 'fabric-api(required){modrinth:fabric-api}{curseforge:fabric-api}'
+              # Permission nodes: NeoForge's permission API or fabric-permissions-api; LuckPerms implements both.
+              echo 'luckperms(optional){modrinth:luckperms}{curseforge:luckperms}'
+              [ -z "$(prop compat_ia)" ] ||
+                echo 'immersive-aircraft(optional){modrinth:immersive-aircraft}{curseforge:immersive-aircraft}'
+              [ -z "$(prop compat_sable)" ] || echo 'sable(optional){modrinth:sable}{curseforge:sable}'
+              [ -z "$(prop compat_opac)" ] ||
+                echo 'open-parties-and-claims(optional){modrinth:open-parties-and-claims}{curseforge:open-parties-and-claims}'
+              # FTB Chunks is on CurseForge only, one project per loader.
+              [ -z "$(prop compat_ftbchunks)" ] || case $loader in
+                fabric) echo 'ftb-chunks(optional){curseforge:ftb-chunks-fabric}#(ignore:modrinth)' ;;
+                *) echo 'ftb-chunks(optional){curseforge:ftb-chunks-forge}#(ignore:modrinth)' ;;
+              esac
+            })
+            jq -nc --arg f "$(basename "$f")" --arg g "$game" --arg l "$loader" --arg j "$java" --arg d "$deps" \
+              '{file: $f, game: $g, loader: $l, java: $j, dependencies: $d}'
           done | jq -sc .)
           [ "$(jq length <<< "$files")" -gt 0 ] || { echo "::error::Release v$v has no almighty-$v+*.jar"; exit 1; }
           # Version environment for Modrinth and CurseForge from the page's client_side/server_side.
@@ -88,7 +108,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           {
             echo "Almighty $v, step $STEP; notes — $notes"
-            jq -r '.[] | "- \(.file): \(.game) \(.loader), Java \(.java)"' <<< "$files"
+            jq -r '.[] | "- \(.file): \(.game) \(.loader), Java \(.java); \(.dependencies | split("\n") | map(split("(")[0]) | join(", "))"' <<< "$files"
             [ "$HAS_MODRINTH" = true ] || echo "- Modrinth skipped: missing MODRINTH_TOKEN secret"
             [ "$STEP" = draft ] || [ "$HAS_CURSEFORGE" = true ] ||
               echo "- CurseForge skipped: missing CURSEFORGE_TOKEN secret or CURSEFORGE_ID variable"
@@ -161,11 +181,6 @@ jobs:
     env:
       HAS_MODRINTH: ${{ secrets.MODRINTH_TOKEN != '' }}
       JAR: dist/${{ matrix.f.file }}
-      # Optional mods (absent from the mod's metadata); Fabric files need Fabric API.
-      DEPENDENCIES: |
-        immersive-aircraft(optional){modrinth:immersive-aircraft}{curseforge:immersive-aircraft}
-        sable(optional){modrinth:sable}{curseforge:sable}
-        ${{ matrix.f.loader == 'fabric' && 'fabric-api(required){modrinth:fabric-api}{curseforge:fabric-api}' || '' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -199,7 +214,7 @@ jobs:
           game-versions: ${{ matrix.f.game }}
           java: ${{ matrix.f.java }}
           environment: ${{ needs.plan.outputs.environment }}
-          dependencies: ${{ env.DEPENDENCIES }}
+          dependencies: ${{ matrix.f.dependencies }}
 
   curseforge:
     name: "CurseForge: ${{ matrix.f.game }} ${{ matrix.f.loader }}"
@@ -215,10 +230,6 @@ jobs:
     env:
       HAS_CURSEFORGE: ${{ secrets.CURSEFORGE_TOKEN != '' && vars.CURSEFORGE_ID != '' }}
       JAR: dist/${{ matrix.f.file }}
-      DEPENDENCIES: |
-        immersive-aircraft(optional){modrinth:immersive-aircraft}{curseforge:immersive-aircraft}
-        sable(optional){modrinth:sable}{curseforge:sable}
-        ${{ matrix.f.loader == 'fabric' && 'fabric-api(required){modrinth:fabric-api}{curseforge:fabric-api}' || '' }}
     steps:
       - uses: actions/download-artifact@v7
         if: env.HAS_CURSEFORGE == 'true'
@@ -241,4 +252,4 @@ jobs:
           game-versions: ${{ matrix.f.game }}
           java: ${{ matrix.f.java }}
           environment: ${{ needs.plan.outputs.environment }}
-          dependencies: ${{ env.DEPENDENCIES }}
+          dependencies: ${{ matrix.f.dependencies }}

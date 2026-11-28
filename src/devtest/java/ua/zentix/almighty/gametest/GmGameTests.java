@@ -489,11 +489,14 @@ public final class GmGameTests {
      * cause, and player leave.
      */
     @GameTest(template = "floor", batch = "gm_feed", skyAccess = true)
-    public static void feedSeesJoinDeathLeave(GameTestHelper h) throws InterruptedException {
+    public static void feedSeesJoinDeathLeave(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);
         // The whole ring: last event number.
         long after = gm.feed().read(0, 4096, 0).get("next").getAsLong();
         ServerPlayer player = player(h, "gm-feed-player", UUID.randomUUID());
+        // Public: everyone is heard (who may reach the agent is GmInboxGameTests.onlyPlayersAtTheFloorReachTheAgent).
+        ua.zentix.almighty.policy.Policy before = gm.policies().current();
+        gm.policies().set(ua.zentix.almighty.policy.Policy.parse("preset = \"public\""));
         // A GM command as the player is not theirs and stays out of the feed; one typed by the player enters it.
         new ScriptApi(h.getLevel().getServer(), true, data -> {}).commandAs(player, "list");
         h.getLevel().getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack(), "list");
@@ -501,6 +504,7 @@ public final class GmGameTests {
         h.getLevel().getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack(), "gm привет, ведущий");
         Gt.hurt(player, player.damageSources().genericKill(), Float.MAX_VALUE);
         h.getLevel().getServer().getPlayerList().remove(player);
+        gm.policies().set(before);
         JsonArray events = gm.feed().read(after, 100, 0).getAsJsonArray("events");
         StringBuilder types = new StringBuilder();
         boolean death = false, toGm = false;

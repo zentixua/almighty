@@ -85,6 +85,7 @@ public final class FeedListeners {
         if (!(Mc.typedBy(parse.getContext().getSource()) instanceof ServerPlayer p)) return;
         String command = parse.getReader().getString();
         if (privateCommand(command)) return;
+        // Player-authored text: each agent reads it only if the player may reach it (Api.heardBy, by trust floor).
         JsonObject d = player(p);
         d.addProperty("command", command);
         d.add("untrusted", Inbox.untrusted("command"));

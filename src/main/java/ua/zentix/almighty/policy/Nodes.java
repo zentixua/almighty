@@ -98,6 +98,25 @@ public final class Nodes {
         return best;
     }
 
+    /**
+     * Whether a player holds every right an agent at this trust floor has unasked: each node the floor's role holds,
+     * and its command permission level (as {@code GmServer.commandAs}: max of op level and role level). Only such a
+     * player may reach the agent (plan 4.2: the floor is the rights of the least-trusted player whose text can reach
+     * it), so acting on a message unasked never gives its author more than they may do themselves. Any thread: the
+     * snapshots and the permission handler, as the gate reads them.
+     */
+    public static boolean covers(UUID id, Role floor) {
+        for (Node n : Node.values()) if (floor.atLeast(n.defaultRole()) && !holds(id, n)) return false;
+        Integer op = Identity.verified(id) ? ops.get(id) : null;
+        int level = Math.max(op == null ? 0 : op, role(id).commandLevel());
+        return level >= floor.commandLevel();
+    }
+
+    /** The current policy (the gate's; any thread). */
+    public static Policy policy() {
+        return policy.get();
+    }
+
     /** Whether a player holds a node: the permission handler for an online player, the offline query otherwise. */
     public static boolean holds(UUID id, Node node) {
         // An owner is the owner whatever a plugin says; an unverified identity (anyone can claim an offline name) is a

@@ -2,12 +2,22 @@
 
 English · [Русский](README.ru.md)
 
-- [Getting started](getting-started.md): from the jar to a connected agent in three steps.
-- [Connect your agent](connect/README.md): one page per app (Claude Code, Codex and the ChatGPT desktop app,
-  Cursor, VS Code, opencode, Gemini CLI, Antigravity, local models, scripts and CI, cloud apps).
-- [Game master mode](game-master.md): an agent that answers players as they write.
-- [Hosting and remote access](hosting.md): VPS, panels, tunnels, a public HTTPS address.
-- [Security](security.md): what an agent can do and what protects the server.
-- [Tools](tools.md): the 14 tools the agent gets, generated from the mod.
-- [For mod and datapack authors](for-mod-authors.md): notes for agents, rider-driven vehicles.
-- [Troubleshooting](troubleshooting.md).
+Almighty lets an AI agent act as game master on your Minecraft server, within the rights you set. This guide is for
+server owners and for people who connect agents. Start with [Getting started](getting-started.md).
+
+| I want to… | Read |
+|---|---|
+| Install the mod and connect my first agent | [Getting started](getting-started.md) |
+| Connect Claude Code, Codex, the ChatGPT desktop app, Cursor, VS Code or another app | [Connect your agent](connect/README.md) |
+| Have the agent answer players as they write | [Game master mode](game-master.md) |
+| Decide who may make the agent do what, and where | [Permissions and policy](permissions.md) |
+| Know what the AI can reach and what protects the server | [Safety and security](security.md) |
+| Run the server on a VPS, a panel, behind a proxy or HTTPS | [Hosting and remote access](hosting.md) |
+| Look up a command | [Commands](commands.md) |
+| Look up a setting or a file | [Configuration](configuration.md) |
+| See every tool the agent gets | [Tools](tools.md) |
+| Fix a problem | [Troubleshooting](troubleshooting.md) |
+| Find a quick answer | [FAQ](faq.md) |
+| Teach agents about my mod or datapack | [For mod and datapack authors](for-mod-authors.md) |
+
+The tools page is in English only: it is the text the agent itself reads.

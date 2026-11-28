@@ -68,8 +68,9 @@ approve from the console instead, naming yourself as the owner:
 /almighty approve 4821 claude-code owner <your player name>
 ```
 
-You must have joined the server once for that. Once the server has an owner, only the console and owners who are
-also level-4 operators approve sign-ins.
+You must have joined the server once for that. The app then gets your rights, but your own requests in game carry
+owner rights only while you count as verified: behind Velocity set `identity = "proxy"`. Once the server has an
+owner, only the console and owners who are also level-4 operators approve sign-ins.
 
 | You type | The app gets |
 |---|---|

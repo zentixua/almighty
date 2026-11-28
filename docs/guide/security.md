@@ -40,7 +40,7 @@ level. Scripts and rules with scripts need the owner.
   operator who approves becomes the owner. The notice in game never shows the code, so approving something you did
   not start would mean typing a code you never saw. Waiting sign-ins expire after 10 minutes; at most 16 wait at
   once, 2 from one address and 2 for one app. An app whose sign-in you deny cannot start another from the same
-  address for 10 minutes.
+  address for 10 minutes, or until an owner approves any sign-in.
 - **One identity per app.** Each approved app is its own agent with its own token: `/almighty agents` shows who
   called last and from where; `/almighty agent remove <name>` ends one at once; `/almighty revoke <name>` replaces its
   token. `allow_from` in `policy.toml` limits an agent's token to the addresses you list.

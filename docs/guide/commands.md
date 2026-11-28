@@ -2,7 +2,8 @@
 
 English · [Русский](commands.ru.md)
 
-`<…>` is required, `[…]` optional. "Console" includes RCON.
+`<…>` is required, `[…]` optional. "Console" includes RCON. Chat buttons such as `[Allow]` and `[Undo]` follow the
+player's game language.
 
 ## For every player
 

@@ -65,7 +65,7 @@ plus notes that mods, datapacks and you leave for it.
    folder and start the server. The console says:
    `Almighty ready - tell your AI agent: "connect to my Minecraft server at http://127.0.0.1:25650/mcp"`.
 2. Tell your agent exactly that, on the same machine as the server. It adds the server to its own settings.
-3. The agent opens a sign-in page with a four-digit code. Join the server as a level-4 operator and type
+3. The agent opens a sign-in page with a four-digit code. Join the server as a verified level-4 operator and type
    `/almighty approve <code> <name> owner` (`owner` because it is your own app). On a server without an owner, the
    first level-4 operator who approves a sign-in becomes its owner. From the console instead:
    `/almighty approve <code> <name> owner <your player name>` (you must have joined the server once).

@@ -140,8 +140,11 @@ public final class GmJournalGameTests {
     public static void alternatingWritesRevertInFewPieces(GameTestHelper h) throws Exception {
         GmServer gm = gm(h);
         BlockPos a = h.absolutePos(new BlockPos(1, 20, 1)), b = a.offset(300, 0, 0);
+        // Each row (10 × 5 blocks) and its ring of neighbour chunks, loaded now: the revert's leases wait for the ring.
         for (BlockPos at : new BlockPos[] {a, b}) {
-            for (int i = -1; i <= 2; i++) for (int j = -1; j <= 1; j++) h.getLevel().getChunk((at.getX() >> 4) + i, (at.getZ() >> 4) + j);
+            for (int cx = (at.getX() >> 4) - 1; cx <= ((at.getX() + 9) >> 4) + 1; cx++) {
+                for (int cz = (at.getZ() >> 4) - 1; cz <= ((at.getZ() + 4) >> 4) + 1; cz++) h.getLevel().getChunk(cx, cz);
+            }
         }
         com.google.gson.JsonArray commands = new com.google.gson.JsonArray();
         for (int i = 0; i < 50; i++) {

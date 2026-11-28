@@ -54,8 +54,8 @@ plus notes that mods, datapacks and you leave for it.
   players or cannot be undone waits for the requester's own confirmation in chat; above their rights, only the kinds
   of request you list go to an admin.
 - **Recorded and reversible.** Every block the agent writes is journaled on disk, so a change can be undone even
-  after a crash. Every call with an effect is in the audit log. `/almighty pause` stops an agent's builds and bots
-  until you resume it.
+  after a crash. Every call with an effect is in the audit log. `/almighty pause` stops an agent's builds, bots and
+  rules until you resume it.
 - **Safe defaults.** The bridge listens only on the server machine, every app signs in with a code you type on the
   server, and commands that crash or freeze servers are refused for every agent.
 
@@ -80,9 +80,9 @@ Almighty runs only on the server. Players join with an unmodified client of the 
 |---|---|---|---|
 | 1.21.1 | NeoForge 21.1.264 or newer | 21 | `almighty-<version>+1.21.1-neoforge.jar` |
 | 26.1.2 | NeoForge 26.1.2.130 or newer | 25 | `almighty-<version>+26.1.2-neoforge.jar` |
-| 26.1.2 | Fabric Loader 0.20.1 or newer, Fabric API | 25 | `almighty-<version>+26.1.2-fabric.jar` |
+| 26.1.2 | Fabric Loader 0.20.1 or newer, Fabric API 0.155.3 or newer | 25 | `almighty-<version>+26.1.2-fabric.jar` |
 | 26.3 | NeoForge 26.3.0.118 or newer | 25 | `almighty-<version>+26.3-neoforge.jar` |
-| 26.3 | Fabric Loader 0.20.1 or newer, Fabric API | 25 | `almighty-<version>+26.3-fabric.jar` |
+| 26.3 | Fabric Loader 0.20.1 or newer, Fabric API 0.167.0 or newer | 25 | `almighty-<version>+26.3-fabric.jar` |
 
 No other mods are needed. When installed, Almighty works with LuckPerms, Open Parties and Claims, FTB Chunks,
 Immersive Aircraft and Sable ([compatibility](docs/guide/getting-started.md#optional-mods)).

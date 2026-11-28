@@ -53,8 +53,8 @@ they ask for still run at their vanilla operator level.
 | `friends` | A member | A server among people you know. A fresh install starts here |
 | `public` | A guest | A server open to anyone |
 
-A request from a player is different: the agent attaches the ticket of that player's message, and the call runs with
-that player's rights. A ticket only narrows: it never gives more than the agent's ceiling.
+A request from a player is different: the agent attaches the ticket of that player's message (`for`, which every
+tool takes), and the call runs with that player's rights. A ticket only narrows: it never gives more than the agent's ceiling.
 
 ### Who an agent hears
 
@@ -229,5 +229,5 @@ The game master can read and edit `policy.toml` (and, for owners only, scripts i
 Every write is checked first; the previous file goes to `config/almighty/policy.history/` (50 kept), and
 `/almighty policy undo` puts it back. Owner commands and hand edits keep no
 history, and an undo discards them too. Raising an agent to an owner ceiling is done only in the file or with
-`/almighty approve <code> <name> owner`, which the console and level-4 operators can type: give level 4 only to
-people you trust as owners.
+`/almighty approve <code> <name> owner`, which only the console and owners from `policy.toml` who are also level-4
+operators can type.

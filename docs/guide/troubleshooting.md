@@ -6,7 +6,7 @@ English · [Русский](troubleshooting.ru.md)
 
 | What you see | What to do |
 |---|---|
-| The server does not start and names Almighty | Check the jar matches the server's Minecraft version and loader, and the Java version ([requirements](getting-started.md#1-install-the-mod)). On Fabric, install Fabric API. |
+| The server does not start and names Almighty | Check the jar matches the server's Minecraft version and loader, and the Java version ([requirements](getting-started.md#1-install-the-mod)). On Fabric, install Fabric API (0.155.3 or newer on 26.1.2, 0.167.0 or newer on 26.3). |
 | The console has no "Almighty ready" line | The bridge runs only on a dedicated server, not in single-player (see `bridge.integrated`). Check `bridge.enabled` in `config/almighty-common.toml` and the log for "Almighty bridge failed to start": often port 25650 is taken, so change `bridge.port`. |
 | The app says it cannot connect, or the connection is refused | The app runs on another machine than the server: use an SSH tunnel ([Hosting](hosting.md)). Check the address ends in `/mcp`. |
 | The app says the server needs authentication | Start its sign-in (Claude Code: `/mcp` → Authenticate; Codex: `codex mcp login almighty`; opencode: `opencode mcp auth almighty`). |

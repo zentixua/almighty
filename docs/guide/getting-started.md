@@ -13,9 +13,9 @@ Download the jar for your server from the [releases](https://github.com/zentixua
 |---|---|---|---|
 | 1.21.1 | NeoForge 21.1.264 or newer | 21 | `almighty-<version>+1.21.1-neoforge.jar` |
 | 26.1.2 | NeoForge 26.1.2.130 or newer | 25 | `almighty-<version>+26.1.2-neoforge.jar` |
-| 26.1.2 | Fabric Loader 0.20.1 or newer, with [Fabric API](https://modrinth.com/mod/fabric-api) | 25 | `almighty-<version>+26.1.2-fabric.jar` |
+| 26.1.2 | Fabric Loader 0.20.1 or newer, with [Fabric API](https://modrinth.com/mod/fabric-api) 0.155.3 or newer | 25 | `almighty-<version>+26.1.2-fabric.jar` |
 | 26.3 | NeoForge 26.3.0.118 or newer | 25 | `almighty-<version>+26.3-neoforge.jar` |
-| 26.3 | Fabric Loader 0.20.1 or newer, with [Fabric API](https://modrinth.com/mod/fabric-api) | 25 | `almighty-<version>+26.3-fabric.jar` |
+| 26.3 | Fabric Loader 0.20.1 or newer, with [Fabric API](https://modrinth.com/mod/fabric-api) 0.167.0 or newer | 25 | `almighty-<version>+26.3-fabric.jar` |
 
 Put it into the server's `mods/` folder and start the server. Players install nothing. When the server is ready, the
 console says:
@@ -25,8 +25,8 @@ Almighty ready - tell your AI agent: "connect to my Minecraft server at http://1
 ```
 
 The first start writes `config/almighty-common.toml` ([settings](configuration.md)) and
-`config/almighty/policy.toml` ([permissions](permissions.md)). A fresh install is a friends' server: anyone may talk
-to the game master, and on its own it acts as an ordinary member would.
+`config/almighty/policy.toml` ([permissions](permissions.md)). A fresh install is a friends' server: every verified
+player may talk to the game master, and on its own it acts as an ordinary member would.
 
 The bridge starts only on a dedicated server. To try Almighty in a single-player or LAN world, set
 `bridge.integrated = true` in `config/almighty-common.toml` of that game instance and reopen the world.
@@ -49,7 +49,7 @@ panel, see [Hosting](hosting.md).
 ## 3. Approve the sign-in with its code
 
 The first time the agent calls the server, your app opens a sign-in page in the browser. It shows a four-digit code
-and the app's name. In the server console (or in the game as a level-4 operator), type:
+and the app's name. In the server console, type:
 
 ```
 /almighty approve 4821 claude-code owner
@@ -57,7 +57,8 @@ and the app's name. In the server console (or in the game as a level-4 operator)
 
 with the code from the page, a name for the app, and `owner` if it is your own app on your own computer. The page
 returns to your app, and the agent is connected. Nobody copies a token or edits a file, and only someone who sees the
-page and can type on the server can approve it.
+page and can type on the server can approve it. In the game, a level-4 operator can approve a sign-in without
+`owner`; with `owner`, only an owner from `policy.toml` who is also a level-4 operator ([step 4](#4-make-yourself-an-owner)).
 
 | You type | The app gets |
 |---|---|

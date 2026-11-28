@@ -155,7 +155,8 @@ Real game-client screenshots that would show what text cannot. Do not mock them 
 (GUI scale 2, HUD visible, 1920×1080, PNG):
 
 1. **Confirmation in chat:** a player asks the game master for something that affects others, and the chat shows
-   the exact command with **[Allow]** / **[Deny]**.
+   what it will do in plain words, "It cannot be undone.", and **[Allow]** / **[Deny]** / **[Details]**, with the
+   exact command on hover.
 2. **Receipt with undo:** "[Almighty] Done for you: … [Undo]" after a build, then the build gone after the click.
 3. **Sign-in:** the browser page with the four-digit code next to the chat line `/almighty approve 4821` typed in game.
 4. **Bots in the tab list:** `[bot]` names among players, and a bot flying an Immersive Aircraft plane in

@@ -213,9 +213,9 @@ public final class GmConfirmGameTests {
             check(shown.contains(lang.equals("en_us") ? "kill — target: every player" : "убить — цель: все игроки"), lang + " facts: " + shown);
             check(shown.contains(lang.equals("en_us") ? "(its own words)" : "(слова ведущего)"), lang + " marked as its words: " + shown);
             check(!shown.contains("/kill @a"), lang + " the exact call is on hover, not in the line: " + shown);
-            java.util.List<String> clicks = new java.util.ArrayList<>();
+            java.util.Set<String> clicks = new java.util.HashSet<>();
             q.visit((style, text) -> {
-                if (style.getClickEvent() != null) clicks.add(text + "|" + style.getClickEvent());
+                if (style.getClickEvent() != null) clicks.add(String.valueOf(style.getClickEvent()));
                 if (text.contains("cake")) check(style.getClickEvent() == null, "the summary carries no click");
                 return java.util.Optional.empty();
             }, net.minecraft.network.chat.Style.EMPTY);
@@ -281,7 +281,9 @@ public final class GmConfirmGameTests {
                     check(e.status() == 202, cmd + ": " + e.getMessage());
                     Confirmations.Pending p = gm.decisions().confirmations().get(e.details().get("id").getAsString());
                     check(bea.getUUID().equals(p.confirmer), cmd + ": the friend confirms, not " + p.confirmer);
-                    check(p.text.contains("tp_alex"), "the friend sees who asked: " + p.text);
+                    String q = ua.zentix.almighty.policy.Prompts.question(p, "en_us").getString();
+                    check(q.contains("(asked by tp_alex)") && (q.contains("teleport tp_alex to tp_bea") || q.contains("teleport tp_bea to tp_alex")),
+                            "the friend sees who asked and who goes where: " + q);
                     check(!e2s(gm.decisions().decide(p.nonce(), alex, true)).startsWith("Allowed"), "the asker cannot answer for the friend");
                     gm.decisions().decide(p.nonce(), bea, false);
                 }

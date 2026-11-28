@@ -68,7 +68,7 @@ public final class GmConfig {
                         "letter away.");
         FEED_GM_MESSAGES = b.integer("gm_messages", 20, 1, 10_000, "How many messages one player may address to the game master per hour; more are answered by the server",
                         "(\"slow down\") and never reach the agent.");
-        FEED_DEFAULT_AGENT = b.string("default_agent", "gm", "Agent that receives messages addressed to the game master while it is connected (otherwise the agent connected last does); /gm @<agent> <text> picks another.");
+        FEED_DEFAULT_AGENT = b.string("default_agent", "gm", "Agent that receives messages addressed to the game master while it has made a call in the last minute. Otherwise they go to the owner-level agent (ceiling \"owner\" in policy.toml) that called most recently, if it is still active; if none is, they wait for this agent. /gm @<agent> <text> picks another.");
         FEED_AWAY_SECONDS = b.integer("away_seconds", 30, 5, 3600, "If the agent has not read a message this many seconds after it arrived, the server tells the player",
                         "the game master is away (the message is kept).");
         b.section("audit");

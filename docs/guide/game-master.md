@@ -16,6 +16,9 @@ server's event feed. Each app has its own way to keep a session running; the ser
   reach it without the name.
 - **A player alone on the server** reaches it with any chat line.
 
+An agent hears only players trusted with what it can do unasked: on a private server only owners, on a friends'
+server verified players, on a public server everyone ([Who an agent hears](permissions.md#who-an-agent-hears)).
+
 The server, not the agent, decides what is addressed. Each player may address the game master 20 times an hour
 (`feed.gm_messages`); more get "Too many messages to the game master; try again later." from the server. If the agent has not read a `/gm` message or a line
 with its name within 30 seconds (`feed.away_seconds`), or made no call for a minute, the server tells the player the

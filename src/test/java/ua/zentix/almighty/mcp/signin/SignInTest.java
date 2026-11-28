@@ -197,12 +197,22 @@ class SignInTest {
         SignIn.Client c = null;
         for (int i = 0; i < SignIn.MAX_PENDING; i++) {
             c = register(s, "Cursor " + i, "cursor://anysphere.cursor-retrieval/oauth/callback");
-            codes.add(s.authorize(c, authorizeQuery(c.id(), "cursor://anysphere.cursor-retrieval/oauth/callback"), "http://127.0.0.1:25650/mcp", "1.2.3.4").code());
+            codes.add(s.authorize(c, authorizeQuery(c.id(), "cursor://anysphere.cursor-retrieval/oauth/callback"), "http://127.0.0.1:25650/mcp", "1.2.3." + i).code());
         }
         SignIn.Client last = c;
         assertEquals(429, assertThrows(SignIn.OAuthError.class, () -> s.authorize(last, authorizeQuery(last.id(),
                 "cursor://anysphere.cursor-retrieval/oauth/callback"), "http://127.0.0.1:25650/mcp", "1.2.3.4")).status(), "pending logins are capped overall");
         assertEquals(SignIn.MAX_PENDING, codes.size(), "waiting codes are unique");
+        // One address cannot hold every slot (rights audit m8): the third waiting sign-in from it is refused.
+        SignIn other = signIn();
+        for (int i = 0; i < SignIn.MAX_PENDING_PER_ADDRESS; i++) {
+            SignIn.Client ci = register(other, "App " + i, "cursor://anysphere.cursor-retrieval/oauth/callback");
+            other.authorize(ci, authorizeQuery(ci.id(), "cursor://anysphere.cursor-retrieval/oauth/callback"), "http://127.0.0.1:25650/mcp", "5.6.7.8");
+        }
+        SignIn.Client more = register(other, "App x", "cursor://anysphere.cursor-retrieval/oauth/callback");
+        assertEquals(429, assertThrows(SignIn.OAuthError.class, () -> other.authorize(more, authorizeQuery(more.id(),
+                "cursor://anysphere.cursor-retrieval/oauth/callback"), "http://127.0.0.1:25650/mcp", "5.6.7.8")).status(), "per address");
+        other.authorize(more, authorizeQuery(more.id(), "cursor://anysphere.cursor-retrieval/oauth/callback"), "http://127.0.0.1:25650/mcp", "5.6.7.9");
         SignIn.Client c2 = register(s, "Cursor x", "cursor://anysphere.cursor-retrieval/oauth/callback");
         assertEquals(429, assertThrows(SignIn.OAuthError.class, () -> s.authorize(c2, authorizeQuery(c2.id(),
                 "cursor://anysphere.cursor-retrieval/oauth/callback"), "http://127.0.0.1:25650/mcp", "1.2.3.4")).status(), "logins cannot pile up");

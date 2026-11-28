@@ -576,7 +576,12 @@ public final class Api {
             gm.jobs().admit();
             return gm.jobs().submit(factory.run());
         });
-        return started.thenCompose(view -> gm.await(view, wait).thenApplyAsync(result -> view.attach(result.getAsJsonObject())));
+        // image: false (map, look) returns the legend and markers only; the picture is dropped, never sent.
+        boolean image = a.bool("image", true);
+        return started.thenCompose(view -> {
+            if (!image) view.withoutImage();
+            return gm.await(view, wait).thenApplyAsync(result -> view.attach(result.getAsJsonObject()));
+        });
     }
 
     /** {@code center} [x, z] and {@code size} (default 128), or {@code from}/{@code to} [x, z]. */

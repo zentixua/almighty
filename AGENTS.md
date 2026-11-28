@@ -100,7 +100,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   methods `FeedListeners.on*`, `Bots.tabName|displayName|onLogin`, the commands' `register(dispatcher)` and the
   lifecycle hooks in `Almighty`), `NeoForgeConfig` (binds `GmConfig`'s declared `Setting`s to a `ModConfigSpec`),
   `NeoForgePlatform` (paths, mod list, mod config values, permission nodes, the bot connection hooks) and
-  `NeoForgeEvents` + `EventTypes` (the rules' bus and FML scan data). `platform/` is the seam: `Platform` (one per
+  `NeoForgeEvents` + `EventTypes` (the rules' bus and FML scan data; a player event's place is its block, interaction
+  or attack target, never the acting player, whose position is only where a rule's commands run, `GameEvents.actor`). `platform/` is the seam: `Platform` (one per
   loader, `Platform.get()`; absent in unit tests, so callers there use `Platform.present()`), `GameEvents` (events
   are plain objects to the core: subscribe, cancel, place, base class), `Setting`, `Reflect` (Mojang-named members;
   no loader remapping helper). Only `neoforge/`, `fabric/` and `compat/` import a loader or another mod.
@@ -121,8 +122,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   `/oauth/register|authorize|status|token`): PKCE S256, public clients, DCR and Client ID Metadata Documents (Codex
   `https://chatgpt.com/oauth/codex/client.json`, Claude Code `https://claude.ai/oauth/claude-code-client-metadata`;
   `ClientMetadata` fetches HTTPS only, no private addresses, 16 KB, 5 s), RFC 9207 `iss`, refresh rotation. Consent:
-  the login page shows a 4-digit code; the owner types `/almighty approve <code> [name]` (console or level-4
-  operator); notices never show the code. An approved client becomes an ordinary agent (its access token is the
+  the login page shows a 4-digit code; the owner types `/almighty approve <code> [name]` (console or a verified
+  policy owner, as `agent add`); notices never show the code; at most 16 waiting, 2 per address and 2 per client. An approved client becomes an ordinary agent (its access token is the
   agent's token, `config/almighty/agents/<name>.token`); sign-in only ever rotates agents it created. State:
   `config/almighty/oauth/` (clients, hashed refresh tokens). `/almighty connect`: address, per-product lines and
   secret-free links (`mcp/Connect`). The issuer is `bridge.public_url` or the request's loopback/bridge host.
@@ -222,7 +223,8 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   ticket is minted). Owners' requests apply at once. Below owner, commands may not carry
   clicks that act as whoever clicks, dialogs, or `[Almighty]` (forged prompts via tellraw, signs, books), checked by
   `policy/Forgery` on the command's folded letters after undoing every escape (`\u`, `\U`, `\x`, `\N{}`), so split parts,
-  selectors, translation keys and look-alike letters do not hide them; function continuation lines are joined and lines
+  selectors, translation keys and look-alike letters do not hide them; text parts that show the world's own text (a
+  `selector` that can match non-players: a named mob; any `nbt` part) are refused below owner; function continuation lines are joined and lines
   trimmed as the game trims them
   (`DenyList.logicalLines`, which the deny list reads too); an agent's function `args` must be a JSON object. `/gm` and
   `/almighty confirm|deny` accept only the player's own typing (`source.source == player`); `/gm` is on the deny
@@ -281,7 +283,7 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   decides what is addressed (`Addressing`, the `router.mjs` logic: `/gm`, a name from `feed.names` or one typo of
   `feed.typo_names`, a 3-minute conversation after addressing or a `say` reply, a player alone), limits each player
   (`feed.gm_messages` per hour for `/gm` and named lines, "slow down" from the server, no event; a solo player's or
-  open conversation's lines have a silent 5× limit), never treats a GM bot's chat as addressed, routes to one agent
+  open conversation's lines have a silent 5× limit), never treats a GM bot's chat as addressed (a bot's `/gm` reaches the agent without a ticket), routes to one agent
   (`/gm @<agent> …` when that agent exists, else `feed.default_agent`) and mints a ticket (`policy/Tickets`: 128 random bits, bound to player UUID, agent and event,
   10 minutes, never extended). Addressed events: `addressed`, `via` (gm, name, conversation, alone), `agent`,
   `ticket`; other chat has `addressed: false`. `events {mine: true}` leaves out messages routed to other agents; a
@@ -338,8 +340,9 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
   (preset more open or leaving private, identity verifying more people, owners added or removed, ceilings or
   floors raised, deny zones narrowed, `agent_may` widened, ask_admin wider, confirm_first narrower, larger
   quotas); otherwise it becomes an admin confirmation that a holder of `almighty.engine` decides (202; the owner
-  sees a summary with the text's hash, the exact text runs when allowed). An undo is a write of the saved text
-  (`undo_of`), so its approval is bound to that text; the undone version stays in `policy.history/undone/`. One
+  sees a summary with the text's hash, the exact text runs when allowed, and only while `policy.toml` is still the file it
+  was proposed against, else 409; owners online are told of the agent's own restricting changes). An undo is a write of the saved text
+  (`undo_of`, honoured only for the newest history entry), so its approval is bound to that text; the undone version stays in `policy.history/undone/`. One
   lock (`PolicyFile.LOCK`) covers compare, history, write and reload. An agent raised to an owner ceiling only by the console editing the file. The last owner cannot be
   removed. Every write is validated (`Policy.parse`, then `PolicyFile.write`, atomic); the old file goes to
   `policy.history/` (50 kept); `/almighty policy undo` or `file {action: "undo"}` walks back. Scripts are read
@@ -360,7 +363,7 @@ procedure: `docs/store/listing.md`. Store pages are assembled from `docs/store/d
 
 `status`, `players`, `player {name}`, `entities {center+radius | from/to, type, limit}`,
 `command {commands, pos?, dimension?}`, `function {lines, args?, pos?}`, `say {text | component, to?, style}`,
-`map {center+size | from/to [x,z], below?, marks?}`, `look {from, to, look}`, `blocks {from, to, properties?}`,
+`map {center+size | from/to [x,z], below?, marks?, image?}`, `look {from, to, look, image?}`, `blocks {from, to, properties?}`,
 `build {ops}`, `undo {job}`, `jobs`, `job {id, wait?}`, `cancel {id}`, `area.prepare {from, to [x,z], ttl_seconds?, wait?}`,
 `area.release {id}`, `areas`, `events {after?, wait? ≤25, limit?}`,
 `script {code | name, args?, timeout_ms? ≤10000}` → `{ok, value | error+line, output, ms}`,

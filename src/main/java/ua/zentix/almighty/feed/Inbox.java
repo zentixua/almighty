@@ -137,9 +137,12 @@ public final class Inbox {
         d.addProperty("addressed", true);
         d.addProperty("via", via.name().toLowerCase(java.util.Locale.ROOT));
         d.addProperty("agent", agentName);
-        d.addProperty("ticket", id);
+        // A GM bot's /gm is an agent speaking through its bot: no ticket (rights audit m9), or an agent could mint
+        // requesters (and per-player ask_admin budgets) by spawning bots.
+        boolean bot = bot(player);
+        if (!bot) d.addProperty("ticket", id);
         long seq = feed.add(type, d);
-        tickets.mint(id, player.getUUID(), Mc.name(player.getGameProfile()), agentName, seq, verified);
+        if (!bot) tickets.mint(id, player.getUUID(), Mc.name(player.getGameProfile()), agentName, seq, verified);
         Agents known = agents.get();
         // Away replies only for messages the player clearly meant for the GM (/gm or its name).
         if (known == null || (via != Addressing.Via.GM && via != Addressing.Via.NAME)) return;

@@ -81,6 +81,12 @@ final class NeoForgeEvents implements GameEvents {
         // An interaction's place is the block it targets, not where the player stands.
         if (e instanceof PlayerInteractEvent pi && pi.getLevel() instanceof ServerLevel l) return new Place(l, pi.getPos());
         if (e instanceof BlockEvent b && b.getLevel() instanceof ServerLevel l) return new Place(l, b.getPos());
+        // An attack's place is its target. Any other player event is about the acting player, whose position is
+        // not a place (rights audit m7, as on Fabric): a cancel there would follow the player into any claim.
+        if (e instanceof net.neoforged.neoforge.event.entity.player.AttackEntityEvent a) {
+            return a.getTarget() != null && a.getTarget().level() instanceof ServerLevel l ? new Place(l, a.getTarget().blockPosition()) : null;
+        }
+        if (e instanceof net.neoforged.neoforge.event.entity.player.PlayerEvent) return null;
         if (e instanceof EntityEvent ee && ee.getEntity() != null && ee.getEntity().level() instanceof ServerLevel l) {
             return new Place(l, ee.getEntity().blockPosition());
         }
@@ -88,7 +94,18 @@ final class NeoForgeEvents implements GameEvents {
     }
 
     @Override
+    public Place actor(Object e) {
+        if (e instanceof net.neoforged.neoforge.event.entity.player.PlayerEvent pe && pe.getEntity() != null
+                && pe.getEntity().level() instanceof ServerLevel l) {
+            return new Place(l, pe.getEntity().blockPosition());
+        }
+        return null;
+    }
+
+    @Override
     public boolean placed(Class<?> type) {
-        return BlockEvent.class.isAssignableFrom(type) || EntityEvent.class.isAssignableFrom(type);
+        if (PlayerInteractEvent.class.isAssignableFrom(type) || BlockEvent.class.isAssignableFrom(type)
+                || net.neoforged.neoforge.event.entity.player.AttackEntityEvent.class.isAssignableFrom(type)) return true;
+        return EntityEvent.class.isAssignableFrom(type) && !net.neoforged.neoforge.event.entity.player.PlayerEvent.class.isAssignableFrom(type);
     }
 }

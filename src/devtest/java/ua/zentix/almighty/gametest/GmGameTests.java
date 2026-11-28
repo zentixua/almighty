@@ -524,6 +524,9 @@ public final class GmGameTests {
         BlockPos far = h.absolutePos(new BlockPos(40_000, 0, 40_000));
         CompletableFuture<JsonElement> unloaded = call(h, "map", params("{\"center\":[%d,%d],\"size\":32}", far.getX(), far.getZ()));
         CompletableFuture<JsonElement> look = call(h, "look", params("{\"from\":%s,\"to\":%s,\"look\":\"north\"}", at(h, 30, 2, 35), at(h, 34, 4, 32)));
+        // image: false gives the legend only (found by the trial agent: map {image:false} still returned a picture).
+        CompletableFuture<JsonElement> plain = call(h, "map", params("{\"center\":[%d,%d],\"size\":16,\"image\":false}",
+                h.absolutePos(BlockPos.ZERO).getX(), h.absolutePos(BlockPos.ZERO).getZ()));
         h.startSequence()
                 .thenWaitUntil(() -> viewsEnded(h))
                 .thenExecute(() -> {
@@ -551,6 +554,10 @@ public final class GmGameTests {
                     check(glass != 0x87AEDB && (glass >> 16 & 255) > 0x87, String.format(Locale.ROOT, "sky behind glass lacks tint: #%06X", glass));
                     JsonObject r = settled(call(h, "job", params("{\"id\":%d}", m.get("id").getAsLong())));
                     check(r.get("state").getAsString().equals("done") && !r.has("png_base64"), "snapshot image delivered twice: " + r.keySet());
+                    JsonObject p = settled(plain);
+                    check(!p.has("png_base64") && p.has("legend"), "image false: legend only: " + p.keySet());
+                    JsonObject pj = settled(call(h, "job", params("{\"id\":%d}", p.get("id").getAsLong())));
+                    check(!pj.has("png_base64"), "image false: no picture later either: " + pj.keySet());
                 })
                 .thenSucceed();
     }

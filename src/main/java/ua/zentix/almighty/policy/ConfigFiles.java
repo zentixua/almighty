@@ -39,7 +39,13 @@ public final class ConfigFiles {
     /** Asks an owner to approve a granting change; returns the 202 for the agent (the admin digest in game). */
     public interface Asker {
         RpcException ask(Args a, String grants);
+
+        /** Tell the owners a change the agent made on its own (restricting, so it applied at once; plan 4.10 receipt). */
+        default void told(String text) {}
     }
+
+    /** The policy text a granting proposal was made against (set by the server at ask time, never by the agent). */
+    static final String BASE = "_policy_base";
 
     public ConfigFiles(Path dir, Policies policies, Gate gate, Asker asker) {
         this.dir = dir;
@@ -50,7 +56,14 @@ public final class ConfigFiles {
 
     /** The game's asker: an admin confirmation of the exact call, decided by a holder of {@code almighty.engine}. */
     public static Asker digest(Decisions decisions) {
-        return (a, grants) -> {
+        return new Asker() {
+            @Override
+            public void told(String text) {
+                decisions.tellOwners(text);
+            }
+
+            @Override
+            public RpcException ask(Args a, String grants) {
             try {
                 // The owner reads a summary (a whole file does not fit a chat line); the exact text runs when allowed.
                 String text = a.raw().has("text") ? a.raw().get("text").getAsString() : "";
@@ -62,6 +75,7 @@ public final class ConfigFiles {
                 return Confirmations.waiting(pending, "the owner (it grants " + grants + ")");
             } catch (RpcException e) {
                 return e;
+            }
             }
         };
     }
@@ -207,16 +221,33 @@ public final class ConfigFiles {
             if (host != null && a.caller().agent() != null) {
                 throw new RpcException(403, "policy", "Only the console can do this (" + host + "): the owner edits policy.toml there");
             }
+            String base = sha(Files.isRegularFile(p) ? Files.readString(p, StandardCharsets.UTF_8) : "");
             if (!owner && !approved) {
                 String grants = PolicyEdits.grants(old, neu);
-                // The agent's own initiative, granting something: one owner's approval, through the quiet digest.
-                if (grants != null) throw asker.ask(a, grants);
+                // The agent's own initiative, granting something: one owner's approval, through the quiet digest. The
+                // proposal carries the file it was made against (rights audit m3), so an approval cannot silently
+                // revert an edit made since, and the grants shown are the grants applied.
+                if (grants != null) {
+                    JsonObject proposal = a.raw().deepCopy();
+                    proposal.addProperty(BASE, base);
+                    throw asker.ask(new Args(proposal, a.caller()), grants);
+                }
+            }
+            if (Confirmations.running() != null && a.raw().has(BASE) && !a.raw().get(BASE).getAsString().equals(base)) {
+                throw RpcException.conflict("policy.toml changed after this was proposed: not applied; the agent proposes it again against the current file");
             }
             Path saved = apply(p, text);
-            // An undo: the restored entry leaves the walk (only if it is still that text); the undone version is kept.
-            if (a.raw().has("undo_of")) {
+            if (!owner && !approved) {
+                asker.told("The agent " + a.caller().name() + " changed policy.toml on its own (only restricting; sha256 " + sha(text)
+                        + "). Undo: /almighty policy undo");
+            }
+            // An undo: the restored entry leaves the walk (only if it is still that text and the newest entry, so a
+            // plain write naming an older entry deletes nothing: rights audit m4); the undone version is kept.
+            List<Path> walk = history();
+            if (a.raw().has("undo_of") && saved != null && walk.size() >= 2) {
                 Path entry = dir.resolve("policy.history").resolve(a.raw().get("undo_of").getAsString()).normalize();
-                if (entry.getParent().equals(dir.resolve("policy.history").normalize()) && Files.isRegularFile(entry)
+                // The newest entry before this write's own (apply just saved the old file as the newest).
+                if (entry.equals(walk.get(walk.size() - 2).normalize()) && Files.isRegularFile(entry)
                         && Files.readString(entry, StandardCharsets.UTF_8).equals(text)) {
                     Files.deleteIfExists(entry);
                     if (saved != null) {

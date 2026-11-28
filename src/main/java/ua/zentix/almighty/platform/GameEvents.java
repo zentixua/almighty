@@ -77,6 +77,14 @@ public interface GameEvents {
 
     Place place(Object event);
 
+    /**
+     * Where an event's acting player stands, for events without a {@link #place}: a rule's commands run there (zones
+     * are checked there), but a cancel never counts it as the event's place. Null if none.
+     */
+    default Place actor(Object event) {
+        return null;
+    }
+
     /** Whether events of this type have a place ({@link #place}): a block's or an entity's. */
     boolean placed(Class<?> type);
 }

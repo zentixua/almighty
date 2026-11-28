@@ -282,6 +282,7 @@ public final class Tools {
         a.need("kind");
         String kind = a.get("kind").getAsString();
         String[] eyeOnly = {"who", "eye", "yaw", "pitch", "width", "height", "fov", "distance", "radius"};
+        if (a.has("image") && kind.equals("blocks")) throw new ToolError("view blocks: text only; image goes with map, look and eye");
         if (kind.equals("eye")) {
             a.only("view eye", "center", "start", "end", "below", "marks", "direction");
             if (a.has("who") == a.has("eye")) throw new ToolError("view eye: exactly one of who (name or UUID) or eye [x, y, z]");
@@ -310,14 +311,15 @@ public final class Tools {
                 if (!(byCenter || byCorners)) throw new ToolError("view map: center [x, z] or both corners start and end [x, z]");
                 a.points(2, "center", "start", "end");
                 return call("map", "center", a.get("center"), "size", byCenter ? a.get("size") : null, "from", a.get("start"),
-                        "to", a.get("end"), "below", a.get("below"), "marks", a.get("marks"), "dimension", a.get("dimension"), "wait", a.get("wait"));
+                        "to", a.get("end"), "below", a.get("below"), "marks", a.get("marks"), "dimension", a.get("dimension"), "wait", a.get("wait"),
+                        "image", a.get("image"));
             }
             case "look" -> {
                 a.only("view look", "center", "below", "marks");
                 a.need("start", "end", "direction");
                 a.points(3, "start", "end");
                 return call("look", "from", a.get("start"), "to", a.get("end"), "look", a.get("direction"), "dimension", a.get("dimension"),
-                        "wait", a.get("wait"));
+                        "wait", a.get("wait"), "image", a.get("image"));
             }
             case "blocks" -> {
                 a.only("view blocks", "center", "below", "marks", "direction");

@@ -93,6 +93,13 @@ public final class Decisions {
         this.owners = owners;
     }
 
+    /** A notice to every owner online (any thread; sent on the server thread). */
+    public void tellOwners(String text) {
+        server.execute(() -> {
+            for (UUID owner : owners.get()) tell(owner, text);
+        });
+    }
+
     private void tell(UUID player, String text) {
         if (player == null) return;
         ServerPlayer p = server.getPlayerList().getPlayer(player);

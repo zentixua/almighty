@@ -336,6 +336,11 @@ public final class GmBotGameTests {
                 .thenExecute(() -> {
                     check(hasEvent(h, after, "chat", "text", "привет всем"), "bot chat in the feed: " + events(h, after));
                     check(hasEvent(h, after, "gm", "text", "вижу пещеру"), "bot /gm in the feed: " + events(h, after));
+                    // An agent's bot mints no ticket with its /gm (rights audit m9): no requester made by spawning bots.
+                    for (JsonElement e : events(h, after).getAsJsonArray("events")) {
+                        JsonObject o = e.getAsJsonObject();
+                        check(!(o.get("type").getAsString().equals("gm") && o.has("ticket")), "a bot's /gm carries a ticket: " + o);
+                    }
                     check(hasEvent(h, after, "bot_chat", "text", "тайное слово"), "whisper to bot in the feed: " + events(h, after));
                     boolean whisper = false;
                     for (JsonElement m : bot.describe(0).getAsJsonArray("inbox")) {

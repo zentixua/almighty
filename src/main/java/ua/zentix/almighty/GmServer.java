@@ -471,6 +471,11 @@ public final class GmServer {
 
             public void command(ua.zentix.almighty.rules.Declarative.Creator c, Object e, String command, String rule) throws RpcException {
                 Object[] at = place(e);
+                if (at == null) {
+                    // A player event's commands run where the player stands (checked there); only a cancel ignores it.
+                    ua.zentix.almighty.platform.GameEvents.Place actor = ua.zentix.almighty.platform.Platform.get().events().actor(e);
+                    if (actor != null) at = new Object[]{actor.level(), actor.pos()};
+                }
                 net.minecraft.server.level.ServerLevel level = at == null ? server.overworld() : (net.minecraft.server.level.ServerLevel) at[0];
                 net.minecraft.world.phys.Vec3 pos = net.minecraft.world.phys.Vec3.atBottomCenterOf(at == null ? Mc.spawnPos(level) : (net.minecraft.core.BlockPos) at[1]);
                 ua.zentix.almighty.act.CommandRunner.As as;

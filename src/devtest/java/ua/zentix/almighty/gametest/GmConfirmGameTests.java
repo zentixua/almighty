@@ -129,9 +129,11 @@ public final class GmConfirmGameTests {
                 check(!runs(dispatcher, cmd, alex), "a level-2 player can run /" + cmd);
             }
             server.getCommands().performPrefixedCommand(alex.createCommandSourceStack(), "almighty confirm " + p.nonce());
-            // A level-4 operator who is not an owner approves sign-ins, but never an app with the owner's rights.
+            // A level-4 operator who is not an owner lists waiting sign-ins but approves none: approving mints an agent,
+            // as `agent add` does (rights audit m8).
             op(h, alex, 4);
-            check(runs(dispatcher, "almighty approve 1234 app", alex), "a level-4 operator cannot approve a sign-in");
+            check(runs(dispatcher, "almighty approve", alex), "a level-4 operator cannot list waiting sign-ins");
+            check(!runs(dispatcher, "almighty approve 1234 app", alex), "a level-4 operator who is not an owner can approve a sign-in");
             check(!runs(dispatcher, "almighty approve 1234 app owner", alex), "a level-4 operator who is not an owner can approve an owner app");
             // Not through an owner either: the requirement is about who typed the command, not who it runs as.
             ServerPlayer realOwner = player(h, "confirm-real-owner", UUID.randomUUID());

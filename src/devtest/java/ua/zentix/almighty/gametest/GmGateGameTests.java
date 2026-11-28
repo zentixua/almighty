@@ -135,6 +135,11 @@ public final class GmGateGameTests {
             gm.policies().set(before);
             pig.discard();
             h.getLevel().getServer().getPlayerList().remove(watched);
+        }
+        h.succeed();
+    }
+
+    /**
      * Below owner no call plants a click that acts as whoever clicks or a forged [Almighty] prompt, however spelled,
      * and the deny list reads a function's continued lines (independent audit, rights B2 and M1).
      */

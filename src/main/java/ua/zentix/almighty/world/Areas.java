@@ -154,6 +154,21 @@ public final class Areas {
             this.owner = owner;
         }
 
+        public String ownerName() {
+            return owner;
+        }
+
+        /** The agent that prepared this area ({@code area.prepare}); null for a build's, a bot's or an undo's lease. */
+        private String agent;
+
+        public void agent(String agent) {
+            this.agent = agent;
+        }
+
+        public String agent() {
+            return agent;
+        }
+
         public boolean released() {
             return released;
         }

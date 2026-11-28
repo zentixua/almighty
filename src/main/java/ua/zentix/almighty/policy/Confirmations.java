@@ -223,14 +223,33 @@ public final class Confirmations {
 
     /** Every target in the command is the requester: no selector but {@code @s}, no other name or UUID, no {@code execute on}. */
     private static boolean onlySelf(String c, String requesterName, UUID requester) {
-        var m = WORD.matcher(c.strip().replaceFirst("^[/$]+", ""));
+        String text = c.strip().replaceFirst("^[/$]+", "");
+        // A quoted name targets a player just as well ("kill \"Friend\""): any quoted word that is not the requester.
+        var quoted = java.util.regex.Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"|'((?:[^'\\\\]|\\\\.)*)'").matcher(text);
+        while (quoted.find()) {
+            String q = quoted.group(1) != null ? quoted.group(1) : quoted.group(2);
+            if (q.matches("[.*]?[A-Za-z0-9_]{1,16}") && !q.equalsIgnoreCase(requesterName) && looksLikePlayer(q)) return false;
+        }
+        var m = WORD.matcher(text);
         String prev = "";
         while (m.find()) {
             String w = m.group();
             if (w.startsWith("@") && !w.equals("@s") && !w.startsWith("@s[")) return false;
             if (prev.equalsIgnoreCase("on")) return false;
-            if (w.matches("[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}") && (requester == null || !w.equalsIgnoreCase(requester.toString()))) return false;
-            if (w.matches("[A-Za-z0-9_]{3,16}") && !w.equalsIgnoreCase(requesterName) && looksLikePlayer(w)) return false;
+            // UUIDs as the game reads them: groups may drop leading zeros (0-0-0-0-1).
+            if (w.matches("[0-9a-fA-F]{1,8}-[0-9a-fA-F]{1,4}-[0-9a-fA-F]{1,4}-[0-9a-fA-F]{1,4}-[0-9a-fA-F]{1,12}")) {
+                UUID id;
+                try {
+                    id = UUID.fromString(w);
+                } catch (IllegalArgumentException e) {
+                    return false;
+                }
+                if (!id.equals(requester)) return false;
+            }
+            // Names: offline and Floodgate names can be 1 or 2 characters, Floodgate ones start with a dot or star.
+            String name = w.startsWith(".") || w.startsWith("*") ? w.substring(1) : w;
+            if (name.matches("[A-Za-z0-9_]{1,16}") && !w.equalsIgnoreCase(requesterName) && !name.equalsIgnoreCase(requesterName)
+                    && looksLikePlayer(w)) return false;
             prev = w;
         }
         return true;

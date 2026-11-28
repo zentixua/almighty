@@ -117,6 +117,8 @@ public final class Bots {
 
     /** Bot login: checks here, skin lookup (if an account name) in the background through server services, login on the server thread. */
     public CompletableFuture<JsonObject> spawn(Spec spec) {
+        // Who spawns it, while the call's caller is still known (the login continues in later stages).
+        String by = ua.zentix.almighty.bridge.Dispatch.current().name();
         return gm.onMain(() -> {
             check(spec);
             // The first minute up front: an agent whose bot minutes are used up gets 429 before anything loads.
@@ -135,6 +137,7 @@ public final class Bots {
                     try {
                         check(spec);
                         bot = place(spec, textures.orElse(null));
+                        bot.spawner = by;
                     } catch (RpcException | RuntimeException e) {
                         if (lease != null) lease.release();
                         throw e;
@@ -365,9 +368,10 @@ public final class Bots {
      * {@code waitSeconds} for completion; if still running, return its description, with completion arriving
      * as a {@code bot_done} event.
      */
-    public CompletableFuture<JsonElement> act(String name, JsonArray actions, boolean replace, int waitSeconds) throws RpcException {
+    public CompletableFuture<JsonElement> act(String name, JsonArray actions, boolean replace, int waitSeconds, com.google.gson.JsonObject params) throws RpcException {
         List<Steps.Step> steps = Steps.parse(actions);
-        return gm.onMain(() -> get(name).start(steps, replace)).thenCompose(program -> {
+        ua.zentix.almighty.bridge.Caller caller = ua.zentix.almighty.bridge.Dispatch.current();
+        return gm.onMain(() -> mine(get(name), caller, params, "drive").start(steps, replace)).thenCompose(program -> {
             CompletableFuture<JsonElement> out = new CompletableFuture<>();
             program.done().thenAccept(out::complete);
             if (!program.done().isDone()) {
@@ -385,6 +389,17 @@ public final class Bots {
             }
             return out;
         });
+    }
+
+    /**
+     * Another agent's bot (rights audit M7): driving or removing it needs bots.admin, as spawning a creative one does;
+     * otherwise any agent could drive an owner's creative bot or take an autopilot off its aircraft.
+     */
+    public Bot mine(Bot bot, ua.zentix.almighty.bridge.Caller caller, com.google.gson.JsonObject params, String what) throws RpcException {
+        if (caller.agent() != null && !bot.spawner.equals(caller.name())) {
+            gm.gate().require(caller, params, ua.zentix.almighty.policy.Node.BOTS_ADMIN, what + " " + bot.name() + ", spawned by " + bot.spawner);
+        }
+        return bot;
     }
 
     public void remove(Bot bot, String reason) {

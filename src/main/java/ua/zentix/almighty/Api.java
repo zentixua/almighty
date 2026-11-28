@@ -234,6 +234,7 @@ public final class Api {
             return gm.onMain(() -> {
                 Areas.Lease lease = gm.areas().acquire(Dims.level(server, a), "area", from[0], from[1], to[0], to[1], ttl * 20L);
                 lease.owner("area #" + lease.id());
+                lease.agent(a.caller().name());
                 return lease;
             }).thenCompose(lease -> wait == 0
                     ? gm.onMain(lease::describe)
@@ -244,6 +245,12 @@ public final class Api {
             return gm.onMain(() -> {
                 Areas.Lease lease = gm.areas().get(id);
                 if (lease == null) throw RpcException.notFound("No area #" + id + " (its time may have run out)");
+                // Only areas made with area.prepare (rights audit M7): a build's or a bot's lease ends with them, and
+                // releasing it under them would fail the build midway. Another agent's area needs undo.any.
+                if (lease.agent() == null) throw RpcException.conflict("#" + id + " is held by " + lease.ownerName() + ": it ends with it (cancel the job)");
+                if (!lease.agent().equals(a.caller().name())) {
+                    gm.gate().require(a.caller(), a.raw(), ua.zentix.almighty.policy.Node.UNDO_ANY, "area #" + id + " prepared by " + lease.agent());
+                }
                 lease.release();
                 JsonObject out = new JsonObject();
                 out.addProperty("released", id);
@@ -282,14 +289,14 @@ public final class Api {
         m.put("bot.remove", a -> {
             String name = a.string("name");
             return gm.onMain(() -> {
-                Bot bot = gm.bots().get(name);
+                Bot bot = gm.bots().mine(gm.bots().get(name), a.caller(), a.raw(), "remove");
                 gm.bots().remove(bot, "removed by the game master");
                 JsonObject out = new JsonObject();
                 out.addProperty("removed", bot.name());
                 return out;
             });
         });
-        m.put("bot.act", a -> gm.bots().act(a.string("name"), a.array("actions"), a.bool("replace", false), waitSeconds(a)));
+        m.put("bot.act", a -> gm.bots().act(a.string("name"), a.array("actions"), a.bool("replace", false), waitSeconds(a), a.raw()));
         m.put("see", a -> see(gm, a));
         m.put("ships", a -> gm.onMain(() -> Ships.describe(server, a)));
         m.put("script", a -> script(gm, a));

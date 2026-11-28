@@ -42,9 +42,12 @@ class ConfirmationsTest {
 
     @Test
     void onlyKnownSafeCommandsSkipConfirmation() {
-        Confirmations.players(n -> n.equalsIgnoreCase("Bob"));
+        Confirmations.players(n -> n.equalsIgnoreCase("Bob") || n.equalsIgnoreCase("Jo") || n.equalsIgnoreCase(".Steve"));
         UUID me = UUID.randomUUID();
-        for (String c : new String[]{"kill @e[type=zombie]", "give Bob diamond 64", "execute as @a run clear", "minecraft:ban Bob",
+        for (String c : new String[]{
+                // Rights audit M2: a quoted name, a short name, a Floodgate name, a UUID without its leading zeros.
+                "kill \"Bob\"", "clear Jo", "kill .Steve", "kill 69a79f4-44e9-4726-a5be-fca90e38aaf5",
+                "kill @e[type=zombie]", "give Bob diamond 64", "execute as @a run clear", "minecraft:ban Bob",
                 "ban Offline", "deop Somebody", "return run kill @a", "kill 069a79f4-44e9-4726-a5be-fca90e38aaf5",
                 "execute on passengers run kill @s", "summon zombie", "data merge block 0 0 0 {}", "mymod:explode", "function x:y",
                 "schedule function x:y 1t", "gamerule keepInventory false", "transfer some.host"}) {

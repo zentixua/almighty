@@ -88,6 +88,8 @@ public final class Bot {
     private long programIds;
     private final ArrayDeque<JsonObject> inbox = new ArrayDeque<>();
     private volatile String controller = "internal";
+    /** The agent whose call spawned this bot ({@code internal}: a script, a rule, a test); others need bots.admin. */
+    volatile String spawner = "internal";
     /** The agent charged for this bot's online minutes (spawned below owner), or null; server thread. */
     String meter;
     long meteredTicks;
@@ -185,6 +187,10 @@ public final class Bot {
     }
 
     /** The agent whose call gave this bot its last program ({@code internal} for scripts and rules). */
+    public String spawner() {
+        return spawner;
+    }
+
     public String controller() {
         return controller;
     }

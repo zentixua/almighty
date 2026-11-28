@@ -115,19 +115,24 @@ public final class GmConfirmGameTests {
             java.nio.file.Files.writeString(file, "preset = \"friends\"\nidentity = \"proxy\"\n");
             check(gm.policies().reload() == null, "policy loads");
             check(gm.policies().current().owners().isEmpty(), "no owner yet");
+            check(ua.zentix.almighty.mcp.signin.SignInCommand.firstApp(gm.policies().current()), "first setup: the plain approval gives owner");
             String said = ua.zentix.almighty.mcp.signin.SignInCommand.rights(gm, "claude-code", true, true);
             check(gm.policies().current().ceiling("claude-code") == ua.zentix.almighty.policy.Role.OWNER, "owner ceiling: " + said);
             check(said.contains("your rights") && said.contains("/almighty agent remove claude-code"), "the decision is shown: " + said);
             // Signed in again: the file lists it now, so nothing is rewritten and the approval command sees it as listed.
             check(ua.zentix.almighty.mcp.signin.OwnerApp.listed(file, "claude-code") != null, "listed after the grant");
+            // A second plain approval from the console (still no owner listed) keeps the default: only the first app.
+            check(!ua.zentix.almighty.mcp.signin.SignInCommand.firstApp(gm.policies().current()), "a second app got owner by default");
             // With an owner, the plain form keeps the policy's default ceiling.
             java.nio.file.Files.writeString(file, "preset = \"friends\"\nidentity = \"proxy\"\nowners = [\"" + UUID.randomUUID() + "\"]\n");
             check(gm.policies().reload() == null, "policy with an owner loads");
+            check(!ua.zentix.almighty.mcp.signin.SignInCommand.firstApp(gm.policies().current()), "with an owner, no default owner app");
             said = ua.zentix.almighty.mcp.signin.SignInCommand.rights(gm, "codex", false, false);
             check(gm.policies().current().ceiling("codex") == ua.zentix.almighty.policy.Role.ADMIN, "default ceiling: " + said);
             check(said.contains("codex owner"), "names the owner form: " + said);
         } finally {
             if (saved != null) java.nio.file.Files.writeString(file, saved);
+            else if (file != null) java.nio.file.Files.deleteIfExists(file);
             gm.policies().reload();
             gm.policies().set(before);
         }

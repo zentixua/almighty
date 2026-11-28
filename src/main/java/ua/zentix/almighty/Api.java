@@ -393,23 +393,22 @@ public final class Api {
             try {
                 // Player-authored text only from players who may reach this agent (its trust floor, plan 4.2).
                 java.util.function.Predicate<java.util.UUID> heard = heardBy(gm, a.caller());
-                JsonObject page = gm.feed().read(after, limit, wait * 1000L, e -> (!mine || me == null
-                        || !e.has("agent") || holder(gm, e, me).equals(me))
+                // Who each kept message belongs to now, decided once per read under the feed lock (review of #105).
+                java.util.Map<JsonObject, String> moved = new java.util.IdentityHashMap<>();
+                java.util.function.Predicate<JsonObject> mineNow = holders(gm, me, moved);
+                JsonObject page = gm.feed().read(after, limit, wait * 1000L, e -> (me == null || mineNow.test(e) || !mine)
                         && (!e.has("untrusted") || !e.has("uuid") || heard.test(java.util.UUID.fromString(e.get("uuid").getAsString()))));
                 // A kept message shows the agent it belongs to now: the reader's own once its agent is away (its
                 // ticket moves on use), or the agent it moved to (lead's N6); kept_for names the agent it first went to.
-                if (me != null) {
-                    com.google.gson.JsonArray events = page.getAsJsonArray("events");
-                    for (int i = 0; i < events.size(); i++) {
-                        JsonObject e = events.get(i).getAsJsonObject();
-                        if (!e.has("agent")) continue;
-                        String holder = holder(gm, e, me), first = e.get("agent").getAsString();
-                        if (holder.equals(first)) continue;
-                        JsonObject copy = e.deepCopy();
-                        copy.addProperty("kept_for", first);
-                        copy.addProperty("agent", holder);
-                        events.set(i, copy);
-                    }
+                com.google.gson.JsonArray events = page.getAsJsonArray("events");
+                for (int i = 0; i < events.size(); i++) {
+                    JsonObject e = events.get(i).getAsJsonObject();
+                    String holder = moved.get(e);
+                    if (holder == null) continue;
+                    JsonObject copy = e.deepCopy();
+                    copy.addProperty("kept_for", e.get("agent").getAsString());
+                    copy.addProperty("agent", holder);
+                    events.set(i, copy);
                 }
                 if (a.caller().agent() != null) a.caller().agent().read(page.get("next").getAsLong());
                 return CompletableFuture.completedFuture(page);
@@ -422,15 +421,26 @@ public final class Api {
     }
 
     /**
-     * The agent an addressed event belongs to as {@code me} reads it: the agent its live ticket is bound to now, or
-     * {@code me} if a message routed by default would move to it ({@link ua.zentix.almighty.feed.Inbox#handsOver}).
+     * For agent {@code me}: whether an event is for it (no agent, or the agent it belongs to now is {@code me}),
+     * recording in {@code moved} each event that belongs to another agent than it was first sent to: the one its live
+     * ticket is bound to now, or {@code me} if a message routed by default would move to it
+     * ({@link ua.zentix.almighty.feed.Inbox#handsOver}, asked once per original agent and player per read).
      */
-    private static String holder(GmServer gm, JsonObject e, String me) {
-        String first = e.get("agent").getAsString();
-        ua.zentix.almighty.policy.Tickets.Ticket t = e.has("ticket") ? gm.tickets().peek(e.get("ticket").getAsString()) : null;
-        if (t == null) return first;
-        if (t.agent().equals(me) || !t.named() && gm.inbox().handsOver(t.agent(), me, t.player())) return me;
-        return t.agent();
+    private static java.util.function.Predicate<JsonObject> holders(GmServer gm, String me, java.util.Map<JsonObject, String> moved) {
+        java.util.Map<String, Boolean> asked = new java.util.HashMap<>();
+        return e -> {
+            if (!e.has("agent")) return true;
+            String first = e.get("agent").getAsString();
+            ua.zentix.almighty.policy.Tickets.Ticket t = e.has("ticket") ? gm.tickets().peek(e.get("ticket").getAsString()) : null;
+            String holder = first;
+            if (t != null) {
+                holder = t.agent();
+                if (!holder.equals(me) && !t.named() && asked.computeIfAbsent(t.agent() + " " + t.player(),
+                        k -> gm.inbox().handsOver(t.agent(), me, t.player()))) holder = me;
+            }
+            if (!holder.equals(first)) moved.put(e, holder);
+            return holder.equals(me);
+        };
     }
 
     /**

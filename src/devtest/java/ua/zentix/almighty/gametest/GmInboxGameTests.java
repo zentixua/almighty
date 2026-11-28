@@ -71,6 +71,36 @@ public final class GmInboxGameTests {
         h.getLevel().getServer().getCommands().performPrefixedCommand(p.createCommandSourceStack(), "gm " + text);
     }
 
+    /**
+     * Lead's N6: a message routed by default to an absent agent belongs to the agent players are routed to now, but
+     * only for a player who may reach that agent (its trust floor): an unverified player's message never moves to an
+     * agent above guest; and never while the first agent runs.
+     */
+    @GameTest(template = "floor", batch = "gm_inbox_handover")
+    public static void aKeptMessageFollowsOnlyWithinTrust(GameTestHelper h) throws Exception {
+        GmServer gm = gm(h);
+        ua.zentix.almighty.policy.Policy before = gm.policies().current();
+        UUID verified = UUID.randomUUID(), offline = UUID.nameUUIDFromBytes("OfflinePlayer:kept-b".getBytes(StandardCharsets.UTF_8));
+        try {
+            gm.policies().set(ua.zentix.almighty.policy.Policy.parse(
+                    "preset = \"friends\"\nidentity = \"proxy\"\n[agents.claude-code]\nceiling = \"owner\"\n"));
+            ua.zentix.almighty.policy.Nodes.refresh(h.getLevel().getServer());
+            ua.zentix.almighty.bridge.Agents agents = ua.zentix.almighty.bridge.Agents.of(
+                    java.util.Map.of("gm", "g".repeat(32), "claude-code", "c".repeat(32)));
+            ua.zentix.almighty.feed.Inbox inbox = new ua.zentix.almighty.feed.Inbox(h.getLevel().getServer(), gm.feed(), gm.tickets(), () -> agents);
+            check(!inbox.handsOver("gm", "claude-code", verified), "nobody runs: players still go to gm");
+            agents.get("claude-code").seen("127.0.0.1");
+            check(inbox.handsOver("gm", "claude-code", verified), "a verified member's kept message follows the owner's app");
+            check(!inbox.handsOver("gm", "claude-code", offline), "an unverified player never reaches an agent above guest");
+            agents.get("gm").seen("127.0.0.1");
+            check(!inbox.handsOver("gm", "claude-code", verified), "gm runs: the message stays gm's");
+        } finally {
+            gm.policies().set(before);
+            ua.zentix.almighty.policy.Nodes.refresh(h.getLevel().getServer());
+        }
+        h.succeed();
+    }
+
     /** Lead's F8: during /almighty pause a player's /gm is answered by the server ("paused"), not by silence. */
     @GameTest(template = "floor", batch = "gm_inbox_paused")
     public static void aPausedAgentsPlayerIsTold(GameTestHelper h) throws Exception {

@@ -57,7 +57,8 @@ public final class Agent {
         return lastSeenMillis != 0 && System.currentTimeMillis() - lastSeenMillis < ms;
     }
 
-    void seen(String address) {
+    /** A call from this address now (the bridge; GameTest stands in for a running agent). */
+    public void seen(String address) {
         lastAddress = address;
         lastSeenMillis = System.currentTimeMillis();
     }

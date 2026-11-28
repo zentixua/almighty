@@ -25,7 +25,8 @@ import java.util.function.Supplier;
 /**
  * Messages players address to the game master (plan step 3): the server decides what is addressed
  * ({@link Addressing}), limits each player before anything is minted, routes each message to one agent, mints a
- * ticket for it and tells the player at once when that agent is away. Server thread only.
+ * ticket for it and tells the player at once when that agent is away. Server thread only, except {@link #handsOver}
+ * (any thread: it reads only the agents' table, the policy and config).
  */
 public final class Inbox {
     /** An agent that made no call for this long is away. */
@@ -75,7 +76,7 @@ public final class Inbox {
                 agent = named;
                 body = parts.length > 1 ? parts[1] : "";
                 // A message the player addressed to an agent by name stays with that agent (no handover).
-                byName = true;
+                byName = known != null;
             }
         }
         // Below the agent's trust floor (private: anyone but an owner): the agent would act on it with more than the

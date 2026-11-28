@@ -153,10 +153,11 @@ public final class SignInCommand {
                     return 0;
                 }
             }
-            // First setup (lead's N1): while policy.toml lists no owner, whoever may approve is the owner (the console,
-            // or the level-4 operator who becomes the first owner now), and the app they sign in is their own app: it
-            // gets their ceiling, so players' /gm reaches it (Agents.route) with exactly the command the page shows.
-            boolean firstSetup = gm.policies().current().owners().isEmpty();
+            // First setup (lead's N1): while policy.toml lists no owner and no owner app, whoever may approve is the
+            // owner (the console, or the level-4 operator who becomes the first owner now), and the app they sign in is
+            // their own: it gets their ceiling, so players' /gm is routed to it (Agents.route) with exactly the command
+            // the page shows. Only the first: later plain approvals keep the default ceiling (review of #105).
+            boolean firstSetup = firstApp(gm.policies().current());
             String became = null;
             if (!ua.zentix.almighty.command.AlmightyCommand.isTrueOwner(source)) {
                 String why = claimFirstOwner(source);
@@ -185,13 +186,25 @@ public final class SignInCommand {
             String rights = rights(gm, agent, owner || ownApp, ownApp);
             String text = (became == null ? "" : became + " is now an owner of this server (policy.toml). ")
                     + "Approved: it connects as agent " + agent + "." + rights
-                    + (ownApp ? "" : " End it any time with /almighty agent remove " + agent);
+                    + (rights.contains("/almighty agent remove") ? "" : " End it any time with /almighty agent remove " + agent);
             source.sendSuccess(() -> Component.literal(text).withStyle(ChatFormatting.GREEN), true);
             return 1;
         } catch (SignIn.OAuthError | IOException e) {
             source.sendFailure(Component.literal(e.getMessage()));
             return 0;
         }
+    }
+
+    /**
+     * First setup: policy.toml lists no owner and no agent with an owner ceiling besides the token-only {@code gm}
+     * (the template's). The next plain approval then gives the owner's own app the owner's ceiling (lead's N1).
+     */
+    public static boolean firstApp(ua.zentix.almighty.policy.Policy p) {
+        if (!p.owners().isEmpty()) return false;
+        for (String name : p.agents().keySet()) {
+            if (!name.equals(ua.zentix.almighty.bridge.Agents.DEFAULT) && p.ceiling(name) == ua.zentix.almighty.policy.Role.OWNER) return false;
+        }
+        return true;
     }
 
     /**
@@ -208,7 +221,7 @@ public final class SignInCommand {
         String error = refused == null ? gm.policies().reload() : null;
         if (refused != null) return " " + refused + ".";
         if (error != null) return " The policy did not reload: " + error + ".";
-        return firstApp ? " As this server's first app it has your rights (ceiling owner in policy.toml) and hears players' /gm."
+        return firstApp ? " As this server's first app it has your rights (ceiling owner in policy.toml) and players' /gm goes to it."
                 + " Not your own app? End it with /almighty agent remove " + agent + "."
                 : " It has your rights (ceiling owner in policy.toml).";
     }

@@ -89,7 +89,7 @@ public final class GmGateGameTests {
             // A world note written for the owner's request records the requester and counts as confirmed (plan 5.4).
             gm.dispatch().invoke(GM, "notes", params("{\"id\":\"world:gate/owner\",\"text\":\"Spawn is the town\",\"for\":\"%s\"}", ownerTicket)).join();
             JsonObject note = gm.dispatch().invoke(GM, "notes", params("{\"id\":\"world:gate/owner\"}")).join().getAsJsonObject();
-            gm.dispatch().invoke(GM, "notes", params("{\"id\":\"world:gate/owner\",\"text\":\"\"}")).join();
+            gm.dispatch().invoke(GM, "notes", params("{\"id\":\"world:gate/owner\",\"text\":\"\",\"for\":\"%s\"}", ownerTicket)).join();
             check(note.get("confirmed").getAsBoolean() && ownerId.toString().equals(note.has("requester") ? note.get("requester").getAsString() : null),
                     "the owner's note: " + note);
             check(refused(gm, "build", params("{\"ops\":[],\"for\":\"%s\"}", offlineTicket)).status() == 403,
